@@ -68,6 +68,7 @@ class Game {
     this.lowT = this.fps < 22 ? this.lowT + dt : Math.max(0, this.lowT - dt * 0.5);
     if (this.lowT < 6) return; this.lowT = 0; this.fps = 30;
     if (this.pxs > 0.75) { this.pxs = Math.max(0.6, this.pxs - 0.2); this.world.setPixelScale(this.pxs); this.ui.toast('Jogo lento: resolução reduzida um pouco.', 'ruim'); }
+    else if (s.settings.quality === 'ultra') { this.pxs = 1; this.world.pxScale = 1; this.setQuality('alto'); this.ui.toast('Jogo lento: gráfico mudado de Ultra para Alto. Dá para voltar em Menu > Configurações.', 'ruim'); }
     else if (s.settings.quality === 'alto') { this.pxs = 1; this.world.pxScale = 1; this.setQuality('baixo'); this.ui.toast('Jogo lento: gráfico mudado para Baixo. Dá para voltar em Menu > Configurações.', 'ruim'); }
   }
   // ---------- desfazer (última construção, até 60 s) ----------
@@ -101,7 +102,7 @@ class Game {
   replaceState(s) {
     sound.configure(s.settings);
     s._events = []; s.clock.lastRealTs = Date.now(); this.state = s;
-    this.world.setQuality(s.settings.quality === this.world.q ? (s.settings.quality === 'alto' ? 'baixo' : 'alto') : s.settings.quality);
+    this.world.setQuality(s.settings.quality === this.world.q ? (s.settings.quality === 'baixo' ? 'alto' : 'baixo') : s.settings.quality);
     this.world.setQuality(s.settings.quality, s); this.controls.world = this.world; this.world.resize(); this.save();
   }
   installPack(id) { if (!AVAILABLE_PACKS[id]) return this.ui.toast('Esta expansão ainda não foi publicada.', 'ruim'); this.state.packs[id] = AVAILABLE_PACKS[id].versao; this.ui.toast('Expansão instalada!', 'bom'); }

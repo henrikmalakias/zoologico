@@ -1,6 +1,6 @@
 import { BASE_PACK } from './base.js';
 
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.5.0';
 export const AVAILABLE_PACKS = { base: BASE_PACK };
 
 // Catálogo de expansões. "em_breve" = ainda não publicada.
@@ -14,10 +14,19 @@ export const DLC_CATALOG = [
   { id: 'energia', nome: 'Energia e Iluminação', desc: 'Postes e luz nos habitats, rede elétrica, gerador, conta de luz mensal e quedas de energia.', tamanho: '~8 MB', estado: 'em_breve' },
   { id: 'noturno', nome: 'Passeio Noturno', desc: 'Visitação à noite com iluminação especial. Reajusta o relógio para noites mais longas.', tamanho: '~8 MB', estado: 'em_breve' },
   { id: 'fachadas', nome: 'Fachadas', desc: 'Entrada nova com bilheterias e catracas, portal temático e estacionamento pago para gerar mais receita.', tamanho: '~12 MB', estado: 'em_breve' },
+  { id: 'biomas', nome: 'Biomas', desc: 'Deserto, floresta tropical, ártico, montanha, Pantanal e litoral, com espécies novas e domos imersivos: paisagem 360° por dentro, habitat com animais e tela de LED por fora.', tamanho: '~60 MB', estado: 'em_breve' },
   { id: 'clima', nome: 'Clima e Estações', desc: 'Estações do ano e clima mudando o ambiente e as necessidades.', tamanho: '~8 MB', estado: 'em_breve' },
 ];
 
 export const CHANGELOG = [
+  { versao: '1.5.0', data: '08/11/2026', titulo: 'Versão 1.5: gráfico Ultra', itens: [
+    'Novo gráfico Ultra (o Baixo e o Alto continuam iguais): céu de verdade em 360° que muda com a hora, do amanhecer à noite estrelada',
+    'Sol que nasce a leste e se põe a oeste, com luz e sombras mudando de cor; luz do ambiente tirada do próprio céu',
+    'Terreno com texturas de foto (capim, terra, areia, lama, rocha e caminho de pedra) e bordas naturais entre elas',
+    'Capim em 3D balançando ao vento, água com ondas e reflexo, copas de árvores feitas de folhas e casca de árvore real',
+    'Pelo nos leões, macacos e gorilas e rugas na pele de elefantes, rinocerontes, hipopótamos e tartarugas',
+    'Se o aparelho ficar lento, o jogo passa sozinho do Ultra para o Alto',
+    'Texturas e céus do Poly Haven (licença livre CC0). DLC Biomas no catálogo' ] },
   { versao: '1.4.0', data: '08/11/2026', titulo: 'Versão 1.4: câmera, tutorial e 5 espécies novas', itens: [
     'Câmera feita para o dedo: pinça aproxima na direção dos dedos, dois dedos girando rodam, dois dedos arrastando para cima/baixo inclinam, toque duplo aproxima e o movimento tem inércia',
     'Botões de câmera na tela (girar, inclinar, aproximar) e bússola que volta para o norte; a câmera nunca entra no relevo',

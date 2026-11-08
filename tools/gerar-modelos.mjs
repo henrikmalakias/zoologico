@@ -82,7 +82,7 @@ function quadruped(P) {
 function build(nome, P, more) {
   const q = quadruped(P);
   if (more) more(q, P);
-  return { id: nome, versao: 1, tipo: 'quadrupede', celula: P.celula, cores: P.cores, padrao: P.padrao || null, ossos: q.bones, formas: q.shapes, extras: q.extras, anim: P.anim };
+  return { id: nome, versao: P.versao || 1, tipo: 'quadrupede', celula: P.celula, cores: P.cores, padrao: P.padrao || null, ossos: q.bones, formas: q.shapes, extras: q.extras, anim: P.anim };
 }
 
 const M = {};
@@ -173,17 +173,18 @@ M.rinoceronte = build('rinoceronte', {
   q.shapes.push({ t: 'eli', osso: 'peito', c: R(add(q.chestC, [0, 0.38, -0.05])), r: [0.3, 0.2, 0.3], k: 0.15, cor: 'base', ruido: 0.002 });
 });
 M.gorila = build('gorila', {
+  versao: 2,
   celula: 0.018, L: 0.5, legF: 0.74, legH: 0.46, chest: [0.32, 0.36, 0.3], hip: [0.24, 0.26, 0.22], belly: 0.26, kBody: 0.14,
   neck: { len: 0.08, ang: 0.5, r0: 0.18, r1: 0.16 }, head: { dir: 0.15, skull: [0.15, 0.17, 0.15], muzzle: { len: 0.07, r0: 0.11, r1: 0.1, cor: 'rosto' }, eye: 0.12 },
   ears: { tipo: 'redonda', t: 0.03, cor: 'rosto' }, pF: { len: [0.36, 0.32, 0.06], r: [0.13, 0.1, 0.075] }, pH: { len: [0.22, 0.16, 0.05], r: [0.12, 0.085, 0.07] },
   foot: { tipo: 'mao', h: 0.04, r: 0.08 }, tail: { len: 0.03, r: 0.01 },
   torsoPad: { ruido: 0.006 },
-  cores: { base: '#2b2725', ventre: '#3a3330', escuro: '#151312', nariz: '#151312', rosto: '#24201e', pele: '#1c1918', prata: '#9b968f' },
+  cores: { base: '#2b2725', ventre: '#3a3330', escuro: '#151312', nariz: '#151312', rosto: '#24201e', pele: '#1c1918', prata: '#6f6b66' },
   anim: { passo: 0.42, freq: 2.6, pescoco: 0.5 },
 }, (q) => {
   q.shapes.push({ t: 'eli', osso: 'cabeca', c: R(add(q.skull, [0, 0.06, 0.1])), r: [0.14, 0.05, 0.06], k: 0.03, cor: 'rosto' }); // sobrancelha
   q.shapes.push({ t: 'eli', osso: 'cabeca', c: R(add(q.skull, [0, 0.15, -0.04])), r: [0.06, 0.12, 0.13], k: 0.06, cor: 'base', so: 'M' }); // crista do macho
-  q.shapes.push({ t: 'eli', osso: 'coluna', c: R(add(lerp(q.hipC, q.chestC, 0.35), [0, 0.27, 0])), r: [0.24, 0.1, 0.24], k: 0.08, cor: 'prata', so: 'M' }); // costas-prateadas
+  q.shapes.push({ t: 'eli', osso: 'coluna', c: R(add(lerp(q.hipC, q.chestC, 0.3), [0, 0.2, -0.02])), r: [0.22, 0.09, 0.22], k: 0.14, cor: 'prata', so: 'M' }); // costas-prateadas
   for (const sx of [-1, 1]) q.shapes.push({ t: 'eli', osso: 'peito', c: R(add(q.chestC, [sx * 0.24, 0.18, 0.04])), r: [0.14, 0.14, 0.15], k: 0.1, cor: 'base', ruido: 0.006 }); // ombros
 });
 M.tartaruga = build('tartaruga', {

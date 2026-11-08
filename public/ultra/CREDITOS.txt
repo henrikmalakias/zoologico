@@ -1,0 +1,18 @@
+Texturas e céus do Poly Haven (https://polyhaven.com), licença CC0 (domínio público).
+
+terreno g: https://polyhaven.com/a/leafy_grass
+terreno d: https://polyhaven.com/a/dirt
+terreno s: https://polyhaven.com/a/coast_sand_01
+terreno m: https://polyhaven.com/a/brown_mud_02
+terreno r: https://polyhaven.com/a/rock_boulder_dry
+terreno p: https://polyhaven.com/a/stone_pathway
+terreno w: https://polyhaven.com/a/brown_mud_02
+casca acacia: https://polyhaven.com/a/fever_tree_bark
+casca floresta: https://polyhaven.com/a/bark_brown_02
+céu amanhecer: https://polyhaven.com/a/qwantani_sunrise_puresky
+céu manha: https://polyhaven.com/a/qwantani_morning_puresky
+céu meiodia: https://polyhaven.com/a/qwantani_noon_puresky
+céu tarde: https://polyhaven.com/a/qwantani_late_afternoon_puresky
+céu porsol: https://polyhaven.com/a/qwantani_sunset_puresky
+céu crepusculo: https://polyhaven.com/a/qwantani_dusk_2_puresky
+céu noite: https://polyhaven.com/a/qwantani_night_puresky

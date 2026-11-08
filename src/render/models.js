@@ -1,10 +1,11 @@
 import * as THREE from 'three';
+import { canopyGeometry, leafMaterial } from './ultra.js';
 
 // ---------- materiais e geometrias com cache por qualidade ----------
 export class Kit {
-  constructor(q) { this.q = q; this.hi = q === 'alto'; this.mats = new Map(); this.geos = new Map(); this.texs = new Map(); this.seg = this.hi ? 14 : 6; }
+  constructor(q) { this.q = q; this.hi = q !== 'baixo'; this.ultra = q === 'ultra'; this.mats = new Map(); this.geos = new Map(); this.texs = new Map(); this.seg = this.hi ? 14 : 6; }
   mat(color, o = {}) {
-    const k = color + JSON.stringify(o);
+    const k = color + JSON.stringify({ ...o, map: o.map ? o.map.uuid : null });
     if (!this.mats.has(k)) {
       const m = this.hi ? new THREE.MeshStandardMaterial({ color, roughness: o.rough ?? 0.85, metalness: o.metal ?? 0, map: o.map || null, transparent: !!o.opacity, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide })
                         : new THREE.MeshLambertMaterial({ color, flatShading: true, map: o.map || null, transparent: !!o.opacity, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide });
@@ -17,9 +18,13 @@ export class Kit {
   cyl(rt, rb, h) { return this.geo(`cyl${rt},${rb},${h}`, () => new THREE.CylinderGeometry(rt, rb, h, Math.max(5, this.seg - 2))); }
   cone(r, h) { return this.geo(`cone${r},${h}`, () => new THREE.ConeGeometry(r, h, Math.max(5, this.seg - 2))); }
   box(w, h, d) { return this.geo(`box${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d)); }
-  tex(key, fn) {
+  tex(key, fn, make) {
+    if (!this.texs.has(key) && make) this.texs.set(key, make());
     if (!this.texs.has(key)) { const c = fn(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; if (!this.hi) { t.magFilter = THREE.NearestFilter; } t.anisotropy = this.hi ? 4 : 1; this.texs.set(key, t); }
     return this.texs.get(key);
+  }
+  bark(kind) { // casca de árvore real (Poly Haven) no gráfico Ultra
+    return this.tex('bark' + kind, null, () => { const t = new THREE.TextureLoader().load(`./ultra/casca/${kind}_cor.jpg`); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 3); return t; });
   }
   mesh(geo, mat, shadow = true) { const m = new THREE.Mesh(geo, mat); if (this.hi && shadow) { m.castShadow = true; m.receiveShadow = true; } return m; }
   dispose() { for (const m of this.mats.values()) m.dispose(); for (const g of this.geos.values()) g.dispose(); for (const t of this.texs.values()) t.dispose(); }
@@ -152,8 +157,16 @@ export function buildPerson(kit, color, hat) {
 // ---------- plantas ----------
 export function buildPlant(kit, type) {
   const g = new THREE.Group();
-  const trunk = kit.mat('#6b4b2e'), leaf = c => kit.mat(c);
-  const add = (geo, m, x, y, z, sx = 1, sy = 1, sz = 1) => { const o = kit.mesh(geo, m); o.position.set(x, y, z); o.scale.set(sx, sy, sz); g.add(o); return o; };
+  const trunk = kit.ultra ? kit.mat('#d8cfc4', { map: kit.bark(type === 'acacia' || type === 'baoba' ? 'acacia' : 'floresta'), rough: 0.95 }) : kit.mat('#6b4b2e'), leaf = c => kit.mat(c);
+  const add = (geo, m, x, y, z, sx = 1, sy = 1, sz = 1) => {
+    if (kit.ultra && geo === kit.sphere(1) && m !== trunk) { // copa realista: cartões de folhas em volta de um miolo escuro
+      const hex = '#' + m.color.getHexString(), key = `can${type}${sx},${sy},${sz}`;
+      const cg = kit.geo(key, () => canopyGeometry(Math.round(Math.min(220, 26 + 42 * sx * sy * sz)), sx, sy, sz, key.length * 97 + Math.round(sx * 100)));
+      const o = kit.mesh(cg, leafMaterial(hex)); o.position.set(x, y, z); g.add(o);
+      const core = kit.mesh(kit.sphere(1), kit.mat(new THREE.Color(hex).multiplyScalar(0.55).getStyle())); core.position.set(x, y, z); core.scale.set(sx * 0.72, sy * 0.72, sz * 0.72); g.add(core); return o;
+    }
+    const o = kit.mesh(geo, m); o.position.set(x, y, z); o.scale.set(sx, sy, sz); g.add(o); return o;
+  };
   switch (type) {
     case 'acacia': add(kit.cyl(0.12, 0.2, 3), trunk, 0, 1.5, 0); add(kit.sphere(1), leaf('#6f8a35'), 0, 3.2, 0, 2.1, 0.45, 2.1); if (kit.hi) add(kit.sphere(1), leaf('#7d9840'), 0.8, 3.45, 0.4, 1.1, 0.3, 1.1); break;
     case 'baoba': add(kit.cyl(0.55, 0.85, 4), kit.mat('#8a6f58'), 0, 2, 0); for (let i = 0; i < 4; i++) { const a = i * 1.57; add(kit.cyl(0.08, 0.15, 1.4), trunk, Math.cos(a) * 0.6, 4.4, Math.sin(a) * 0.6).rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6); add(kit.sphere(1), leaf('#5e7a2e'), Math.cos(a) * 1.1, 5.1, Math.sin(a) * 1.1, 0.7, 0.4, 0.7); } break;

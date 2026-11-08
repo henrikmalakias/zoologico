@@ -1,6 +1,6 @@
 {
  "id": "gorila",
- "versao": 1,
+ "versao": 2,
  "tipo": "quadrupede",
  "celula": 0.018,
  "cores": {
@@ -10,7 +10,7 @@
   "nariz": "#151312",
   "rosto": "#24201e",
   "pele": "#1c1918",
-  "prata": "#9b968f"
+  "prata": "#6f6b66"
  },
  "padrao": null,
  "ossos": [
@@ -883,15 +883,15 @@
    "osso": "coluna",
    "c": [
     0,
-    0.9397,
-    -0.0693
+    0.8546,
+    -0.1104
    ],
    "r": [
-    0.24,
-    0.1,
-    0.24
+    0.22,
+    0.09,
+    0.22
    ],
-   "k": 0.08,
+   "k": 0.14,
    "cor": "prata",
    "so": "M"
   },

@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.4.0
+# Projeto Zoológico — v1.5.0
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -26,3 +26,8 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `node tools/gerar-modelos.mjs` recria os JSON a partir dos parâmetros de cada espécie.
 - `src/render/sdf.js` transforma o JSON em malha com esqueleto (roda num Web Worker e fica em cache no aparelho).
 - Ao mudar o gerador, suba `GEN` em `src/render/library.js` para invalidar o cache.
+
+## Gráfico Ultra
+- `src/render/ultra.js`: céu 360° por hora (Poly Haven, CC0), luz do ambiente, terreno com texturas (array de texturas), capim instanciado, água com ondas, copas de folhas, pelo em camadas e rugas.
+- `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
+- Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.

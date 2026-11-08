@@ -6,6 +6,7 @@ let LIB = null; export const library = () => (LIB ||= new ModelLibrary());
 import { content } from '../content/registry.js';
 import { MAP, TILE, HALF, idx, tileToWorld, AREAS, CW, heightAt, walkY, WATER_Y, bridgeTiles } from '../sim/grid.js';
 import { hourOf } from '../sim/util.js';
+import { UltraSky, loadTerrainArrays, terrainData, fillTerrainData, terrainMaterial, waterNormalTexture, Grass, addFur, addSkinDetail } from './ultra.js';
 
 const C3 = c => new THREE.Color(c);
 const SKY = { night: C3('#0d1a33'), dawn: C3('#e9a36a'), day: C3('#8fc6ea') };
@@ -14,14 +15,14 @@ const VCOLS = ['#d64545', '#3a7bd5', '#f2c230', '#4caf50', '#9c27b0', '#ff8a3d',
 export class World {
   constructor(container, quality) { this.container = container; this.build(quality); }
   build(q) {
-    this.q = q; this.hi = q === 'alto'; this.kit = new Kit(q);
+    this.q = q; this.hi = q !== 'baixo'; this.ultra = q === 'ultra'; this.kit = new Kit(q);
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: this.hi, powerPreference: this.hi ? 'high-performance' : 'low-power' });
     r.setPixelRatio((this.hi ? Math.min(devicePixelRatio, 2) : Math.min(devicePixelRatio, 1)) * (this.pxScale ?? 1));
     r.setSize(this.container.clientWidth, this.container.clientHeight);
-    if (this.hi) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05; }
+    if (this.hi) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = this.ultra ? 0.92 : 1.05; }
     this.container.prepend(r.domElement); r.domElement.className = 'gl';
     const sc = this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(50, this.container.clientWidth / this.container.clientHeight, 0.3, 600);
+    this.camera = new THREE.PerspectiveCamera(50, this.container.clientWidth / this.container.clientHeight, 0.3, this.ultra ? 900 : 600);
     this.hemi = new THREE.HemisphereLight('#cfe8ff', '#5a6b3a', 0.9); sc.add(this.hemi);
     this.sun = new THREE.DirectionalLight('#fff3dd', 2.0); sc.add(this.sun); sc.add(this.sun.target);
     if (this.hi) {
@@ -33,6 +34,12 @@ export class World {
       const pos = sky.geometry.attributes.position, cols = []; for (let i = 0; i < pos.count; i++) { const t = (pos.getY(i) + 50) / 100; const c = C3('#6b7b4a').lerp(C3('#bfe3ff'), Math.min(1, t * 1.6)); cols.push(c.r, c.g, c.b); }
       sky.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); envScene.add(sky);
       sc.environment = pm.fromScene(envScene, 0.04).texture; sc.environmentIntensity = 0.45; pm.dispose();
+    }
+    if (this.ultra) {
+      sc.fog = new THREE.Fog('#c4d6e6', 160, 520); this.sun.shadow.camera.far = 400;
+      fetch('./ultra/meta.json').then(r => r.json()).then(meta => { if (this.renderer !== r) return; this.usky = new UltraSky(r, sc, meta); }).catch(e => console.warn('céu', e));
+      loadTerrainArrays().then(arr => { if (this.renderer !== r) { arr.cor.dispose(); arr.nor.dispose(); return; } this.tarr = arr; this.tdata = terrainData(); if (this._s) fillTerrainData(this.tdata, this._s); this.ground.material = terrainMaterial(arr, this.tdata); }).catch(e => console.warn('terreno', e));
+      this.grass = new Grass(sc);
     }
     // terreno
     this.ppt = this.hi ? 16 : 4;
@@ -47,7 +54,7 @@ export class World {
       const far = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), fm); far.position.set(x, -0.02, z); sc.add(far);
     }
     this.waterG = new THREE.Group(); sc.add(this.waterG);
-    this.waterMat = this.hi ? new THREE.MeshStandardMaterial({ color: '#2f7fb0', roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.82 }) : new THREE.MeshLambertMaterial({ color: '#3d86b3' });
+    this.waterMat = this.ultra ? new THREE.MeshStandardMaterial({ color: '#24607a', roughness: 0.04, metalness: 0.0, transparent: true, opacity: 0.86, normalMap: waterNormalTexture(), normalScale: new THREE.Vector2(0.45, 0.45) }) : this.hi ? new THREE.MeshStandardMaterial({ color: '#2f7fb0', roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.82 }) : new THREE.MeshLambertMaterial({ color: '#3d86b3' });
     this.layers = {}; for (const k of ['habs', 'facs', 'objs', 'animals', 'staff', 'fx']) { this.layers[k] = new THREE.Group(); sc.add(this.layers[k]); }
     this.maps = { habs: new Map(), facs: new Map(), objs: new Map(), animals: new Map(), staff: new Map() };
     // visitantes instanciados
@@ -71,6 +78,8 @@ export class World {
   setQuality(q, s) { if (q === this.q) return; this.dispose(); this.build(q); if (s) this.update(s, 0); }
   dispose() {
     this.renderer.dispose(); this.renderer.domElement.remove(); this.kit.dispose(); this.ttex.dispose();
+    this.usky?.dispose(); this.grass?.dispose(); this.tarr?.cor.dispose(); this.tarr?.nor.dispose(); this.tdata?.dispose(); this.waterMat.normalMap?.dispose();
+    this.usky = this.grass = this.tarr = this.tdata = null;
     this.scene.traverse(o => { if (o.isInstancedMesh || o === this.ground) o.geometry.dispose(); });
   }
   setPixelScale(k) { this.pxScale = k; this.renderer.setPixelRatio((this.hi ? Math.min(devicePixelRatio, 2) : Math.min(devicePixelRatio, 1)) * k); this.resize(); }
@@ -99,7 +108,7 @@ export class World {
       const x = i % MAP, y = (i / MAP) | 0; this.paintTile(s, i, !(x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1)); changed = true;
       if (s.terrain[i] === 'w' || (prev && prev[i] === 'w')) water = true;
     }
-    if (changed) { this.ttex.needsUpdate = true; this.cache.terrain = s.terrain.slice(); this.cache.area = s.areaLevel; }
+    if (changed) { this.ttex.needsUpdate = true; this.cache.terrain = s.terrain.slice(); this.cache.area = s.areaLevel; this.tsig = (this.tsig || 0) + 1; if (this.tdata) fillTerrainData(this.tdata, s); }
     if (water || !this.waterBuilt) this.rebuildWater(s);
     if (s.height && this.cache.hver !== (s._hver || 0)) {
       this.cache.hver = s._hver || 0; const pos = this.ground.geometry.attributes.position;
@@ -233,8 +242,8 @@ export class World {
     const L = this.hi ? library() : null, seen = new Set();
     for (const a of s.animals) {
       if (!C.species[a.sp]) continue; seen.add(a.id);
-      const vkey = a.sp === 'leao' ? 'leao:' + a.sex : a.sp + ':F';
-      let tpl = null; if (L) { L.request(vkey); tpl = L.get(vkey); }
+      const vkey = a.sp === 'leao' || a.sp === 'gorila' ? a.sp + ':' + a.sex : a.sp + ':F';
+      let tpl = null; if (L) { L.request(vkey); tpl = L.get(vkey); if (tpl && this.ultra && !tpl.userData.ultra) { tpl.userData.ultra = true; tpl.userData.baseMat = tpl.children[0].material; addFur(tpl, a.sp); addSkinDetail(tpl, a.sp); tpl.userData.skinMat = tpl.children[0].material; tpl.children[0].material = tpl.userData.baseMat; } }
       const kind = tpl ? 'sdf' : 'proc';
       let e = this.maps.animals.get(a.id);
       if (e && e.kind !== kind) { this.layers.animals.remove(e.o); e = null; }
@@ -247,7 +256,10 @@ export class World {
       const S = C.species[a.sp]; let sc = a.age < S.vida.adulto ? 0.5 + 0.5 * (a.age / S.vida.adulto) : 1;
       if (a.carriedBy && (a.sp === 'girafa')) sc *= 0.75;
       o.scale.setScalar(sc);
-      if (kind === 'sdf') animateSDFAnimal(o, a, dt, moving, a.sp); else animateAnimal(o, a, dt, moving);
+      if (kind === 'sdf') {
+        animateSDFAnimal(o, a, dt, moving, a.sp);
+        if (tpl?.userData.ultra) { const near = this.ultra && this.camera.position.distanceToSquared(o.position) < 1600; for (const c of o.children) if (c.userData.fur) c.visible = near; o.children[0].material = this.ultra ? tpl.userData.skinMat : tpl.userData.baseMat; }
+      } else animateAnimal(o, a, dt, moving);
     }
     for (const [id, e] of this.maps.animals) if (!seen.has(id)) { this.layers.animals.remove(e.o); this.maps.animals.delete(id); }
     // equipe
@@ -329,7 +341,7 @@ export class World {
       this.litter.count = c; this.litter.instanceMatrix.needsUpdate = true;
     }
     if (this.waterG.children[0]) this.waterG.children[0].position.y = Math.sin(this.t * 0.8) * 0.02;
-    this.updateLight(s);
+    this.updateLight(s, dt);
   }
   fxSparks(id, person, dt) {
     let p = this.fx.sparks.get(id);
@@ -363,7 +375,23 @@ export class World {
     const f = Math.min(1, e.dart / T), sx = e.o.position.x, sz = e.o.position.z;
     const by = e.o.position.y; d.position.set(sx + (a.x - sx) * f, by + 1.4 - 0.5 * f, sz + (a.z - sz) * f); d.lookAt(a.x, by + 0.9, a.z);
   }
-  updateLight(s) {
+  focus() { // ponto do chão no centro da tela
+    const d = new THREE.Vector3(); this.camera.getWorldDirection(d); const c = this.camera.position;
+    if (d.y > -0.05) return { x: c.x + d.x * 40, z: c.z + d.z * 40 }; const t = -c.y / d.y; return { x: c.x + d.x * t, z: c.z + d.z * t };
+  }
+  updateLight(s, dt = 0) {
+    if (this.ultra) {
+      const f = this.focus(), h = (s.clock.min % 1440) / 60;
+      if (this.usky) {
+        const dir = this.usky.update(h, this.sun, this.hemi, this.scene.fog, this.camera.position);
+        const span = Math.min(80, Math.max(25, this.camera.position.distanceTo(new THREE.Vector3(f.x, 0, f.z)) * 0.8));
+        Object.assign(this.sun.shadow.camera, { left: -span, right: span, top: span, bottom: -span }); this.sun.shadow.camera.updateProjectionMatrix();
+        this.sun.target.position.set(f.x, 0, f.z); this.sun.position.set(f.x + dir.x * 150, dir.y * 150, f.z + dir.z * 150);
+      } else this.scene.background = SKY.day;
+      if (this.grass) this.grass.update(s, f.x, f.z, this.camera.position.y, dt, (this.tsig || 0) + ':' + (s._hver || 0) + ':' + s.facilities.length);
+      if (this.waterMat.normalMap) { this.waterMat.normalMap.offset.x += dt * 0.012; this.waterMat.normalMap.offset.y += dt * 0.007; }
+      return;
+    }
     const h = hourOf(s.clock.min), day = Math.max(0, Math.sin(((h - 6) / 12) * Math.PI));
     const dawn = Math.max(0, 1 - Math.abs(h - 6.5) / 1.5) + Math.max(0, 1 - Math.abs(h - 18) / 1.5);
     const ang = ((h - 6) / 12) * Math.PI;

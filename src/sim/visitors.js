@@ -4,7 +4,7 @@ import { MAP, idx, tileToWorld, worldToTile, astar, isPath, accessTile, viewTile
 import { earn } from './staff.js';
 
 export const isOpen = s => { const h = hourOf(s.clock.min); return h >= 8 && h < 18; };
-export const visitorCap = s => (s.settings.quality === 'alto' ? 140 : 70);
+export const visitorCap = s => (s.settings.quality !== 'baixo' ? 140 : 70);
 const entranceTile = s => { const e = s.facilities.find(f => f.type === 'entrada'); return e ? accessTile(s, e) : null; };
 
 export function arrivalRate(s) {
