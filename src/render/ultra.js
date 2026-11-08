@@ -118,7 +118,7 @@ export class UltraSky {
   need(k) {
     if (this.tex[k] || this.loading.has(k)) return; this.loading.add(k);
     new THREE.TextureLoader().load(`${BASE}ceu/${k}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; this.tex[k] = t; this.loading.delete(k); this.lastEnv = -99; });
-    this.rgbe.load(`${BASE}ceu/${k}.hdr`, t => { t.wrapS = THREE.RepeatWrapping; t.minFilter = t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; this.hdr[k] = t; this.lastEnv = -99; });
+    this.rgbe.load(`${BASE}ceu/${k}_hdr.bin`, t => { t.wrapS = THREE.RepeatWrapping; t.minFilter = t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; this.hdr[k] = t; this.lastEnv = -99; });
   }
   // devolve a direção do sol e as cores para a hora h
   update(h, sun, hemi, fog, camPos) {

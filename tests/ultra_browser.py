@@ -19,7 +19,7 @@ async def main():
           g.setQuality('ultra'); }""")
         for _ in range(90):
             await pg.wait_for_timeout(1000)
-            st = await pg.evaluate("() => { const w = window.__game.world, L = window.__api.library(); return [!!w.usky?.dome.visible, !!w.tarr, w.grass?.mesh.count || 0, L.loading, L.tpl.size]; }")
+            st = await pg.evaluate("() => { const w = window.__game.world, L = window.__api.library(); return [!!w.usky?.dome.visible && !!w.usky?.envRT, !!w.tarr, w.grass?.mesh.count || 0, L.loading, L.tpl.size]; }")
             if st[0] and st[1] and st[3] == 0 and st[4] >= 3: break
         print('estado', st)
         for hora, nome in [(12, 'meiodia'), (7, 'manha'), (17.8, 'porsol'), (22, 'noite')]:

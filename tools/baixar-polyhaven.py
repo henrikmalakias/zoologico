@@ -5,7 +5,7 @@ import cv2, numpy as np
 
 OUT = 'public/ultra'
 TMP = '/tmp/ph-cache'
-os.makedirs(TMP, exist_ok=True)
+os.makedirs(TMP, exist_ok=True)  # céus HDR saem como .bin (o conteúdo é .hdr Radiance)
 for d in ['terreno', 'casca', 'ceu']: os.makedirs(f'{OUT}/{d}', exist_ok=True)
 
 TERRENO = {  # tipo de terreno do jogo -> textura do Poly Haven
@@ -55,7 +55,7 @@ def sky(asset, name):
     hdr = get(f['hdri']['1k']['hdr']['url'], f'{TMP}/{asset}_1k.hdr')
     im = cv2.imread(hdr, cv2.IMREAD_UNCHANGED)[..., ::-1].astype(np.float32)  # BGR -> RGB
     small = cv2.resize(im, (256, 128), interpolation=cv2.INTER_AREA)
-    write_hdr(f'{OUT}/ceu/{name}.hdr', small)
+    write_hdr(f'{OUT}/ceu/{name}_hdr.bin', small)
     # direção do sol: pixel mais brilhante
     y, x = np.unravel_index(np.argmax(im.sum(axis=2)), im.shape[:2])
     sol = {'u': float(x / im.shape[1]), 'v': float(y / im.shape[0]), 'pico': float(im.sum(axis=2).max())}
