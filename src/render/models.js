@@ -1,0 +1,247 @@
+import * as THREE from 'three';
+
+// ---------- materiais e geometrias com cache por qualidade ----------
+export class Kit {
+  constructor(q) { this.q = q; this.hi = q === 'alto'; this.mats = new Map(); this.geos = new Map(); this.texs = new Map(); this.seg = this.hi ? 14 : 6; }
+  mat(color, o = {}) {
+    const k = color + JSON.stringify(o);
+    if (!this.mats.has(k)) {
+      const m = this.hi ? new THREE.MeshStandardMaterial({ color, roughness: o.rough ?? 0.85, metalness: o.metal ?? 0, map: o.map || null, transparent: !!o.opacity, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide })
+                        : new THREE.MeshLambertMaterial({ color, flatShading: true, map: o.map || null, transparent: !!o.opacity, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide });
+      this.mats.set(k, m);
+    }
+    return this.mats.get(k);
+  }
+  geo(key, fn) { if (!this.geos.has(key)) this.geos.set(key, fn()); return this.geos.get(key); }
+  sphere(r = 1) { return this.geo('sph' + r, () => new THREE.SphereGeometry(r, this.seg, Math.max(4, (this.seg >> 1) + 2))); }
+  cyl(rt, rb, h) { return this.geo(`cyl${rt},${rb},${h}`, () => new THREE.CylinderGeometry(rt, rb, h, Math.max(5, this.seg - 2))); }
+  cone(r, h) { return this.geo(`cone${r},${h}`, () => new THREE.ConeGeometry(r, h, Math.max(5, this.seg - 2))); }
+  box(w, h, d) { return this.geo(`box${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d)); }
+  tex(key, fn) {
+    if (!this.texs.has(key)) { const c = fn(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; if (!this.hi) { t.magFilter = THREE.NearestFilter; } t.anisotropy = this.hi ? 4 : 1; this.texs.set(key, t); }
+    return this.texs.get(key);
+  }
+  mesh(geo, mat, shadow = true) { const m = new THREE.Mesh(geo, mat); if (this.hi && shadow) { m.castShadow = true; m.receiveShadow = true; } return m; }
+  dispose() { for (const m of this.mats.values()) m.dispose(); for (const g of this.geos.values()) g.dispose(); for (const t of this.texs.values()) t.dispose(); }
+}
+
+const canvas = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return c; };
+export function labelCanvas(text, bg = '#1f4e3d', fg = '#fff', w = 256, h = 64) {
+  return canvas(w, h, (g) => { g.fillStyle = bg; g.fillRect(0, 0, w, h); g.fillStyle = fg; g.font = `bold ${Math.floor(h * 0.5)}px Arial`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w / 2, h / 2 + 2); });
+}
+const stripes = () => canvas(128, 128, (g) => { g.fillStyle = '#f4f2ea'; g.fillRect(0, 0, 128, 128); g.fillStyle = '#1b1b1b';
+  for (let i = 0; i < 9; i++) { g.beginPath(); const x = i * 15; g.moveTo(x, 0); g.bezierCurveTo(x + 8, 40, x - 6, 90, x + 4, 128); g.lineTo(x + 10, 128); g.bezierCurveTo(x + 2, 90, x + 16, 40, x + 7, 0); g.fill(); } });
+const spots = () => canvas(128, 128, (g) => { g.fillStyle = '#efd9a7'; g.fillRect(0, 0, 128, 128); g.fillStyle = '#a5622a';
+  let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 26; i++) { g.beginPath(); const x = r() * 128, y = r() * 128, s = 8 + r() * 9; g.moveTo(x, y - s); for (let k = 1; k < 6; k++) { const a = k / 6 * 6.283; g.lineTo(x + Math.sin(a) * s * (0.7 + r() * 0.4), y - Math.cos(a) * s * (0.7 + r() * 0.4)); } g.fill(); } });
+
+// ---------- animais ----------
+const DEF = {
+  leao: { len: 1.9, bh: 0.75, bw: 0.62, legH: 0.8, legR: 0.11, neck: [0.35, 0.5], head: 0.32, tail: 0.9, color: '#c8963e' },
+  zebra: { len: 1.6, bh: 0.72, bw: 0.5, legH: 0.85, legR: 0.07, neck: [0.75, 0.9], head: 0.24, headLen: 1.8, tail: 0.6, color: '#f2f2ee', tex: 'stripes' },
+  elefante: { len: 2.6, bh: 1.65, bw: 1.45, legH: 1.25, legR: 0.27, neck: [0.25, 0.25], head: 0.62, tail: 0.7, color: '#8e8a86' },
+  girafa: { len: 1.6, bh: 0.95, bw: 0.62, legH: 1.65, legR: 0.07, neck: [2.0, 1.05], head: 0.22, headLen: 1.9, tail: 0.8, color: '#e3b866', tex: 'spots' },
+  macaco: { len: 0.55, bh: 0.45, bw: 0.35, legH: 0.32, legR: 0.05, neck: [0.1, 0.4], head: 0.17, tail: 0.75, color: '#6b4a32' },
+  hipopotamo: { len: 2.3, bh: 1.0, bw: 1.05, legH: 0.42, legR: 0.18, neck: [0.12, 1.3], head: 0.45, headLen: 1.25, tail: 0.3, color: '#7a6763', dark: '#9c7a72' },
+  rinoceronte: { len: 2.2, bh: 0.95, bw: 0.85, legH: 0.68, legR: 0.16, neck: [0.3, 1.5], head: 0.36, headLen: 1.7, tail: 0.45, color: '#8a847c', dark: '#5e5348' },
+  gorila: { len: 0.75, bh: 0.8, bw: 0.7, legH: 0.55, legR: 0.12, neck: [0.1, 0.3], head: 0.27, headLen: 1.0, tail: 0.01, color: '#2b2725', dark: '#151312' },
+  tartaruga: { len: 0.6, bh: 0.32, bw: 0.5, legH: 0.2, legR: 0.07, neck: [0.32, 1.3], head: 0.11, headLen: 1.1, tail: 0.1, color: '#6e6c60', dark: '#3d3b33' },
+};
+function buildBird(kit) {
+  const pink = kit.mat('#f29bb0'), wing = kit.mat('#e8607e'), black = kit.mat('#151515'), legM = kit.mat('#e57f93'), beak = kit.mat('#f3d6d6');
+  const root = new THREE.Group(), rig = new THREE.Group(); root.add(rig);
+  const body = kit.mesh(kit.sphere(0.5), pink); body.scale.set(0.3, 0.28, 0.58); body.position.set(0, 1.05, 0); rig.add(body);
+  for (const sx of [-1, 1]) { const w = kit.mesh(kit.sphere(0.5), wing); w.scale.set(0.08, 0.2, 0.5); w.position.set(sx * 0.12, 1.1, -0.04); rig.add(w); const t = kit.mesh(kit.sphere(0.5), black); t.scale.set(0.07, 0.1, 0.24); t.position.set(sx * 0.1, 1.08, -0.3); rig.add(t); }
+  const legs = [];
+  for (const sx of [-1, 1]) { const pv = new THREE.Group(); pv.position.set(sx * 0.06, 0.98, 0); const l = kit.mesh(kit.cyl(0.02, 0.02, 0.96), legM); l.position.y = -0.48; pv.add(l); const f = kit.mesh(kit.box(0.08, 0.02, 0.14), legM); f.position.set(0, -0.96, 0.05); pv.add(f); rig.add(pv); legs.push(pv); }
+  const neck = new THREE.Group(); neck.position.set(0, 1.15, 0.26); rig.add(neck);
+  const n1 = kit.mesh(kit.cyl(0.035, 0.05, 0.42), pink); n1.position.set(0, 0.2, 0.04); n1.rotation.x = 0.15; neck.add(n1);
+  const n2 = kit.mesh(kit.cyl(0.03, 0.035, 0.36), pink); n2.position.set(0, 0.48, 0.0); n2.rotation.x = -0.3; neck.add(n2);
+  const head = new THREE.Group(); head.position.set(0, 0.6, 0.04); neck.add(head);
+  const hm = kit.mesh(kit.sphere(0.5), pink); hm.scale.set(0.085, 0.085, 0.11); head.add(hm);
+  const bk = kit.mesh(kit.cone(0.03, 0.14), beak); bk.rotation.x = 1.9; bk.position.set(0, -0.03, 0.1); head.add(bk);
+  const tip = kit.mesh(kit.cone(0.018, 0.06), black); tip.rotation.x = 2.6; tip.position.set(0, -0.08, 0.15); head.add(tip);
+  const tail = new THREE.Group(); tail.position.set(0, 1.1, -0.3); rig.add(tail);
+  root.userData = { sp: 'flamingo', bird: true, legs, neck, head, tail, trunk: null, rig, d: { legH: 0.98 }, phase: Math.random() * 6 };
+  return root;
+}
+export function buildAnimal(kit, sp, male) {
+  if (sp === 'flamingo') return buildBird(kit);
+  const d = DEF[sp] || DEF.zebra;
+  const map = d.tex === 'stripes' ? kit.tex('stripes', stripes) : d.tex === 'spots' ? kit.tex('spots', spots) : null;
+  const body = kit.mat(map ? '#ffffff' : d.color, { map });
+  const dark = kit.mat(d.dark || (sp === 'elefante' ? '#77736f' : sp === 'zebra' ? '#1b1b1b' : sp === 'girafa' ? '#9c6a3a' : sp === 'leao' ? '#a8782f' : '#4a3222'));
+  const root = new THREE.Group(), rig = new THREE.Group(); root.add(rig);
+  const torso = kit.mesh(kit.sphere(0.5), body); torso.scale.set(d.bw, d.bh, d.len); torso.position.y = d.legH + d.bh * 0.4; rig.add(torso);
+  const legs = [];
+  for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+    const pivot = new THREE.Group(); pivot.position.set(sx * d.bw * 0.3, d.legH + 0.05, sz * d.len * 0.32);
+    const leg = kit.mesh(kit.cyl(d.legR, d.legR * 0.8, d.legH), sp === 'zebra' || sp === 'girafa' ? body : sp === 'leao' ? body : body); leg.position.y = -d.legH / 2; pivot.add(leg);
+    const hoof = kit.mesh(kit.cyl(d.legR * 0.9, d.legR, 0.08), dark); hoof.position.y = -d.legH + 0.04; pivot.add(hoof);
+    rig.add(pivot); legs.push(pivot);
+  }
+  // pescoço e cabeça
+  const neck = new THREE.Group(); neck.position.set(0, d.legH + d.bh * 0.55, d.len * 0.42); rig.add(neck);
+  const nl = d.neck[0], na = d.neck[1];
+  const nm = kit.mesh(kit.cyl(Math.max(0.06, d.head * 0.45), Math.max(0.08, d.head * 0.6), nl), body); nm.position.set(0, Math.cos(na) * nl / 2, Math.sin(na) * nl / 2); nm.rotation.x = na; neck.add(nm);
+  const head = new THREE.Group(); head.position.set(0, Math.cos(na) * nl, Math.sin(na) * nl); neck.add(head);
+  const hm = kit.mesh(kit.sphere(0.5), body); hm.scale.set(d.head * 1.6, d.head * 1.7, d.head * 2 * (d.headLen || 1.2)); head.add(hm);
+  const snout = kit.mesh(kit.sphere(0.5), dark); snout.scale.set(d.head * 0.9, d.head * 0.8, d.head * 0.9); snout.position.set(0, -d.head * 0.15, d.head * (d.headLen || 1.2) * 0.95); head.add(snout);
+  const eyeM = kit.mat('#111111');
+  for (const sx of [-1, 1]) { const e = kit.mesh(kit.sphere(0.5), eyeM, false); e.scale.setScalar(d.head * 0.18); e.position.set(sx * d.head * 0.62, d.head * 0.25, d.head * 0.55); head.add(e); }
+  if (sp === 'leao' && male) { const mane = kit.mesh(kit.sphere(0.5), kit.mat('#6b3f1d')); mane.scale.set(d.head * 2.9, d.head * 2.9, d.head * 2.2); mane.position.z = -d.head * 0.35; head.add(mane); }
+  if (sp === 'leao' || sp === 'macaco') for (const sx of [-1, 1]) { const ear = kit.mesh(kit.sphere(0.5), body); ear.scale.setScalar(d.head * 0.5); ear.position.set(sx * d.head * 0.65, d.head * 0.75, -d.head * 0.1); head.add(ear); }
+  if (sp === 'zebra' || sp === 'girafa') for (const sx of [-1, 1]) { const ear = kit.mesh(kit.cone(d.head * 0.18, d.head * 0.6), body); ear.position.set(sx * d.head * 0.45, d.head * 0.9, -d.head * 0.2); ear.rotation.z = -sx * 0.4; head.add(ear); }
+  if (sp === 'zebra') { const mane = kit.mesh(kit.box(0.06, 0.16, nl * 0.95), dark); mane.position.set(0, Math.cos(na) * nl / 2 + 0.12, Math.sin(na) * nl / 2 - 0.05); mane.rotation.x = na - 1.57; neck.add(mane); }
+  if (sp === 'girafa') for (const sx of [-1, 1]) { const o = kit.mesh(kit.cyl(0.03, 0.04, 0.22), dark); o.position.set(sx * 0.08, d.head * 1.1, -d.head * 0.3); head.add(o); }
+  let trunk = null;
+  if (sp === 'elefante') {
+    for (const sx of [-1, 1]) { const ear = kit.mesh(kit.sphere(0.5), kit.mat('#9a9590', { side: THREE.DoubleSide })); ear.scale.set(0.12, 1.1, 0.9); ear.position.set(sx * d.head * 0.95, d.head * 0.15, -d.head * 0.2); ear.rotation.y = sx * 0.35; head.add(ear); }
+    trunk = new THREE.Group(); trunk.position.set(0, -d.head * 0.2, d.head * 0.95); head.add(trunk);
+    let parent = trunk;
+    for (let i = 0; i < 3; i++) { const seg = new THREE.Group(); if (i) seg.position.y = -0.42; parent.add(seg); const m = kit.mesh(kit.cyl(0.13 - i * 0.03, 0.15 - i * 0.03, 0.45), body); m.position.y = -0.21; seg.add(m); seg.rotation.x = 0.15; parent = seg; }
+    for (const sx of [-1, 1]) { const t = kit.mesh(kit.cone(0.06, 0.55), kit.mat('#f2ead8')); t.position.set(sx * 0.25, -d.head * 0.45, d.head * 0.75); t.rotation.x = 2.2; head.add(t); }
+  }
+  const tail = new THREE.Group(); tail.position.set(0, d.legH + d.bh * 0.55, -d.len * 0.48); rig.add(tail);
+  const tm = kit.mesh(kit.cyl(0.03, 0.05, d.tail), sp === 'macaco' ? body : dark); tm.position.set(0, -d.tail / 2, 0); tail.add(tm); tail.rotation.x = sp === 'macaco' ? -2.4 : -0.5;
+  if (sp === 'leao') { const tuft = kit.mesh(kit.sphere(0.5), kit.mat('#5a3517')); tuft.scale.setScalar(0.15); tuft.position.y = -d.tail; tail.add(tuft); }
+  if (sp === 'rinoceronte') { const hm2 = kit.mat('#5e5348'); const h1 = kit.mesh(kit.cone(0.1, 0.5), hm2); h1.position.set(0, d.head * 0.35, d.head * 1.6); h1.rotation.x = 0.35; head.add(h1); const h2 = kit.mesh(kit.cone(0.08, 0.22), hm2); h2.position.set(0, d.head * 0.55, d.head * 1.0); head.add(h2); for (const sx of [-1, 1]) { const ear = kit.mesh(kit.cone(d.head * 0.18, d.head * 0.6), body); ear.position.set(sx * d.head * 0.5, d.head * 0.85, -d.head * 0.4); head.add(ear); } neck.rotation.x = 0.4; }
+  if (sp === 'hipopotamo') for (const sx of [-1, 1]) { const ear = kit.mesh(kit.sphere(0.5), body); ear.scale.setScalar(d.head * 0.25); ear.position.set(sx * d.head * 0.55, d.head * 0.8, -d.head * 0.3); head.add(ear); }
+  if (sp === 'tartaruga') { const shell = kit.mesh(kit.sphere(0.5), kit.mat('#4d3f2b')); shell.scale.set(d.bw * 1.9, d.bh * 2.0, d.len * 2.0); shell.position.y = d.legH + d.bh * 0.55; rig.add(shell); }
+  if (sp === 'gorila') { torso.rotation.x = -0.35; for (const l of legs.slice(0, 2)) { l.position.y += 0.2; l.scale.y = 1.35; } neck.position.y += 0.2; if (male) { const sv = kit.mesh(kit.sphere(0.5), kit.mat('#9b968f')); sv.scale.set(d.bw * 0.75, d.bh * 0.35, d.len * 0.6); sv.position.set(0, d.legH + d.bh * 0.75, -d.len * 0.1); rig.add(sv); } }
+  if (sp === 'macaco') { torso.rotation.x = -0.5; for (const l of legs.slice(0, 2)) { l.position.y += 0.18; } neck.position.y += 0.12; }
+  root.userData = { sp, legs, neck, head, tail, trunk, rig, d, phase: Math.random() * 6 };
+  return root;
+}
+export function animateAnimal(obj, a, dt, moving) {
+  const u = obj.userData, d = u.d;
+  const sleeping = a.st === 'sleep' || a.st === 'sedado';
+  u.phase += dt * (moving ? 7 * (1.4 / Math.max(0.6, d.legH)) : 1.6);
+  const p = u.phase;
+  if (u.bird && a.st === 'sleep') { u.legs[0].rotation.x = 0; u.legs[1].rotation.x = -2.6; u.neck.rotation.x += (-1.0 - u.neck.rotation.x) * Math.min(1, dt * 3); u.rig.position.y = 0; return; }
+  if (sleeping) {
+    u.rig.position.y += (-(d.legH * 0.75) - u.rig.position.y) * Math.min(1, dt * 3);
+    u.legs.forEach((l, i) => { l.rotation.x = i < 2 ? -1.3 : 1.3; });
+    u.neck.rotation.x += (0.6 - u.neck.rotation.x) * Math.min(1, dt * 3);
+    u.tail.rotation.z = 0;
+    return;
+  }
+  u.rig.position.y += (0 - u.rig.position.y) * Math.min(1, dt * 4);
+  u.rig.position.z = a.st === 'empurrar' ? Math.sin(p * 6) * 0.15 : 0;
+  if (a.st === 'pulando') { u.legs.forEach((l, i) => { l.rotation.x = i < 2 ? -0.9 : 0.9; }); return; }
+  if (moving) { u.legs.forEach((l, i) => { l.rotation.x = Math.sin(p + (i === 0 || i === 3 ? 0 : Math.PI)) * 0.55; }); u.rig.position.y = Math.abs(Math.sin(p)) * 0.04; }
+  else u.legs.forEach(l => { l.rotation.x *= 0.85; });
+  const eating = a.st === 'eat' || a.st === 'drink';
+  const nt = eating ? (u.sp === 'girafa' ? 0.9 : u.bird ? 2.2 : 1.0) : Math.sin(p * 0.3) * 0.06;
+  u.neck.rotation.x += (nt - u.neck.rotation.x) * Math.min(1, dt * 4);
+  u.tail.rotation.z = Math.sin(p * 1.3) * 0.35;
+  if (u.trunk) u.trunk.rotation.x = Math.sin(p * 0.7) * 0.25 + (eating ? 0.5 : 0);
+}
+
+// ---------- pessoas ----------
+export function buildPerson(kit, color, hat) {
+  const g = new THREE.Group();
+  const body = kit.mesh(kit.cyl(0.2, 0.24, 0.95), kit.mat(color)); body.position.y = 0.95; g.add(body);
+  const legs = kit.mesh(kit.cyl(0.17, 0.15, 0.5), kit.mat('#2f3640')); legs.position.y = 0.25; g.add(legs);
+  const head = kit.mesh(kit.sphere(0.5), kit.mat('#d9a87e')); head.scale.setScalar(0.32); head.position.y = 1.6; g.add(head);
+  if (hat) { const h = kit.mesh(kit.cyl(0.18, 0.18, 0.12), kit.mat(hat)); h.position.y = 1.76; g.add(h); }
+  g.userData.phase = Math.random() * 6; g.userData.body = body;
+  return g;
+}
+
+// ---------- plantas ----------
+export function buildPlant(kit, type) {
+  const g = new THREE.Group();
+  const trunk = kit.mat('#6b4b2e'), leaf = c => kit.mat(c);
+  const add = (geo, m, x, y, z, sx = 1, sy = 1, sz = 1) => { const o = kit.mesh(geo, m); o.position.set(x, y, z); o.scale.set(sx, sy, sz); g.add(o); return o; };
+  switch (type) {
+    case 'acacia': add(kit.cyl(0.12, 0.2, 3), trunk, 0, 1.5, 0); add(kit.sphere(1), leaf('#6f8a35'), 0, 3.2, 0, 2.1, 0.45, 2.1); if (kit.hi) add(kit.sphere(1), leaf('#7d9840'), 0.8, 3.45, 0.4, 1.1, 0.3, 1.1); break;
+    case 'baoba': add(kit.cyl(0.55, 0.85, 4), kit.mat('#8a6f58'), 0, 2, 0); for (let i = 0; i < 4; i++) { const a = i * 1.57; add(kit.cyl(0.08, 0.15, 1.4), trunk, Math.cos(a) * 0.6, 4.4, Math.sin(a) * 0.6).rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6); add(kit.sphere(1), leaf('#5e7a2e'), Math.cos(a) * 1.1, 5.1, Math.sin(a) * 1.1, 0.7, 0.4, 0.7); } break;
+    case 'capim_alto': for (let i = 0; i < (kit.hi ? 9 : 5); i++) { const a = i * 2.4; add(kit.cone(0.12, 1), leaf(i % 2 ? '#c7b25a' : '#b39b45'), Math.cos(a) * 0.35, 0.5, Math.sin(a) * 0.35); } break;
+    case 'arbusto_seco': add(kit.sphere(1), leaf('#8a8a4a'), 0, 0.5, 0, 0.8, 0.55, 0.8); break;
+    case 'arvore_floresta': add(kit.cyl(0.2, 0.32, 5), trunk, 0, 2.5, 0); add(kit.sphere(1), leaf('#2f6b2a'), 0, 5.2, 0, 1.8, 1.4, 1.8); add(kit.sphere(1), leaf('#3a7d31'), 0.9, 4.4, 0.3, 1.2, 1, 1.2); add(kit.sphere(1), leaf('#2a5f26'), -0.8, 4.6, -0.4, 1.2, 1, 1.2); break;
+    case 'arvore_cipo': add(kit.cyl(0.22, 0.3, 4.5), trunk, 0, 2.25, 0); add(kit.sphere(1), leaf('#356f2c'), 0, 4.8, 0, 2, 1.3, 2); for (let i = 0; i < 5; i++) { const a = i * 1.25; add(kit.cyl(0.025, 0.025, 2.2), leaf('#4c7a2a'), Math.cos(a) * 1.3, 3.4, Math.sin(a) * 1.3); } break;
+    case 'samambaia': for (let i = 0; i < 6; i++) { const a = i * 1.05; const f = add(kit.cone(0.18, 1.1), leaf('#4f9a3a'), Math.cos(a) * 0.3, 0.45, Math.sin(a) * 0.3); f.rotation.set(Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9); } break;
+    default: add(kit.sphere(1), leaf('#4c8a35'), 0, 0.6, 0, 0.9, 0.65, 0.9);
+  }
+  return g;
+}
+
+// ---------- instalações ----------
+export function buildFacility(kit, type, D) {
+  const g = new THREE.Group(), w = D.w * 2, d = D.h * 2;
+  const add = (geo, m, x, y, z) => { const o = kit.mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
+  const sign = (text, bg, y, z, sw = 2.2) => { const t = kit.tex('lbl' + text + bg, () => labelCanvas(text, bg)); const m = kit.mesh(kit.box(sw, sw / 4, 0.08), kit.mat('#ffffff', { map: t }), false); m.position.set(0, y, z); g.add(m); return m; };
+  switch (type) {
+    case 'entrada': {
+      for (const sx of [-1, 1]) add(kit.box(0.6, 4, 0.6), kit.mat('#7a5a3a'), sx * 1.7, 2, 0);
+      add(kit.box(4.2, 0.6, 0.7), kit.mat('#5b3f26'), 0, 4.2, 0);
+      sign('ZOOLÓGICO', '#2e6b54', 4.2, 0.4, 3.6);
+      add(kit.box(1.2, 2.2, 1.2), kit.mat('#d8c9a8'), 2.9, 1.1, 0.4);
+      break; }
+    case 'lanchonete': {
+      add(kit.box(w - 0.6, 2.6, d - 0.6), kit.mat('#f1e3c6'), 0, 1.3, 0);
+      const aw = kit.tex('awn', () => canvas(64, 16, (c) => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#ffffff' : '#e0703a'; c.fillRect(i * 8, 0, 8, 16); } }));
+      add(kit.box(w - 0.2, 0.25, d - 0.2), kit.mat('#ffffff', { map: aw }), 0, 2.75, 0);
+      sign('LANCHES', '#e0703a', 3.3, 0, 2.4); break; }
+    case 'banheiro': add(kit.box(w - 0.6, 2.5, d - 0.6), kit.mat('#dfe8ef'), 0, 1.25, 0); add(kit.box(w - 0.3, 0.2, d - 0.3), kit.mat('#4a90c8'), 0, 2.6, 0); sign('WC', '#4a90c8', 3.0, 0, 1.4); break;
+    case 'loja': add(kit.box(w - 0.6, 2.7, d - 0.6), kit.mat('#f3e9f2'), 0, 1.35, 0); add(kit.cone((w - 0.2) * 0.72, 1.2), kit.mat('#b0479a'), 0, 3.3, 0).rotation.y = 0.785; sign('LOJA', '#b0479a', 2.3, d / 2 - 0.25, 1.8); break;
+    case 'playground': {
+      add(kit.box(w - 0.4, 0.06, d - 0.4), kit.mat('#e2cf98'), 0, 0.03, 0);
+      add(kit.box(1.2, 2.2, 1.2), kit.mat('#f2c230'), -1.2, 1.1, -1.2); add(kit.cone(0.9, 0.9), kit.mat('#d6453d'), -1.2, 2.65, -1.2);
+      const sl = add(kit.box(0.7, 0.1, 2.6), kit.mat('#3a8fd6'), -1.2, 1.05, 0.5); sl.rotation.x = -0.75;
+      for (const sx of [0.5, 2]) add(kit.cyl(0.06, 0.06, 2.2), kit.mat('#666'), sx, 1.1, 1.2);
+      add(kit.cyl(0.06, 0.06, 1.7), kit.mat('#666'), 1.25, 2.2, 1.2).rotation.z = 1.57;
+      add(kit.box(0.5, 0.06, 0.25), kit.mat('#d6453d'), 1.25, 0.6, 1.2); break; }
+    case 'banco': add(kit.box(1.5, 0.08, 0.5), kit.mat('#7a5230'), 0, 0.45, 0); add(kit.box(1.5, 0.45, 0.08), kit.mat('#7a5230'), 0, 0.7, -0.22); for (const sx of [-0.6, 0.6]) add(kit.box(0.08, 0.45, 0.45), kit.mat('#333'), sx, 0.22, 0); break;
+    case 'placa': add(kit.cyl(0.05, 0.05, 1.3), kit.mat('#5b3f26'), 0, 0.65, 0); { const t = kit.tex('placa', () => canvas(128, 80, (c) => { c.fillStyle = '#2e6b54'; c.fillRect(0, 0, 128, 80); c.fillStyle = '#fff'; c.font = 'bold 18px Arial'; c.fillText('Você sabia?', 12, 26); c.fillRect(12, 38, 100, 4); c.fillRect(12, 50, 80, 4); c.fillRect(12, 62, 90, 4); })); add(kit.box(1, 0.65, 0.06), kit.mat('#fff', { map: t }), 0, 1.45, 0); } break;
+    case 'centro': {
+      add(kit.box(w - 0.6, 3, d - 0.6), kit.mat('#f4f5f2'), 0, 1.5, 0);
+      add(kit.box(w - 0.2, 0.3, d - 0.2), kit.mat('#2e6b54'), 0, 3.15, 0);
+      const cross = kit.mat('#2e9a4a'); add(kit.box(1.2, 0.35, 0.1), cross, 0, 2.3, d / 2 - 0.25); add(kit.box(0.35, 1.2, 0.1), cross, 0, 2.3, d / 2 - 0.25);
+      add(kit.box(1, 1.8, 0.1), kit.mat('#5b6770'), 1.6, 0.9, d / 2 - 0.25); break; }
+    default: add(kit.box(w - 0.4, 2, d - 0.4), kit.mat(D.cor || '#999'), 0, 1, 0);
+  }
+  return g;
+}
+
+// ---------- veículos ----------
+export function buildVehicle(kit, kind) {
+  const g = new THREE.Group(), big = kind === 'caminhao';
+  const L = big ? 6.2 : 3.8, W = big ? 2.3 : 1.8, body = kit.mat('#2f6b4a', { rough: 0.4, metal: 0.3 }), dark = kit.mat('#1b1f22', { rough: 0.3 }), glass = kit.mat('#9fc3d8', { rough: 0.05, metal: 0.5 });
+  const add = (geo, m, x, y, z, o) => { const me = kit.mesh(geo, m); me.position.set(x, y, z); if (o) me.rotation.set(...o); g.add(me); return me; };
+  add(kit.box(W, 0.5, L), body, 0, 0.75, 0);
+  const cabZ = L / 2 - (big ? 1.0 : 0.85);
+  add(kit.box(W - 0.05, 0.85, big ? 1.8 : 1.5), body, 0, 1.4, cabZ);
+  add(kit.box(W - 0.1, 0.5, 0.05), glass, 0, 1.5, cabZ + (big ? 0.91 : 0.76));
+  for (const sx of [-1, 1]) add(kit.box(0.04, 0.45, big ? 1.2 : 0.9), glass, sx * (W / 2 - 0.01), 1.5, cabZ);
+  add(kit.box(W, 0.18, 0.12), dark, 0, 0.62, L / 2);
+  for (const sx of [-1, 1]) add(kit.cyl(0.11, 0.11, 0.06), kit.mat('#fff6c8'), sx * (W / 2 - 0.3), 0.92, L / 2 + 0.02, [Math.PI / 2, 0, 0]);
+  const stripe = add(kit.box(W + 0.02, 0.12, L * 0.9), kit.mat('#f2c230'), 0, 0.95, 0);
+  // jaula na carroceria
+  const bedL = L - (big ? 2.1 : 1.8), bedZ = -L / 2 + bedL / 2 + 0.05, cageH = big ? 2.4 : 1.2, bar = kit.mat('#3a3f44', { metal: 0.6, rough: 0.35 });
+  const nb = big ? 14 : 8;
+  for (let i = 0; i <= nb; i++) for (const sx of [-1, 1]) add(kit.cyl(0.03, 0.03, cageH), bar, sx * (W / 2 - 0.05), 1.0 + cageH / 2, bedZ - bedL / 2 + (bedL * i) / nb);
+  for (const yy of [1.0 + cageH, 1.0 + cageH / 2]) for (const sx of [-1, 1]) add(kit.box(0.05, 0.05, bedL), bar, sx * (W / 2 - 0.05), yy, bedZ);
+  for (let i = 0; i <= 4; i++) add(kit.box(W - 0.1, 0.05, 0.05), bar, 0, 1.0 + cageH, bedZ - bedL / 2 + (bedL * i) / 4);
+  const wheels = [];
+  const wz = [L / 2 - 0.8, -L / 2 + 0.8].concat(big ? [-L / 2 + 1.9] : []);
+  for (const z of wz) for (const sx of [-1, 1]) { const w = add(kit.cyl(0.42, 0.42, 0.3), dark, sx * (W / 2), 0.42, z, [0, 0, Math.PI / 2]); wheels.push(w); add(kit.cyl(0.2, 0.2, 0.31), kit.mat('#8a8f94', { metal: 0.6 }), sx * (W / 2), 0.42, z, [0, 0, Math.PI / 2]); }
+  g.userData = { wheels, bedY: 1.02, bedZ, kind };
+  return g;
+}
+// ---------- ferramentas ----------
+export function buildTool(kit, tipo) {
+  const g = new THREE.Group(); const wood = kit.mat('#8a6236'), metal = kit.mat('#9aa1a8', { metal: 0.7, rough: 0.3 });
+  const add = (geo, m, x, y, z, o) => { const me = kit.mesh(geo, m, false); me.position.set(x, y, z); if (o) me.rotation.set(...o); g.add(me); return me; };
+  switch (tipo) {
+    case 'vassoura': add(kit.cyl(0.018, 0.018, 1.3), wood, 0, -0.3, 0.05); add(kit.box(0.32, 0.12, 0.08), kit.mat('#c9a24a'), 0, -0.98, 0.05); break;
+    case 'balde': case 'baldeAgua': add(kit.cyl(0.13, 0.1, 0.24), kit.mat(tipo === 'balde' ? '#e0703a' : '#3a7bd5'), 0, -0.14, 0.05); add(kit.cyl(0.11, 0.11, 0.02), kit.mat(tipo === 'balde' ? '#9bb34a' : '#5fb0e8'), 0, -0.03, 0.05); break;
+    case 'martelo': add(kit.cyl(0.014, 0.014, 0.32), wood, 0, -0.1, 0.06); add(kit.box(0.12, 0.05, 0.05), metal, 0, -0.26, 0.06); break;
+    case 'macarico': add(kit.cyl(0.02, 0.02, 0.3), metal, 0, -0.05, 0.12, [1.2, 0, 0]); add(kit.cyl(0.05, 0.05, 0.16), kit.mat('#c62828'), 0, -0.02, -0.02); break;
+    case 'dardo': add(kit.cyl(0.02, 0.025, 0.8), kit.mat('#2b2f33', { metal: 0.5 }), 0, -0.02, 0.32, [Math.PI / 2, 0, 0]); add(kit.box(0.05, 0.14, 0.1), wood, 0, -0.08, 0.02); break;
+    case 'maleta': add(kit.box(0.3, 0.2, 0.1), kit.mat('#f4f4f4'), 0, -0.14, 0.05); add(kit.box(0.08, 0.025, 0.11), kit.mat('#d32f2f'), 0, -0.1, 0.05); add(kit.box(0.025, 0.08, 0.11), kit.mat('#d32f2f'), 0, -0.1, 0.05); break;
+  }
+  return g;
+}
+export function buildCones(kit) { const g = new THREE.Group(); for (const [x, z] of [[-0.9, 0.6], [0.9, 0.6], [0, 1.1]]) { const c = kit.mesh(kit.cone(0.16, 0.5), kit.mat('#ff6d00')); c.position.set(x, 0.25, z); g.add(c); const s = kit.mesh(kit.cyl(0.1, 0.12, 0.08), kit.mat('#ffffff'), false); s.position.set(x, 0.28, z); g.add(s); } const tb = kit.mesh(kit.box(0.5, 0.25, 0.25), kit.mat('#c62828')); tb.position.set(0.5, 0.12, 0.3); g.add(tb); return g; }

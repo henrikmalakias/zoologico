@@ -1,0 +1,50 @@
+# Percorre o tutorial inteiro como um jogador faria (celular 412x860).
+import asyncio
+from playwright.async_api import async_playwright
+OUT = '/home/claude/shots/'
+async def main():
+    async with async_playwright() as p:
+        b = await p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'])
+        ctx = await b.new_context(viewport={'width': 412, 'height': 860}, device_scale_factor=2)
+        pg = await ctx.new_page(); errs = []
+        pg.on('pageerror', lambda e: errs.append(str(e)))
+        await pg.goto('http://localhost:8765/index.html'); await pg.wait_for_timeout(2500)
+        await pg.click('text=Vamos lá!')
+        passo = lambda: pg.evaluate("() => window.__game.state.settings.tutorial.passo")
+        log = []
+        await pg.mouse.move(200, 600); await pg.mouse.down(); await pg.mouse.move(240, 560, steps=6); await pg.mouse.up(); await pg.wait_for_timeout(300); log.append(await passo())
+        await pg.mouse.move(200, 600); await pg.mouse.wheel(0, -200); await pg.wait_for_timeout(300); log.append(await passo())
+        await pg.click('.tut-box button:has-text("Próximo")'); await pg.wait_for_timeout(300); log.append(await passo())
+        await pg.screenshot(path=OUT + '30_tut_construir.png')
+        await pg.click('.bar button:has-text("Construir")'); await pg.wait_for_timeout(300); log.append(await passo())
+        await pg.screenshot(path=OUT + '31_tut_habitat.png')
+        await pg.evaluate("() => { const c = window.__game.controls; c.centerOn(-6, -6, 100); c.cam.pitch = 1.35; c.cam.yaw = 0; }"); await pg.wait_for_timeout(400)
+        pos = await pg.evaluate("() => { const W = window.__game.world; const P = (tx, ty) => W.project((tx + 0.5) * 2 - 72, 0, (ty + 0.5) * 2 - 72); return [P(25, 26), P(34, 34), P(30, 38), P(29, 31), P(31, 30)]; }")
+        a, bb, fac, ins, ins2 = pos
+        await pg.mouse.move(a['x'], a['y']); await pg.mouse.down()
+        for i in range(1, 11): await pg.mouse.move(a['x'] + (bb['x'] - a['x']) * i / 10, a['y'] + (bb['y'] - a['y']) * i / 10)
+        await pg.mouse.up(); await pg.wait_for_timeout(300)
+        await pg.click('.confirm >> text=Confirmar'); await pg.wait_for_timeout(500); log.append(await passo())
+        await pg.screenshot(path=OUT + '32_tut_plantas.png')
+        await pg.mouse.click(ins['x'], ins['y']); await pg.wait_for_timeout(200); await pg.mouse.click(ins2['x'], ins2['y']); await pg.wait_for_timeout(500); log.append(await passo())
+        await pg.click('.drawer .tabs button:has-text("Animais")'); await pg.wait_for_timeout(200)
+        for _ in range(3): await pg.mouse.click(ins['x'], ins['y']); await pg.wait_for_timeout(200)
+        await pg.wait_for_timeout(300); log.append(await passo())
+        await pg.screenshot(path=OUT + '33_tut_concluir.png')
+        await pg.click('.drawer .tabs button:has-text("Concluir")'); await pg.wait_for_timeout(300); log.append(await passo())
+        await pg.click('.bar button:has-text("Equipe")'); await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT + '34_tut_equipe.png')
+        await pg.click('.modal .tabs button:has-text("Currículos")'); await pg.wait_for_timeout(300)
+        await pg.click('.modal button:has-text("Contratar")'); await pg.wait_for_timeout(300); await pg.click('.modal .close'); await pg.wait_for_timeout(400); log.append(await passo())
+        await pg.click('.bar button:has-text("Construir")'); await pg.click('.drawer .tabs button:has-text("Instalações")'); await pg.wait_for_timeout(200)
+        await pg.mouse.click(fac['x'], fac['y']); await pg.wait_for_timeout(300); await pg.click('.confirm >> text=Confirmar'); await pg.wait_for_timeout(500); log.append(await passo())
+        await pg.click('.drawer .tabs button:has-text("Concluir")'); await pg.wait_for_timeout(300)
+        hp = await pg.evaluate("() => { const h = window.__game.state.habitats[0]; return window.__game.world.project((h.x + 1.5) * 2 - 72, 0, (h.y + 1.5) * 2 - 72); }")
+        await pg.mouse.click(hp['x'], hp['y']); await pg.wait_for_timeout(600); log.append(await passo())
+        await pg.screenshot(path=OUT + '35_tut_fim.png')
+        await pg.click('.tut-box button:has-text("Concluir")'); await pg.wait_for_timeout(300)
+        feito = await pg.evaluate("() => window.__game.state.settings.tutorial.feito")
+        print('passos:', log, 'feito:', feito, 'erros:', errs)
+        print('TUTORIAL OK' if log == list(range(1, 12)) and feito else 'TUTORIAL FALHOU')
+        await b.close()
+asyncio.run(main())
