@@ -1,6 +1,6 @@
 import { BASE_PACK } from './base.js';
 
-export const APP_VERSION = '1.5.0';
+export const APP_VERSION = '1.6.0';
 export const AVAILABLE_PACKS = { base: BASE_PACK };
 
 // Catálogo de expansões. "em_breve" = ainda não publicada.
@@ -19,6 +19,17 @@ export const DLC_CATALOG = [
 ];
 
 export const CHANGELOG = [
+  { versao: '1.6.0', data: '09/11/2026', titulo: 'Versão 1.6: caminhos, mobiliário e animais sem atravessar nada', itens: [
+    'Animais não se sobrepõem mais e não atravessam plantas, comedouro e bebedouro: eles contornam os obstáculos',
+    'Máximo de 100 visitantes desenhados: os que passam disso continuam contando no 👥 e pagando, só não aparecem na tela (mais fluidez no celular)',
+    '4 tipos de caminho: pedra, terra, cimentado e cimentado com calçada',
+    'Postes de luz, lixeiras e bancos: barras para escolher a quantidade ao desenhar o caminho, espalhados sem sobreposição nas bordas ou na calçada; os postes acendem à noite',
+    'Visitantes usam as lixeiras (menos lixo no chão) e os bancos (descanso)',
+    'Construções sempre viradas para um caminho: a entrada gira sozinha; bancos só ao lado de caminhos, virados para eles',
+    'Nova construção: área de mesas, ao lado das lanchonetes. Lanchonetes e mesas ganham uma lixeira de brinde',
+    'Lanchonete, banheiro e loja bem mais bonitas: toldos listrados, emblemas, janelas, plantas, luzes e balões',
+    'Correção no gráfico Ultra: elefantes, rinocerontes, hipopótamos e tartarugas voltam a aparecer com a pele detalhada (o efeito da pele estava com erro)',
+    'Seu save é convertido sozinho' ] },
   { versao: '1.5.0', data: '08/11/2026', titulo: 'Versão 1.5: gráfico Ultra', itens: [
     'Novo gráfico Ultra (o Baixo e o Alto continuam iguais): céu de verdade em 360° que muda com a hora, do amanhecer à noite estrelada',
     'Sol que nasce a leste e se põe a oeste, com luz e sombras mudando de cor; luz do ambiente tirada do próprio céu',
@@ -72,7 +83,7 @@ export function content(state) {
   const ids = Object.keys(state?.packs || { base: 1 }).filter(id => AVAILABLE_PACKS[id]).sort();
   const key = ids.join(',');
   if (merged && key === mergedKey) return merged;
-  const out = { terrains: {}, biomes: {}, plants: {}, fences: {}, species: {}, facilities: {}, roles: {} };
+  const out = { terrains: {}, biomes: {}, plants: {}, fences: {}, species: {}, facilities: {}, roles: {}, furniture: {} };
   for (const id of ids) {
     const p = AVAILABLE_PACKS[id];
     for (const k of Object.keys(out)) for (const [kk, v] of Object.entries(p[k] || {})) out[k][kk] = { ...v, pack: id };

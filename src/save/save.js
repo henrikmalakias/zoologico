@@ -1,8 +1,11 @@
 import { SCHEMA, DEFAULT_SETTINGS } from '../sim/core.js';
-import { rebuildOcc } from '../sim/grid.js';
+import { rebuildOcc, orientFacility } from '../sim/grid.js';
+import { content } from '../content/registry.js';
 
 // Migrações: cada função leva o save da versão N para N+1.
 export const MIGRATIONS = {
+  // v5 -> v6 (versão 1.6): mobiliário de caminho, visitantes virtuais e instalações viradas para o caminho
+  5: s => { s.furn = s.furn || []; s.vstock = []; s.schemaVersion = 6; return s; },
   4: s => { const d = { quality: 'baixo', fugas: true, tranquilo: false, autoQualidade: true, mostrarFps: false, som: true, volume: 0.7, ambiente: true }; s.settings = { ...d, ...(s.settings || {}), tutorial: { passo: 99, feito: true } }; s.schemaVersion = 5; return s; },
   // v3 -> v4 (versão 1.3): fechamento mensal
   3: s => { s.fin = { pendente: { salarios: 0, manutencao: 0 }, meses: [], novo: null }; s.schemaVersion = 4; return s; },
@@ -36,7 +39,10 @@ export function deserialize(o) {
   s.visitors = [];
   for (const st of s.staff) if (st.task) st.task.route = null;
   for (const a of s.animals) a.tgt = null;
+  s.furn = s.furn || []; s.vstock = [];
   rebuildOcc(s);
+  const C = content(s);
+  for (const f of s.facilities) { const d = C.facilities[f.type]; if (d && !d.fixo && f.dir == null) f.dir = orientFacility(s, f, d); }
   return s;
 }
 

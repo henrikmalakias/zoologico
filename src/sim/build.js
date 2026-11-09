@@ -1,6 +1,7 @@
 import { content } from '../content/registry.js';
 import { clamp, rnd, uid, log } from './util.js';
-import { MAP, idx, inMap, inArea, rebuildOcc, isPath, accessTile, CW, ci, tileCorners, tileSlope, WATER_Y } from './grid.js';
+import { MAP, idx, inMap, inArea, rebuildOcc, isPath, isPathT, accessTile, orientFacility, CW, ci, tileCorners, tileSlope, WATER_Y } from './grid.js';
+import { removeFurnAt, addFurnNear } from './furn.js';
 import { newAnimal, habById } from './animals.js';
 import { spend, earn } from './staff.js';
 
@@ -74,17 +75,18 @@ export function placeHabitat(s, x0, y0, x1, y1, biome, fence) {
 export function paintCost(s, t) { return content(s).terrains[t]?.custo || 5; }
 export function paintTerrain(s, tx, ty, t) {
   if (!inMap(tx, ty) || !inArea(s, tx, ty)) return R(false, 'Fora da área do parque.');
-  const i = idx(tx, ty);
+  const i = idx(tx, ty), isP = isPathT(t);
   if (s.terrain[i] === t) return R(true);
   if (s._occ.fac[i]) return R(false, 'Há uma instalação aqui.');
   const hid = s._occ.hab[i];
-  if (t === 'p' && hid) return R(false, 'Caminhos não podem ficar dentro de habitats.');
+  if (isP && hid) return R(false, 'Caminhos não podem ficar dentro de habitats.');
   if (hid) { const hh = habById(s, hid); if (content(s).fences[hh.fence]?.fosso && (tx < hh.x + 2 || tx >= hh.x + hh.w - 2 || ty < hh.y + 2 || ty >= hh.y + hh.h - 2)) return R(false, 'Esse é o fosso da ilha.'); }
   if (hid) { const h = habById(s, hid); if (t === 'w' && ((tx === h.gateIn[0] && ty === h.gateIn[1]) || (tx === h.feed[0] && ty === h.feed[1]))) return R(false, 'Deixe o portão e o comedouro livres.'); }
   for (const h of s.habitats) if (t === 'w' && tx === h.gateOut[0] && ty === h.gateOut[1]) return R(false, 'Deixe a frente do portão livre.');
   const cost = paintCost(s, t); if (s.money < cost) return R(false, 'Dinheiro insuficiente.');
-  if (t === 'w' || t === 'p') s.objects = s.objects.filter(o => !(o.tx === tx && o.ty === ty));
-  if (t !== 'p' && s.litter[i]) delete s.litter[i];
+  if (t === 'w' || isP) s.objects = s.objects.filter(o => !(o.tx === tx && o.ty === ty));
+  if (!isP && s.litter[i]) delete s.litter[i];
+  if (!isP) removeFurnAt(s, tx, ty);
   const was = s.terrain[i];
   s.terrain[i] = t; spend(s, 'construcao', cost);
   if (s.height) {
@@ -96,14 +98,24 @@ export function paintTerrain(s, tx, ty, t) {
     s._hver = (s._hver || 0) + 1;
   }
   rebuildOcc(s);
-  return R(true);
+  reorientAround(s, tx, ty);
+  return R(true, '', { changed: true });
+}
+// instalações viram a frente para o caminho mais próximo quando o caminho muda
+export function reorientAround(s, tx, ty) {
+  const C = content(s);
+  for (const f of s.facilities) {
+    const d = C.facilities[f.type]; if (!d || d.fixo) continue;
+    if (tx < f.tx - 2 || tx > f.tx + d.w + 1 || ty < f.ty - 2 || ty > f.ty + d.h + 1) continue;
+    f.dir = orientFacility(s, f, d);
+  }
 }
 export function placePlant(s, tx, ty, type) {
   const P = content(s).plants[type]; if (!P) return R(false, 'Planta indisponível.');
   if (!inMap(tx, ty) || !inArea(s, tx, ty)) return R(false, 'Fora da área do parque.');
   const i = idx(tx, ty);
   if (s._occ.fac[i] || s._occ.obj[i]) return R(false, 'Já há algo aqui.');
-  if (s.terrain[i] === 'w' || s.terrain[i] === 'p') return R(false, 'Não dá para plantar na água nem no caminho.');
+  if (s.terrain[i] === 'w' || isPathT(s.terrain[i])) return R(false, 'Não dá para plantar na água nem no caminho.');
   for (const h of s.habitats) if ((tx === h.gateIn[0] && ty === h.gateIn[1]) || (tx === h.feed[0] && ty === h.feed[1]) || (tx === h.water[0] && ty === h.water[1])) return R(false, 'Deixe o portão, o comedouro e o bebedouro livres.');
   if (s.money < P.custo) return R(false, 'Dinheiro insuficiente.');
   s.objects.push({ id: uid(s), type, tx, ty, rot: rnd(s) * 6.28, sc: 0.85 + rnd(s) * 0.3, pack: P.pack });
@@ -116,12 +128,13 @@ export function checkFacility(s, type, tx, ty) {
     if (!inMap(x, y) || !inArea(s, x, y)) return R(false, 'Fora da área do parque.');
     const i = idx(x, y);
     if (s._occ.hab[i] || s._occ.fac[i]) return R(false, 'Espaço ocupado.');
-    if (s.terrain[i] === 'p') return R(false, 'Não construa em cima do caminho; coloque ao lado.');
+    if (isPathT(s.terrain[i])) return R(false, 'Não construa em cima do caminho; coloque ao lado.');
     if (s.terrain[i] === 'w') return R(false, 'Não dá para construir na água.');
   }
   if (!D.semCaminho && !accessTile(s, { type, tx, ty })) return R(false, 'Precisa ficar ao lado de um caminho.');
   if (s.height) { let lo = 1e9, hi = -1e9; for (let y = ty; y <= ty + D.h; y++) for (let x = tx; x <= tx + D.w; x++) { const v = s.height[ci(x, y)]; lo = Math.min(lo, v); hi = Math.max(hi, v); } if (hi - lo > 0.6) return R(false, 'Terreno muito inclinado. Use Relevo > Nivelar antes.'); }
   if (type === 'placa' && !s.habitats.some(h => tx >= h.x - 3 && tx <= h.x + h.w + 2 && ty >= h.y - 3 && ty <= h.y + h.h + 2)) return R(false, 'A placa precisa ficar perto de um habitat.');
+  if (type === 'mesas' && !s.facilities.some(f => f.type === 'lanchonete' && f.tx >= tx - 5 && f.tx <= tx + D.w + 4 && f.ty >= ty - 5 && f.ty <= ty + D.h + 4)) return R(false, 'A área de mesas precisa ficar ao lado de uma lanchonete (até 4 blocos de distância).');
   if (type === 'centro' && s.facilities.some(f => f.type === 'centro')) return R(false, 'Você já tem um centro de cuidados.');
   if (s.money < D.custo) return R(false, 'Dinheiro insuficiente.');
   return R(true);
@@ -130,8 +143,11 @@ export function placeFacility(s, type, tx, ty) {
   const c = checkFacility(s, type, tx, ty); if (!c.ok) return c;
   const D = content(s).facilities[type];
   s.objects = s.objects.filter(o => !(o.tx >= tx && o.tx < tx + D.w && o.ty >= ty && o.ty < ty + D.h));
-  s.facilities.push({ id: uid(s), type, tx, ty, dirty: 0, pack: D.pack });
-  spend(s, 'construcao', D.custo); rebuildOcc(s);
+  const f = { id: uid(s), type, tx, ty, dirty: 0, pack: D.pack };
+  s.facilities.push(f); rebuildOcc(s);
+  f.dir = orientFacility(s, f, D); // entrada sempre voltada para o caminho
+  if (type === 'lanchonete' || type === 'mesas') addFurnNear(s, 'lixeira', f, D);
+  spend(s, 'construcao', D.custo);
   return R(true);
 }
 export function buyAnimal(s, sp, tx, ty) {
@@ -162,6 +178,8 @@ export function demolish(s, tx, ty) {
   if (fid) { const f = s.facilities.find(f => f.id === fid); const D = C.facilities[f.type];
     if (D?.fixo) return R(false, 'A entrada não pode ser demolida.');
     s.facilities.splice(s.facilities.indexOf(f), 1); earn(s, 'metas', Math.round((D?.custo || 0) * 0.5)); rebuildOcc(s); return R(true, 'Instalação removida.'); }
+  const fu = s.furn.filter(f => f.tx === tx && f.ty === ty);
+  if (fu.length) { const C2 = C.furniture; for (const f of fu) earn(s, 'metas', Math.round((C2[f.type]?.custo || 0) * 0.5)); removeFurnAt(s, tx, ty); return R(true, 'Mobiliário removido.'); }
   const oid = s._occ.obj[i];
   if (oid) { s.objects = s.objects.filter(o => o.id !== oid); rebuildOcc(s); return R(true, 'Planta removida.'); }
   const hid = s._occ.hab[i];
@@ -170,7 +188,7 @@ export function demolish(s, tx, ty) {
     if (s.staff.some(st => st.inHab === hid)) for (const st of s.staff) if (st.inHab === hid) { st.inHab = 0; st.task = null; }
     s.habitats.splice(s.habitats.indexOf(h), 1); s.alerts = s.alerts.filter(a => a.target !== hid || a.type === 'doenca' || a.type === 'fuga');
     earn(s, 'metas', Math.round(habitatCostRef(s, h) * 0.3)); rebuildOcc(s); return R(true, 'Habitat demolido.'); }
-  if (s.terrain[i] === 'p') { s.terrain[i] = 'g'; delete s.litter[i]; rebuildOcc(s); return R(true, 'Caminho removido.'); }
+  if (isPathT(s.terrain[i])) { s.terrain[i] = 'g'; delete s.litter[i]; removeFurnAt(s, tx, ty); rebuildOcc(s); reorientAround(s, tx, ty); return R(true, 'Caminho removido.'); }
   return R(false, 'Nada para demolir aqui.');
 }
 const habitatCostRef = (s, h) => habitatCost(s, h, h.fence);
@@ -203,7 +221,7 @@ export function sculpt(s, tx, ty, mode, base = 0) {
     H[k] = Math.max(-3, Math.min(6, Math.round(v * 100) / 100));
   }
   if (!before.size) return R(false, 'Não dá para mexer aqui (instalação ou ilha).');
-  for (let y = ty - 3; y <= ty + 3; y++) for (let x = tx - 3; x <= tx + 3; x++) if (inMap(x, y) && s.terrain[idx(x, y)] === 'p' && tileSlope(s, x, y) > 0.9) {
+  for (let y = ty - 3; y <= ty + 3; y++) for (let x = tx - 3; x <= tx + 3; x++) if (inMap(x, y) && isPathT(s.terrain[idx(x, y)]) && tileSlope(s, x, y) > 0.9) {
     for (const [k, v] of before) H[k] = v; return R(false, 'Muito íngreme para o caminho. Caminhos aceitam no máximo uma rampa suave.');
   }
   spend(s, 'construcao', SCULPT_COST); s._hver = (s._hver || 0) + 1;

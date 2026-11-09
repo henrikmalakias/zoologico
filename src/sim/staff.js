@@ -1,6 +1,6 @@
 import { content } from '../content/registry.js';
 import { clamp, rnd, uid, log, dist, hourOf } from './util.js';
-import { MAP, tileToWorld, worldToTile, astar, staffPassable, accessTile, idx } from './grid.js';
+import { MAP, tileToWorld, worldToTile, astar, staffPassable, accessTile, idx, isPathT } from './grid.js';
 import { habById, breachPoint } from './animals.js';
 
 export const ALERT_ROLES = { doenca: ['veterinario'], fome: ['tratador'], cerca: ['seguranca'], brecha: ['seguranca'], portao: ['seguranca', 'tratador'], fuga: ['seguranca', 'veterinario'] };
@@ -65,7 +65,7 @@ function buildRoute(s, st, dest) {
   if (st.inHab) { const h = habById(s, st.inHab); if (h) { pts.push(tileToWorld(h.gateIn[0], h.gateIn[1]), tileToWorld(h.gateOut[0], h.gateOut[1])); cur = { tx: h.gateOut[0], ty: h.gateOut[1] }; } st.inHab = 0; }
   const H = dest.hab ? habById(s, dest.hab) : null;
   const goal = H ? { tx: H.gateOut[0], ty: H.gateOut[1] } : worldToTile(dest.x, dest.z);
-  const path = astar(s, cur.tx, cur.ty, goal.tx, goal.ty, (x, y) => staffPassable(s, x, y), (x, y) => (s.terrain[idx(x, y)] === 'p' ? 1 : 1.4));
+  const path = astar(s, cur.tx, cur.ty, goal.tx, goal.ty, (x, y) => staffPassable(s, x, y), (x, y) => (isPathT(s.terrain[idx(x, y)]) ? 1 : 1.4));
   if (path) for (const [x, y] of path) pts.push(tileToWorld(x, y));
   if (H) pts.push(tileToWorld(H.gateIn[0], H.gateIn[1]));
   pts.push({ x: dest.x, z: dest.z });

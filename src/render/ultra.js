@@ -6,6 +6,7 @@ import { MAP, TILE, HALF, CW, heightAt, AREAS, idx } from '../sim/grid.js';
 
 const BASE = './ultra/';
 export const LAYERS = ['g', 'd', 's', 'm', 'r', 'p', 'w'];
+const ALIAS = { q: 'd', c: 'p', k: 'p' }; // caminhos de terra e de cimento usam a textura de terra e de pedra
 const ROUGH = [0.95, 0.92, 0.9, 0.7, 0.85, 0.8, 0.6];
 
 // ---------- carregamento ----------
@@ -34,7 +35,7 @@ export function terrainData() {
 export function fillTerrainData(tex, s) {
   const a = AREAS[s.areaLevel], d = tex.image.data;
   for (let y = 0; y < MAP; y++) for (let x = 0; x < MAP; x++) {
-    const i = idx(x, y), k = i * 4; d[k] = Math.max(0, LAYERS.indexOf(s.terrain[i]));
+    const i = idx(x, y), k = i * 4; d[k] = Math.max(0, LAYERS.indexOf(ALIAS[s.terrain[i]] || s.terrain[i]));
     d[k + 1] = x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1 ? 0 : 255;
   }
   tex.needsUpdate = true;
@@ -261,8 +262,8 @@ export function addSkinDetail(group, sp) {
   const mat = base.material.clone(); base.material = mat;
   mat.onBeforeCompile = s2 => {
     s2.uniforms.uAmt = { value: amt };
-    s2.vertexShader = s2.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vOP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvOP = position;');
-    s2.fragmentShader = s2.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uAmt; varying vec3 vOP;
+    s2.vertexShader = s2.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vOP; varying mat3 vNM;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvOP = position; vNM = normalMatrix;');
+    s2.fragmentShader = s2.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uAmt; varying vec3 vOP; varying mat3 vNM;
       float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float n3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
         return mix(mix(mix(h31(i), h31(i+vec3(1,0,0)), f.x), mix(h31(i+vec3(0,1,0)), h31(i+vec3(1,1,0)), f.x), f.y),
@@ -270,7 +271,7 @@ export function addSkinDetail(group, sp) {
       float wr(vec3 p){ return abs(n3(p * 38.0) - 0.5) * 1.4 + n3(p * 110.0) * 0.35; }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         { float e = 0.004, h0 = wr(vOP); vec3 gr = vec3(wr(vOP + vec3(e,0,0)) - h0, wr(vOP + vec3(0,e,0)) - h0, wr(vOP + vec3(0,0,e)) - h0) / e;
-          vec3 gv = normalize(normalMatrix * gr + 1e-5); normal = normalize(normal - gv * uAmt * 0.12 * length(gr)); }`)
+          vec3 gv = normalize(vNM * gr + 1e-5); normal = normalize(normal - gv * uAmt * 0.12 * length(gr)); }`)
       .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= 0.9 + 0.12 * n3(vOP * 60.0);');
   };
 }

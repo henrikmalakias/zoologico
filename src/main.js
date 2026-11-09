@@ -13,6 +13,7 @@ import { library } from './render/world.js';
 import { startEscape } from './sim/animals.js';
 import { content } from './content/registry.js';
 import * as sound from './audio/sound.js';
+import { distributeFurniture } from './sim/furn.js';
 
 class Game {
   async start() {
@@ -130,5 +131,5 @@ class Game {
 }
 const cmp = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
 
-const game = new Game(); window.__game = game; window.__api = { ...B, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
+const game = new Game(); window.__game = game; window.__api = { ...B, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
 game.start().catch(e => { console.error(e); const b = document.getElementById('boot'); if (b) b.textContent = 'Erro ao iniciar: ' + e.message; });

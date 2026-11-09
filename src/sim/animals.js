@@ -6,6 +6,51 @@ import { addDirt, recalcClean } from './staff.js';
 
 export const SPEED = { leao: 1.6, zebra: 1.5, elefante: 1.1, girafa: 1.3, macaco: 1.4, hipopotamo: 1.0, rinoceronte: 1.2, flamingo: 0.9, gorila: 1.0, tartaruga: 0.25 };
 export const habById = (s, id) => s.habitats.find(h => h.id === id);
+// raio do corpo (m) para não sobrepor outros animais nem atravessar plantas e comedouros
+export const RADIUS = { leao: 0.8, zebra: 0.8, elefante: 1.4, girafa: 0.9, macaco: 0.35, hipopotamo: 1.2, rinoceronte: 1.2, flamingo: 0.3, gorila: 0.55, tartaruga: 0.45 };
+const radiusOf = (s, a) => { const S = content(s).species[a.sp]; const f = S && a.age < S.vida.adulto ? 0.5 + 0.5 * (a.age / S.vida.adulto) : 1; return (RADIUS[a.sp] || 0.7) * f; };
+// obstáculos fixos do habitat: plantas, comedouro e bebedouro (cache até a próxima construção)
+export function habObstacles(s, h) {
+  if (h._obs && h._obsV === s._ver) return h._obs;
+  const C = content(s), out = [];
+  for (const o of s.objects) {
+    if (o.tx < h.x || o.tx >= h.x + h.w || o.ty < h.y || o.ty >= h.y + h.h) continue;
+    const P = C.plants[o.type]; if (!P) continue;
+    const p = tileToWorld(o.tx, o.ty); out.push({ x: p.x, z: p.z, r: (P.alta ? 0.55 : 0.4) * (o.sc || 1) });
+  }
+  const f = tileToWorld(h.feed[0], h.feed[1]), w = tileToWorld(h.water[0], h.water[1]);
+  out.push({ x: f.x, z: f.z, r: 0.85, feed: true }, { x: w.x, z: w.z, r: 0.7, water: true });
+  h._obs = out; h._obsV = s._ver; return out;
+}
+// ponto livre ao redor de um obstáculo (comedouro/bebedouro) onde o animal cabe
+function ringPoint(s, a, h, ob, margin = 0.08) {
+  const R = radiusOf(s, a) * 0.7, rr = ob.r + R + margin, b = innerBounds(h, 0.4);
+  const base = Math.atan2(a.z - ob.z, a.x - ob.x);
+  for (let k = 0; k < 8; k++) {
+    const ang = base + (k === 0 ? (rnd(s) - 0.5) * 1.2 : (rnd(s) - 0.5) * 6.28);
+    const x = ob.x + Math.cos(ang) * rr, z = ob.z + Math.sin(ang) * rr;
+    if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) return { x, z };
+  }
+  return { x: ob.x, z: ob.z + rr };
+}
+// separa o animal de obstáculos e de outros animais (empurrão suave, sem teletransporte)
+function collide(s, a, h, dt, ctx) {
+  const R = radiusOf(s, a) * 0.7, push = Math.min(2.2 * dt + 0.02, 0.5);
+  let px = 0, pz = 0;
+  for (const o of habObstacles(s, h)) {
+    const dx = a.x - o.x, dz = a.z - o.z, d = Math.hypot(dx, dz), min = o.r + R;
+    if (d < min) { const k = (min - d) / (d || 1); px += (d ? dx : 1) * k; pz += (d ? dz : 0) * k; }
+  }
+  for (const b of ctx.byHab?.get(a.hab) || []) {
+    if (b === a || b.escaped || b.escaping || b.carriedBy) continue;
+    const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz), min = R + radiusOf(s, b) * 0.7;
+    if (d < min) { const k = ((min - d) / (d || 1)) * (b.asleep || b.sedated ? 1 : 0.5); px += (d ? dx : (a.id % 2 ? 1 : -1)) * k; pz += (d ? dz : 0) * k; }
+  }
+  const m = Math.hypot(px, pz); if (!m) return 0;
+  const f = Math.min(1, push / m); a.x += px * f; a.z += pz * f;
+  const bb = innerBounds(h, 0.25); a.x = clamp(a.x, bb.x0, bb.x1); a.z = clamp(a.z, bb.z0, bb.z1);
+  return m;
+}
 
 // Informações do habitat (cache por quarto de hora)
 export function habInfo(s, h) {
@@ -60,11 +105,12 @@ export function newAnimal(s, sp, h, adult = true) {
     st: 'idle', stT: 1, tgt: null, asleep: false };
 }
 export function randomInside(s, h, margin = 0.6, sp) {
-  const b = innerBounds(h, margin), swim = sp && content(s).species[sp]?.tracos.nada;
+  const b = innerBounds(h, margin), swim = sp && content(s).species[sp]?.tracos.nada, R = (RADIUS[sp] || 0.7) * 0.7 + 0.15, obs = habObstacles(s, h);
   let p;
-  for (let k = 0; k < 8; k++) {
+  for (let k = 0; k < 14; k++) {
     p = { x: b.x0 + rnd(s) * (b.x1 - b.x0), z: b.z0 + rnd(s) * (b.z1 - b.z0) };
     const t = worldToTile(p.x, p.z);
+    if (obs.some(o => Math.hypot(p.x - o.x, p.z - o.z) < o.r + R)) continue;
     if (swim || !s.height || !inMap(t.tx, t.ty) || waterDepth(s, t.tx, t.ty) < 0.9) break;
   }
   return p;
@@ -78,6 +124,7 @@ const night = s => { const hr = hourOf(s.clock.min); return hr >= 20 || hr < 6; 
 
 export function updateAnimals(s, gameMin, ctx) {
   const C = content(s), hrs = gameMin / 60;
+  if (!ctx.abstract) { ctx.byHab = new Map(); for (const a of s.animals) { if (a.escaped || a.carriedBy) continue; if (!ctx.byHab.has(a.hab)) ctx.byHab.set(a.hab, []); ctx.byHab.get(a.hab).push(a); } }
   for (let i = s.animals.length - 1; i >= 0; i--) {
     const a = s.animals[i], S = C.species[a.sp]; if (!S) continue; // pacote ausente: guardado, inativo
     const h = habById(s, a.hab);
@@ -125,6 +172,19 @@ function moveTo(a, dt, speed) {
 
 function visualBehavior(s, a, h, S, ctx) {
   const dt = ctx.realDt * ctx.moveMul; if (dt <= 0) return;
+  const px = a.x, pz = a.z;
+  behave(s, a, h, S, ctx);
+  if (!h || a.escaped || a.escaping || a.carriedBy) return;
+  collide(s, a, h, dt, ctx);
+  // preso (obstáculo ou outro animal no caminho): desiste do destino e escolhe outro
+  if (a.tgt && !a.sedated) {
+    const moved = Math.hypot(a.x - px, a.z - pz);
+    if (moved < (SPEED[a.sp] || 1.3) * dt * 0.12) a.stk = (a.stk || 0) + dt; else a.stk = Math.max(0, (a.stk || 0) - dt);
+    if (a.stk > 2) { a.stk = 0; a.tgt = null; a.st = 'idle'; a.stT = 1 + rnd(s) * 2; }
+  } else a.stk = 0;
+}
+function behave(s, a, h, S, ctx) {
+  const dt = ctx.realDt * ctx.moveMul; if (dt <= 0) return;
   const sp = (SPEED[a.sp] || 1.3) * (a.age < S.vida.adulto ? 0.8 : 1);
   if (a.sedated) { a.st = 'sedado'; a.asleep = true; a.tgt = null; return; }
   if (a.escaping) { escapeAnim(s, a, h, dt, sp); return; }
@@ -165,8 +225,8 @@ function visualBehavior(s, a, h, S, ctx) {
   opts.sort((x, y) => y[1] - x[1]);
   const c = opts[0][0];
   if (c === 'sleep') { a.st = 'sleep'; a.asleep = true; }
-  else if (c === 'eat') { a.st = 'eat_go'; a.tgt = jitter(s, tileToWorld(h.feed[0], h.feed[1])); }
-  else if (c === 'drink') { a.st = 'drink_go'; a.tgt = jitter(s, tileToWorld(h.water[0], h.water[1])); }
+  else if (c === 'eat') { a.st = 'eat_go'; a.tgt = ringPoint(s, a, h, habObstacles(s, h).find(o => o.feed)); }
+  else if (c === 'drink') { a.st = 'drink_go'; a.tgt = ringPoint(s, a, h, habObstacles(s, h).find(o => o.water)); }
   else if (c === 'wander') { a.st = 'walk'; a.tgt = randomInside(s, h, 0.6, a.sp); }
   else if (c === 'bath') { a.st = 'bath_go'; a.tgt = deepSpot(s, h); if (!a.tgt) { a.st = 'idle'; a.stT = 2; } }
   else if (c === 'social') {

@@ -61,7 +61,7 @@ ok(n.animals.filter(a => a.sp === 'leao').length < 2 || n.animals.some(a => a.es
 ok(['autoQualidade', 'som', 'volume', 'tutorial'].every(k => k in DEFAULT_SETTINGS()), 'configurações novas com valores padrão');
 const o = serialize(newGame(now)); o.schemaVersion = 4; o.settings = { quality: 'alto', fugas: false };
 const m = deserialize(JSON.parse(JSON.stringify(o)));
-ok(m.schemaVersion === 5 && m.settings.quality === 'alto' && m.settings.fugas === false && m.settings.som === true && m.settings.tutorial.feito, 'save da 1.3 migrado: mantém escolhas, liga som e pula o tutorial');
+ok(m.schemaVersion >= 5 && m.settings.quality === 'alto' && m.settings.fugas === false && m.settings.som === true && m.settings.tutorial.feito, 'save da 1.3 migrado: mantém escolhas, liga som e pula o tutorial');
 const fresh = newGame(now); ok(!fresh.settings.tutorial.feito && fresh.settings.tutorial.passo === 0, 'jogo novo começa com o tutorial');
 
 console.log(fails ? `${fails} FALHA(S)` : 'TODOS OS TESTES DA 1.4 PASSARAM'); process.exit(fails ? 1 : 0);

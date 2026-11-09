@@ -2,12 +2,12 @@ import { content, APP_VERSION } from '../content/registry.js';
 import { NOMES, TRACOS_EQUIPE, TRACOS_GERENTE, BASE_PACK } from '../content/base.js';
 const BASE_SPECIES = BASE_PACK.species;
 import { clamp, rnd, pick, uid, log, hourOf } from './util.js';
-import { MAP, idx, rebuildOcc, tileToWorld, AREAS } from './grid.js';
+import { MAP, idx, rebuildOcc, tileToWorld, AREAS, isPathT } from './grid.js';
 import { updateAnimals, hourlyAnimals, dailyAnimals, habInfo } from './animals.js';
 import { updateStaff, refreshAlerts, managerTick, spend, earn, recalcClean } from './staff.js';
 import { updateVisitors, arrivalRate, arrive, isOpen, litterCount } from './visitors.js';
 
-export const SCHEMA = 5;
+export const SCHEMA = 6;
 export const SPEEDS = [0, 1, 2, 3]; // multiplicador da velocidade normal
 export const MES = 30;
 // segundos de jogo por segundo real na velocidade normal (depende da hora: dia devagar, noite rápida)
@@ -22,7 +22,7 @@ export function newGame(now = Date.now(), opts = {}) {
     clock: { min: 7 * 60, day: 0, speed: 1, lastRealTs: now },
     money: opts.tranquilo ? 120000 : 60000, ticket: 30, areaLevel: 0,
     terrain: new Array(MAP * MAP).fill('g'), height: new Array((MAP + 1) * (MAP + 1)).fill(0), litter: {},
-    habitats: [], facilities: [], objects: [], animals: [], staff: [], managers: [], visitors: [],
+    habitats: [], facilities: [], objects: [], furn: [], vstock: [], animals: [], staff: [], managers: [], visitors: [],
     policies: { doencaPrimeiro: true, segurancaPrimeiro: false, fugaImediata: true },
     candidates: [], hiring: { nextAt: now + H2 },
     alerts: [], metas: {}, settings: { ...DEFAULT_SETTINGS(), tranquilo: !!opts.tranquilo, fugas: !opts.tranquilo },
@@ -86,7 +86,7 @@ export function updateRep(s) {
   const r = s.stats.rep, C = content(s);
   const an = s.animals.filter(a => C.species[a.sp]);
   r.animais = an.length ? an.reduce((t, a) => t + a.welfare, 0) / an.length : 0.25;
-  let pathTiles = 0; for (let i = 0; i < MAP * MAP; i++) if (s.terrain[i] === 'p') pathTiles++;
+  let pathTiles = 0; for (let i = 0; i < MAP * MAP; i++) if (isPathT(s.terrain[i])) pathTiles++;
   const plants = s.objects.filter(o => !o.deco).length;
   r.sustent = clamp(1 - litterCount(s) / (8 + pathTiles * 0.15)) * 0.7 + 0.3 * clamp(plants / 30);
   const habs = s.habitats.filter(h => an.some(a => a.hab === h.id));

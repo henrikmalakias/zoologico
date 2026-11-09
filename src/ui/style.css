@@ -92,3 +92,8 @@ textarea,input{user-select:text;-webkit-user-select:text;color:#111}
 .zp-grid button.on{outline:2px solid #7be0a5}
 .zp-grid small{display:block;opacity:.7;font-size:11px}
 .tut-box{pointer-events:none}.tut-box button{pointer-events:auto}
+
+.slbox{margin-top:6px;display:flex;flex-direction:column;gap:2px}
+.slrow{display:grid;grid-template-columns:96px 1fr 128px;align-items:center;gap:6px;font-size:12px}
+.slrow input[type=range]{width:100%;min-width:0;accent-color:#7be0a5}
+.sl-val{opacity:.85;font-size:11px;text-align:right}

@@ -1,9 +1,9 @@
 {
   "name": "projeto-zoologico",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "vite", "build": "vite build", "test": "node tests/sim.test.js && node tests/v11.test.js && node tests/v12.test.js && node tests/v13.test.js && node tests/v14.test.js" },
+  "scripts": { "dev": "vite", "build": "vite build", "test": "node tests/sim.test.js && node tests/v11.test.js && node tests/v12.test.js && node tests/v13.test.js && node tests/v14.test.js && node tests/v16.test.js" },
   "dependencies": { "three": "0.187.0" },
   "devDependencies": { "vite": "8.3.6" }
 }

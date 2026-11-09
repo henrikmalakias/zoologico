@@ -181,6 +181,60 @@ export function buildPlant(kit, type) {
 }
 
 // ---------- instalações ----------
+
+// ---------- emblemas desenhados (sem imagens externas) ----------
+const rrect = (g, x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+function emblemCanvas(kind, text, bg, fg = '#fff') {
+  return canvas(512, 160, (g, w, h) => {
+    g.fillStyle = bg; rrect(g, 4, 4, w - 8, h - 8, 26); g.fill(); g.lineWidth = 8; g.strokeStyle = fg; rrect(g, 14, 14, w - 28, h - 28, 20); g.stroke();
+    const cx = 92, cy = h / 2;
+    if (kind === 'burger') {
+      g.fillStyle = '#e8b25c'; g.beginPath(); g.ellipse(cx, cy - 20, 46, 28, 0, Math.PI, 0); g.fill();
+      g.fillStyle = '#fff'; for (const dx of [-22, 0, 22]) { g.beginPath(); g.ellipse(cx + dx, cy - 34, 3, 1.6, 0.4, 0, 6.3); g.fill(); }
+      g.fillStyle = '#6fc04a'; g.beginPath(); g.moveTo(cx - 48, cy - 18); for (let i = 0; i <= 8; i++) g.lineTo(cx - 48 + i * 12, cy - 18 + (i % 2 ? 8 : 0)); g.lineTo(cx + 48, cy - 10); g.lineTo(cx - 48, cy - 10); g.fill();
+      g.fillStyle = '#6b3b1f'; rrect(g, cx - 48, cy - 8, 96, 16, 8); g.fill();
+      g.fillStyle = '#f2c230'; g.beginPath(); g.moveTo(cx - 44, cy + 6); g.lineTo(cx + 44, cy + 6); g.lineTo(cx + 30, cy + 18); g.lineTo(cx - 30, cy + 18); g.fill();
+      g.fillStyle = '#e8b25c'; rrect(g, cx - 46, cy + 18, 92, 16, 8); g.fill();
+    } else if (kind === 'gift') {
+      g.fillStyle = '#ffd23f'; rrect(g, cx - 38, cy - 8, 76, 48, 6); g.fill(); g.fillStyle = '#e63e6d'; g.fillRect(cx - 42, cy - 22, 84, 18); g.fillStyle = '#7bd0ff'; g.fillRect(cx - 7, cy - 22, 14, 62);
+      g.fillStyle = '#7bd0ff'; g.beginPath(); g.ellipse(cx - 14, cy - 30, 16, 10, -0.5, 0, 6.3); g.ellipse(cx + 14, cy - 30, 16, 10, 0.5, 0, 6.3); g.fill();
+    } else if (kind === 'wc') {
+      g.fillStyle = fg; g.beginPath(); g.arc(cx - 26, cy - 28, 11, 0, 6.3); g.fill(); rrect(g, cx - 38, cy - 14, 24, 40, 6); g.fill(); g.fillRect(cx - 36, cy + 24, 8, 22); g.fillRect(cx - 24, cy + 24, 8, 22);
+      g.beginPath(); g.arc(cx + 28, cy - 28, 11, 0, 6.3); g.fill(); g.beginPath(); g.moveTo(cx + 28, cy - 14); g.lineTo(cx + 44, cy + 26); g.lineTo(cx + 12, cy + 26); g.fill(); g.fillRect(cx + 20, cy + 26, 6, 20); g.fillRect(cx + 30, cy + 26, 6, 20);
+    } else if (kind === 'table') {
+      g.fillStyle = fg; g.fillRect(cx - 44, cy - 6, 88, 10); g.fillRect(cx - 38, cy + 4, 8, 34); g.fillRect(cx + 30, cy + 4, 8, 34); g.fillRect(cx - 50, cy + 20, 100, 8);
+    }
+    g.fillStyle = fg; let fs = 74; g.font = `bold ${fs}px Arial`; while (g.measureText(text).width > w - 200 && fs > 28) { fs -= 4; g.font = `bold ${fs}px Arial`; } g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(text, 170, cy + 4);
+  });
+}
+const doorIcon = (letter, bg) => canvas(64, 128, (g, w, h) => { g.fillStyle = bg; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.beginPath(); g.arc(32, 36, 9, 0, 6.3); g.fill();
+  if (letter === 'M') g.fillRect(22, 48, 20, 34); else { g.beginPath(); g.moveTo(32, 48); g.lineTo(46, 88); g.lineTo(18, 88); g.fill(); } g.fillRect(24, 88, 6, 22); g.fillRect(35, 88, 6, 22); });
+const chalk = () => canvas(128, 160, (g, w, h) => { g.fillStyle = '#26332c'; g.fillRect(0, 0, w, h); g.fillStyle = '#f1eadb'; g.font = 'bold 20px Arial'; g.fillText('CARDÁPIO', 10, 28);
+  g.fillRect(10, 36, 108, 2); for (let i = 0; i < 5; i++) { g.fillRect(10, 56 + i * 20, 60 + (i * 17) % 30, 4); g.fillRect(96, 56 + i * 20, 22, 4); } });
+const stripeTex = (a, b, n = 10) => canvas(64, 16, (c) => { const w = 64 / n; for (let i = 0; i < n; i++) { c.fillStyle = i % 2 ? b : a; c.fillRect(i * w, 0, w, 16); } });
+const paverTex = () => canvas(128, 128, (g) => { g.fillStyle = '#d9c9a2'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#bfae86'; g.lineWidth = 2; for (let i = 0; i <= 128; i += 32) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 128); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(128, i); g.stroke(); } });
+
+// banco de praça (frente = +z; encosto atrás)
+function bench(kit, add, wood = '#8a5a32') {
+  const m = kit.mat(wood), metal = kit.mat('#2f3338', { metal: 0.5 });
+  for (let i = 0; i < 3; i++) add(kit.box(1.6, 0.05, 0.12), m, 0, 0.46, -0.17 + i * 0.17);
+  for (let i = 0; i < 2; i++) add(kit.box(1.6, 0.1, 0.05), m, 0, 0.72 + i * 0.16, -0.27);
+  for (const sx of [-0.7, 0.7]) { add(kit.box(0.06, 0.46, 0.5), metal, sx, 0.23, -0.02); add(kit.box(0.06, 0.5, 0.06), metal, sx, 0.7, -0.27); }
+}
+export function buildFurn(kit, type) {
+  const g = new THREE.Group(), add = (geo, m, x, y, z) => { const o = kit.mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
+  if (type === 'poste') {
+    const dark = kit.mat('#2e383f', { metal: 0.5, rough: 0.5 });
+    add(kit.cyl(0.13, 0.17, 0.3), dark, 0, 0.15, 0); add(kit.cyl(0.045, 0.06, 3.5), dark, 0, 1.9, 0);
+    add(kit.box(0.7, 0.07, 0.07), dark, 0.25, 3.62, 0); add(kit.box(0.34, 0.1, 0.24), dark, 0.55, 3.55, 0);
+    add(kit.box(0.28, 0.06, 0.2), kit.lamp, 0.55, 3.48, 0);
+  } else if (type === 'lixeira') {
+    add(kit.cyl(0.21, 0.18, 0.82), kit.mat('#2f7d52'), 0, 0.41, 0); add(kit.cyl(0.235, 0.235, 0.07), kit.mat('#24533a'), 0, 0.86, 0);
+    add(kit.cyl(0.1, 0.1, 0.02), kit.mat('#101512'), 0, 0.9, 0); add(kit.box(0.22, 0.14, 0.02), kit.mat('#e9f3ec'), 0, 0.5, 0.2);
+  } else if (type === 'banco') bench(kit, add);
+  return g;
+}
+
 export function buildFacility(kit, type, D) {
   const g = new THREE.Group(), w = D.w * 2, d = D.h * 2;
   const add = (geo, m, x, y, z) => { const o = kit.mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
@@ -193,12 +247,58 @@ export function buildFacility(kit, type, D) {
       add(kit.box(1.2, 2.2, 1.2), kit.mat('#d8c9a8'), 2.9, 1.1, 0.4);
       break; }
     case 'lanchonete': {
-      add(kit.box(w - 0.6, 2.6, d - 0.6), kit.mat('#f1e3c6'), 0, 1.3, 0);
-      const aw = kit.tex('awn', () => canvas(64, 16, (c) => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#ffffff' : '#e0703a'; c.fillRect(i * 8, 0, 8, 16); } }));
-      add(kit.box(w - 0.2, 0.25, d - 0.2), kit.mat('#ffffff', { map: aw }), 0, 2.75, 0);
-      sign('LANCHES', '#e0703a', 3.3, 0, 2.4); break; }
-    case 'banheiro': add(kit.box(w - 0.6, 2.5, d - 0.6), kit.mat('#dfe8ef'), 0, 1.25, 0); add(kit.box(w - 0.3, 0.2, d - 0.3), kit.mat('#4a90c8'), 0, 2.6, 0); sign('WC', '#4a90c8', 3.0, 0, 1.4); break;
-    case 'loja': add(kit.box(w - 0.6, 2.7, d - 0.6), kit.mat('#f3e9f2'), 0, 1.35, 0); add(kit.cone((w - 0.2) * 0.72, 1.2), kit.mat('#b0479a'), 0, 3.3, 0).rotation.y = 0.785; sign('LOJA', '#b0479a', 2.3, d / 2 - 0.25, 1.8); break;
+      const body = kit.mat('#f4e6c8'), band = kit.mat('#d65a28'), dark = kit.mat('#2a2220'), wood = kit.mat('#8a5a32');
+      add(kit.box(w - 0.8, 2.7, d - 0.8), body, 0, 1.35, 0);
+      add(kit.box(w - 0.7, 0.9, d - 0.7), band, 0, 0.45, 0);
+      // janela de atendimento, balcão e toldo listrado
+      add(kit.box(2.3, 1.05, 0.12), dark, 0, 1.7, d / 2 - 0.4); add(kit.box(2.5, 0.12, 0.7), wood, 0, 1.15, d / 2 - 0.15);
+      add(kit.box(2.5, 0.08, 0.1), wood, 0, 2.3, d / 2 - 0.36);
+      const aw = kit.tex('awnL', () => stripeTex('#d65a28', '#ffffff', 10)), tent = add(kit.box(w - 0.1, 0.12, 1.5), kit.mat('#ffffff', { map: aw }), 0, 2.62, d / 2 - 0.1); tent.rotation.x = 0.3;
+      add(kit.box(w - 0.1, 0.18, 0.12), kit.mat('#ffffff', { map: aw }), 0, 2.18, d / 2 + 0.52);
+      add(kit.box(w - 0.5, 0.2, d - 0.5), kit.mat('#7a2f16'), 0, 2.85, 0);
+      // placa com emblema, lousa de cardápio e plantas
+      const em = kit.tex('emL', () => emblemCanvas('burger', 'LANCHES', '#c8431c')); add(kit.box(2.6, 0.82, 0.1), kit.mat('#ffffff', { map: em }), 0, 3.55, d / 2 - 0.55);
+      add(kit.box(0.08, 0.5, 0.08), dark, -1.1, 3.1, d / 2 - 0.55); add(kit.box(0.08, 0.5, 0.08), dark, 1.1, 3.1, d / 2 - 0.55);
+      const ch = kit.tex('chalk', chalk); const bd = add(kit.box(0.7, 0.9, 0.06), kit.mat('#ffffff', { map: ch }), w / 2 - 0.55, 1.0, d / 2 + 0.05); bd.rotation.x = -0.18;
+      for (const sx of [-1, 1]) { add(kit.cyl(0.2, 0.15, 0.32), kit.mat('#9c5a34'), sx * (w / 2 - 0.3), 0.16, d / 2 - 0.05); add(kit.sphere(0.3), kit.mat('#3d8f3a'), sx * (w / 2 - 0.3), 0.55, d / 2 - 0.05); }
+      const bulb = kit.mat('#ffe7a3', { rough: 0.3 }); for (let i = 0; i < 6; i++) add(kit.sphere(0.06), bulb, -w / 2 + 0.4 + i * ((w - 0.8) / 5), 2.13, d / 2 + 0.62);
+      break; }
+    case 'banheiro': {
+      const wall = kit.mat('#e3ecf1'), blue = kit.mat('#3f86c0');
+      add(kit.box(w - 0.7, 2.6, d - 0.7), wall, 0, 1.3, 0); add(kit.box(w - 0.6, 0.8, d - 0.6), kit.mat('#9fc6df'), 0, 0.4, 0);
+      add(kit.box(w + 0.2, 0.2, d + 0.3), blue, 0, 2.72, 0.05); add(kit.box(w - 0.3, 0.14, d - 0.3), kit.mat('#2f6a9b'), 0, 2.88, 0);
+      const dm = kit.tex('doorM', () => doorIcon('M', '#2b78b8')), df = kit.tex('doorF', () => doorIcon('F', '#d2528a'));
+      add(kit.box(0.82, 1.85, 0.08), kit.mat('#ffffff', { map: dm }), -0.7, 1.0, d / 2 - 0.32); add(kit.box(0.82, 1.85, 0.08), kit.mat('#ffffff', { map: df }), 0.7, 1.0, d / 2 - 0.32);
+      add(kit.box(1.6, 0.12, 0.12), kit.mat('#d9e6ee'), 0, 2.0, d / 2 - 0.3);
+      const em = kit.tex('emW', () => emblemCanvas('wc', 'WC', '#2b78b8')); add(kit.box(1.9, 0.6, 0.08), kit.mat('#ffffff', { map: em }), 0, 3.25, d / 2 - 0.35);
+      add(kit.box(0.5, 0.3, 0.06), kit.mat('#bfe2f5', { rough: 0.1 }), w / 2 - 0.36, 1.9, 0);
+      add(kit.cyl(0.22, 0.17, 0.3), kit.mat('#9c5a34'), 0, 0.15, d / 2 - 0.12 + 0.28); add(kit.sphere(0.28), kit.mat('#3d8f3a'), 0, 0.5, d / 2 + 0.16);
+      break; }
+    case 'loja': {
+      const wall = kit.mat('#f4eaf3'), purple = kit.mat('#a23c8d'), glass = kit.mat('#a9d6e8', { rough: 0.05, metal: 0.3, opacity: 0.55 });
+      add(kit.box(w - 0.7, 2.7, d - 0.7), wall, 0, 1.35, 0); add(kit.box(w - 0.6, 0.7, d - 0.6), purple, 0, 0.35, 0);
+      add(kit.box(1.4, 1.2, 0.08), glass, -0.85, 1.5, d / 2 - 0.34); add(kit.box(0.8, 1.9, 0.08), kit.mat('#7a2f6b'), 0.95, 1.0, d / 2 - 0.34);
+      add(kit.box(0.7, 0.15, 0.4), kit.mat('#d8c3d5'), -0.85, 1.0, d / 2 - 0.5);
+      for (const [x, c] of [[-1.3, '#f2c230'], [-0.85, '#e63e6d'], [-0.4, '#3a8fd6']]) add(kit.box(0.28, 0.28, 0.28), kit.mat(c), x, 1.2, d / 2 - 0.5);
+      const aw = kit.tex('awnJ', () => stripeTex('#a23c8d', '#ffffff', 8)), tent = add(kit.box(w - 0.2, 0.1, 1.3), kit.mat('#ffffff', { map: aw }), 0, 2.45, d / 2 - 0.15); tent.rotation.x = 0.28;
+      add(kit.box(w - 0.4, 0.18, d - 0.4), kit.mat('#7a2f6b'), 0, 2.8, 0); add(kit.cone(1.55, 0.9), kit.mat('#a23c8d'), 0, 3.35, 0).rotation.y = 0.785;
+      const em = kit.tex('emJ', () => emblemCanvas('gift', 'LOJA', '#a23c8d')); add(kit.box(2.3, 0.72, 0.1), kit.mat('#ffffff', { map: em }), 0, 3.25, d / 2 - 0.12);
+      add(kit.box(0.08, 0.5, 0.08), kit.mat('#2a2220'), -1.0, 2.95, d / 2 - 0.12); add(kit.box(0.08, 0.5, 0.08), kit.mat('#2a2220'), 1.0, 2.95, d / 2 - 0.12);
+      const bal = ['#e63e6d', '#f2c230', '#3a8fd6']; bal.forEach((c, i) => { const x = -w / 2 + 0.2 + i * 0.22, y = 1.5 + (i % 2) * 0.3; add(kit.cyl(0.008, 0.008, y - 0.3), kit.mat('#dddddd'), x, (y + 0.3) / 2 - 0.3 + 0.3, d / 2 + 0.05); const b = add(kit.sphere(0.2), kit.mat(c, { rough: 0.3 }), x, y + 0.2, d / 2 + 0.05); b.scale.y = 1.2; });
+      break; }
+    case 'mesas': {
+      const pv = kit.tex('paver', paverTex); pv.repeat?.set?.(3, 3);
+      add(kit.box(w - 0.3, 0.06, d - 0.3), kit.mat('#ffffff', { map: pv }), 0, 0.03, 0);
+      const wood = kit.mat('#9a6a3c'), leg = kit.mat('#3a3f44'), cols = ['#d6453d', '#2f8f5a', '#e0a21a'];
+      [[-1.3, -1.25], [1.3, -1.25], [0, 1.2]].forEach(([x, z], i) => {
+        add(kit.box(1.7, 0.07, 0.85), wood, x, 0.78, z);
+        for (const sz of [-0.68, 0.68]) add(kit.box(1.7, 0.06, 0.3), wood, x, 0.46, z + sz);
+        for (const sx of [-0.7, 0.7]) { add(kit.box(0.07, 0.78, 0.07), leg, x + sx, 0.4, z - 0.3); add(kit.box(0.07, 0.78, 0.07), leg, x + sx, 0.4, z + 0.3); }
+        add(kit.cyl(0.035, 0.035, 2.3), leg, x, 1.2, z); const um = add(kit.cone(1.25, 0.55), kit.mat(cols[i]), x, 2.4, z); um.scale.y = 0.8;
+      });
+      for (const [x, z] of [[-d / 2 + 0.35, d / 2 - 0.35], [d / 2 - 0.35, d / 2 - 0.35]]) { add(kit.cyl(0.22, 0.16, 0.34), kit.mat('#9c5a34'), x, 0.2, z); add(kit.sphere(0.3), kit.mat('#3d8f3a'), x, 0.6, z); }
+      break; }
+    case 'banco': bench(kit, add); break;
     case 'playground': {
       add(kit.box(w - 0.4, 0.06, d - 0.4), kit.mat('#e2cf98'), 0, 0.03, 0);
       add(kit.box(1.2, 2.2, 1.2), kit.mat('#f2c230'), -1.2, 1.1, -1.2); add(kit.cone(0.9, 0.9), kit.mat('#d6453d'), -1.2, 2.65, -1.2);
@@ -206,7 +306,6 @@ export function buildFacility(kit, type, D) {
       for (const sx of [0.5, 2]) add(kit.cyl(0.06, 0.06, 2.2), kit.mat('#666'), sx, 1.1, 1.2);
       add(kit.cyl(0.06, 0.06, 1.7), kit.mat('#666'), 1.25, 2.2, 1.2).rotation.z = 1.57;
       add(kit.box(0.5, 0.06, 0.25), kit.mat('#d6453d'), 1.25, 0.6, 1.2); break; }
-    case 'banco': add(kit.box(1.5, 0.08, 0.5), kit.mat('#7a5230'), 0, 0.45, 0); add(kit.box(1.5, 0.45, 0.08), kit.mat('#7a5230'), 0, 0.7, -0.22); for (const sx of [-0.6, 0.6]) add(kit.box(0.08, 0.45, 0.45), kit.mat('#333'), sx, 0.22, 0); break;
     case 'placa': add(kit.cyl(0.05, 0.05, 1.3), kit.mat('#5b3f26'), 0, 0.65, 0); { const t = kit.tex('placa', () => canvas(128, 80, (c) => { c.fillStyle = '#2e6b54'; c.fillRect(0, 0, 128, 80); c.fillStyle = '#fff'; c.font = 'bold 18px Arial'; c.fillText('Você sabia?', 12, 26); c.fillRect(12, 38, 100, 4); c.fillRect(12, 50, 80, 4); c.fillRect(12, 62, 90, 4); })); add(kit.box(1, 0.65, 0.06), kit.mat('#fff', { map: t }), 0, 1.45, 0); } break;
     case 'centro': {
       add(kit.box(w - 0.6, 3, d - 0.6), kit.mat('#f4f5f2'), 0, 1.5, 0);

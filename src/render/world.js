@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { Kit, buildAnimal, animateAnimal, buildPerson, buildPlant, buildFacility, buildVehicle, buildTool, buildCones } from './models.js';
+import { Kit, buildAnimal, animateAnimal, buildPerson, buildPlant, buildFacility, buildFurn, buildVehicle, buildTool, buildCones } from './models.js';
 import { ModelLibrary, animateSDFAnimal, animateSDFHuman } from './library.js';
 import { instance as sdfInstance } from './sdfThree.js';
 let LIB = null; export const library = () => (LIB ||= new ModelLibrary());
 import { content } from '../content/registry.js';
-import { MAP, TILE, HALF, idx, tileToWorld, AREAS, CW, heightAt, walkY, WATER_Y, bridgeTiles } from '../sim/grid.js';
+import { MAP, TILE, HALF, idx, tileToWorld, AREAS, CW, heightAt, walkY, WATER_Y, bridgeTiles, isPathT, DIR_ROT } from '../sim/grid.js';
 import { hourOf } from '../sim/util.js';
 import { UltraSky, loadTerrainArrays, terrainData, fillTerrainData, terrainMaterial, waterNormalTexture, Grass, addFur, addSkinDetail } from './ultra.js';
 
@@ -55,8 +55,9 @@ export class World {
     }
     this.waterG = new THREE.Group(); sc.add(this.waterG);
     this.waterMat = this.ultra ? new THREE.MeshStandardMaterial({ color: '#24607a', roughness: 0.04, metalness: 0.0, transparent: true, opacity: 0.86, normalMap: waterNormalTexture(), normalScale: new THREE.Vector2(0.45, 0.45) }) : this.hi ? new THREE.MeshStandardMaterial({ color: '#2f7fb0', roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.82 }) : new THREE.MeshLambertMaterial({ color: '#3d86b3' });
-    this.layers = {}; for (const k of ['habs', 'facs', 'objs', 'animals', 'staff', 'fx']) { this.layers[k] = new THREE.Group(); sc.add(this.layers[k]); }
-    this.maps = { habs: new Map(), facs: new Map(), objs: new Map(), animals: new Map(), staff: new Map() };
+    this.layers = {}; for (const k of ['habs', 'facs', 'objs', 'furn', 'animals', 'staff', 'fx']) { this.layers[k] = new THREE.Group(); sc.add(this.layers[k]); }
+    this.maps = { habs: new Map(), facs: new Map(), objs: new Map(), furn: new Map(), animals: new Map(), staff: new Map() };
+    this.kit.lamp = this.hi ? new THREE.MeshStandardMaterial({ color: '#fff4c8', emissive: '#ffc766', emissiveIntensity: 0 }) : new THREE.MeshLambertMaterial({ color: '#fff4c8', emissive: '#ffc766' }); this.kit.lamp.emissiveIntensity = 0; this.lampOn = false;
     // visitantes instanciados
     const cap = 160;
     this.vBody = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.24, 1.2, 6), this.kit.mat('#ffffff'), cap);
@@ -77,7 +78,7 @@ export class World {
   }
   setQuality(q, s) { if (q === this.q) return; this.dispose(); this.build(q); if (s) this.update(s, 0); }
   dispose() {
-    this.renderer.dispose(); this.renderer.domElement.remove(); this.kit.dispose(); this.ttex.dispose();
+    this.renderer.dispose(); this.renderer.domElement.remove(); this.kit.lamp?.dispose(); this.kit.dispose(); this.ttex.dispose();
     this.usky?.dispose(); this.grass?.dispose(); this.tarr?.cor.dispose(); this.tarr?.nor.dispose(); this.tdata?.dispose(); this.waterMat.normalMap?.dispose();
     this.usky = this.grass = this.tarr = this.tdata = null;
     this.scene.traverse(o => { if (o.isInstancedMesh || o === this.ground) o.geometry.dispose(); });
@@ -89,25 +90,39 @@ export class World {
   paintTile(s, i, locked) {
     const C = content(s), t = s.terrain[i], x = i % MAP, y = (i / MAP) | 0, p = this.ppt, g = this.tg;
     const base = C3(C.terrains[t]?.cor || '#7d9b45'); if (locked) base.multiplyScalar(0.62);
-    if (!this.hi) { g.fillStyle = '#' + base.getHexString(); g.fillRect(x * p, y * p, p, p); return; }
+    // calçada: borda clara nos lados que não têm outro caminho ao lado
+    const side = t === 'k' ? [[0, -1], [0, 1], [-1, 0], [1, 0]].map(([dx, dy]) => { const nx = x + dx, ny = y + dy; return nx < 0 || ny < 0 || nx >= MAP || ny >= MAP || !isPathT(s.terrain[idx(nx, ny)]); }) : null; // N, S, O, L
+    const walk = C3('#d9d4c6'); if (locked) walk.multiplyScalar(0.62);
+    const bw = Math.max(1, Math.round(p * 0.28));
+    if (!this.hi) {
+      g.fillStyle = '#' + base.getHexString(); g.fillRect(x * p, y * p, p, p);
+      if (side) { g.fillStyle = '#' + walk.getHexString(); if (side[0]) g.fillRect(x * p, y * p, p, 1); if (side[1]) g.fillRect(x * p, y * p + p - 1, p, 1); if (side[2]) g.fillRect(x * p, y * p, 1, p); if (side[3]) g.fillRect(x * p + p - 1, y * p, 1, p); }
+      return;
+    }
     const img = g.createImageData(p, p); let seed = i * 9301 + 49297;
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     for (let k = 0; k < p * p; k++) {
-      const px = k % p, py = (k / p) | 0; let v = 0.9 + rnd() * 0.2;
+      const px = k % p, py = (k / p) | 0; let v = 0.9 + rnd() * 0.2, c = base;
       if (t === 'p' && (px === 0 || py === 0 || (py === p >> 1 && px > 0) )) v *= 0.86;
+      if (t === 'q') { v = 0.86 + rnd() * 0.28; if (rnd() < 0.05) v *= 0.8; }
+      if (t === 'c' || t === 'k') { v = 0.96 + rnd() * 0.08; if (px === 0 || py === 0 || px === p >> 1 || py === p >> 1) v *= 0.9; }
+      if (side) { const onWalk = (side[0] && py < bw) || (side[1] && py >= p - bw) || (side[2] && px < bw) || (side[3] && px >= p - bw); if (onWalk) { c = walk; v = 0.97 + rnd() * 0.06; if ((side[0] && py === bw - 1) || (side[1] && py === p - bw) || (side[2] && px === bw - 1) || (side[3] && px === p - bw)) v *= 0.8; } }
       if (t === 'g' && rnd() < 0.08) v *= 1.18; if (t === 'r' && rnd() < 0.15) v *= 0.8;
-      img.data[k * 4] = Math.min(255, base.r * 255 * v); img.data[k * 4 + 1] = Math.min(255, base.g * 255 * v); img.data[k * 4 + 2] = Math.min(255, base.b * 255 * v); img.data[k * 4 + 3] = 255;
+      img.data[k * 4] = Math.min(255, c.r * 255 * v); img.data[k * 4 + 1] = Math.min(255, c.g * 255 * v); img.data[k * 4 + 2] = Math.min(255, c.b * 255 * v); img.data[k * 4 + 3] = 255;
     }
     g.putImageData(img, x * p, y * p);
   }
   syncTerrain(s) {
     const a = AREAS[s.areaLevel], prev = this.cache.terrain, areaChanged = this.cache.area !== s.areaLevel;
     let changed = false, water = false;
+    const todo = new Set();
     for (let i = 0; i < MAP * MAP; i++) {
       if (!areaChanged && prev && prev[i] === s.terrain[i]) continue;
-      const x = i % MAP, y = (i / MAP) | 0; this.paintTile(s, i, !(x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1)); changed = true;
+      todo.add(i);
+      if (prev) { const x = i % MAP, y = (i / MAP) | 0; for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < MAP && ny < MAP && s.terrain[idx(nx, ny)] === 'k') todo.add(idx(nx, ny)); } }
       if (s.terrain[i] === 'w' || (prev && prev[i] === 'w')) water = true;
     }
+    for (const i of todo) { const x = i % MAP, y = (i / MAP) | 0; this.paintTile(s, i, !(x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1)); changed = true; }
     if (changed) { this.ttex.needsUpdate = true; this.cache.terrain = s.terrain.slice(); this.cache.area = s.areaLevel; this.tsig = (this.tsig || 0) + 1; if (this.tdata) fillTerrainData(this.tdata, s); }
     if (water || !this.waterBuilt) this.rebuildWater(s);
     if (s.height && this.cache.hver !== (s._hver || 0)) {
@@ -226,10 +241,12 @@ export class World {
       for (const [id, v] of map) if (!seen.has(id)) { layer.remove(v.o); map.delete(id); }
     };
     syncSet(this.maps.habs, this.layers.habs, s.habitats, h => this.habKey(h, s), h => this.buildHabitat(s, h));
-    syncSet(this.maps.facs, this.layers.facs, s.facilities.filter(f => C.facilities[f.type]), f => f.type + f.tx + ',' + f.ty + ':' + heightAt(s, ...Object.values(tileToWorld(f.tx, f.ty))).toFixed(1), f => {
+    syncSet(this.maps.facs, this.layers.facs, s.facilities.filter(f => C.facilities[f.type]), f => f.type + f.tx + ',' + f.ty + ':' + (f.dir ?? '-') + ':' + heightAt(s, ...Object.values(tileToWorld(f.tx, f.ty))).toFixed(1), f => {
       const D = C.facilities[f.type], o = buildFacility(this.kit, f.type, D);
       const p = tileToWorld(f.tx, f.ty); o.position.set(p.x - TILE / 2 + D.w, heightAt(s, p.x - TILE / 2 + D.w, p.z - TILE / 2 + D.h), p.z - TILE / 2 + D.h);
-      if (f.type === 'entrada') o.rotation.y = 0; o.userData = { kind: 'fac', id: f.id }; return o; });
+      o.rotation.y = f.type === 'entrada' || f.dir == null ? 0 : DIR_ROT[f.dir]; o.userData = { kind: 'fac', id: f.id }; return o; });
+    syncSet(this.maps.furn, this.layers.furn, s.furn || [], f => f.type + f.tx + ',' + f.ty + ':' + f.rot.toFixed(2) + ':' + heightAt(s, ...Object.values(tileToWorld(f.tx, f.ty))).toFixed(1), f => {
+      const o = buildFurn(this.kit, f.type), p = tileToWorld(f.tx, f.ty), x = p.x + f.ox, z = p.z + f.oz; o.position.set(x, heightAt(s, x, z), z); o.rotation.y = f.rot; return o; });
     syncSet(this.maps.objs, this.layers.objs, s.objects.filter(o => C.plants[o.type]), o => o.type + o.tx + ',' + o.ty + ':' + heightAt(s, ...Object.values(tileToWorld(o.tx, o.ty))).toFixed(1), o => {
       const m = buildPlant(this.kit, o.type), p = tileToWorld(o.tx, o.ty); m.position.set(p.x, heightAt(s, p.x, p.z), p.z); m.rotation.y = o.rot || 0; m.scale.setScalar(o.sc || 1); return m; });
   }
@@ -237,6 +254,7 @@ export class World {
     this.t += dt; this._s = s;
     this.syncTerrain(s);
     this.syncStatic(s);
+    { const hr = hourOf(s.clock.min), on = hr >= 18 || hr < 6.5; if (on !== this.lampOn) { this.lampOn = on; this.kit.lamp.emissiveIntensity = on ? 1.6 : 0; } }
     const C = content(s), m = new THREE.Matrix4(), q = new THREE.Quaternion();
     // animais
     const L = this.hi ? library() : null, seen = new Set();

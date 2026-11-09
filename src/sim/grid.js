@@ -24,6 +24,7 @@ export function rebuildOcc(s) {
     for (let y = f.ty; y < f.ty + d.h; y++) for (let x = f.tx; x < f.tx + d.w; x++) if (inMap(x, y)) fac[idx(x, y)] = f.id; }
   for (const o of s.objects) obj[idx(o.tx, o.ty)] = o.id;
   s._occ = { hab, fac, obj };
+  let pn = 0; for (let i = 0; i < n; i++) if (isPathT(s.terrain[i])) pn++; s._pathN = pn;
   s._ver = (s._ver || 0) + 1;
   rebuildBridges(s);
 }
@@ -57,12 +58,40 @@ export function astar(s, sx, sy, gx, gy, passable, costFn) {
   while (c !== -1 && c !== si) { path.push([c % MAP, (c / MAP) | 0]); c = from[c]; }
   return path.reverse();
 }
-export const isPath = (s, x, y) => inMap(x, y) && s.terrain[idx(x, y)] === 'p' && !s._occ.hab[idx(x, y)] && !s._occ.fac[idx(x, y)];
+// tipos de caminho: p = pedra, q = terra, c = cimentado, k = cimentado com calçada
+export const isPathT = t => t === 'p' || t === 'q' || t === 'c' || t === 'k';
+export const isPath = (s, x, y) => inMap(x, y) && isPathT(s.terrain[idx(x, y)]) && !s._occ.hab[idx(x, y)] && !s._occ.fac[idx(x, y)];
 export const staffPassable = (s, x, y) => inMap(x, y) && !s._occ.hab[idx(x, y)] && !s._occ.fac[idx(x, y)] && s.terrain[idx(x, y)] !== 'w';
 
+// Orientação das construções: a frente (+z do modelo) fica virada para um caminho.
+// dir: 0 = sul (+z), 1 = leste (+x), 2 = norte (-z), 3 = oeste (-x)
+export const DIR_ROT = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+export function sideTiles(f, d, dir) {
+  const out = [];
+  if (dir === 0) for (let i = 0; i < d.w; i++) out.push([f.tx + i, f.ty + d.h]);
+  else if (dir === 1) for (let j = 0; j < d.h; j++) out.push([f.tx + d.w, f.ty + j]);
+  else if (dir === 2) for (let i = 0; i < d.w; i++) out.push([f.tx + i, f.ty - 1]);
+  else for (let j = 0; j < d.h; j++) out.push([f.tx - 1, f.ty + j]);
+  return out;
+}
+export function orientFacility(s, f, d) {
+  let best = 0, bn = -1;
+  for (const k of [0, 1, 2, 3]) {
+    const n = sideTiles(f, d, k).filter(([x, y]) => isPath(s, x, y)).length + (k === f.dir ? 0.5 : 0);
+    if (n > bn) { bn = n; best = k; }
+  }
+  return bn >= 1 ? best : (f.dir ?? 0);
+}
+export function frontTile(s, f, d) {
+  if (f.dir == null) return null;
+  const st = sideTiles(f, d, f.dir), mid = st[st.length >> 1];
+  if (mid && isPath(s, mid[0], mid[1])) return mid;
+  return st.find(([x, y]) => isPath(s, x, y)) || null;
+}
 // Ponto de acesso (caminho vizinho) de uma instalação
 export function accessTile(s, f) {
   const d = content(s).facilities[f.type]; if (!d) return null;
+  const ft = frontTile(s, f, d); if (ft) return ft;
   let best = null;
   for (let y = f.ty - 1; y <= f.ty + d.h; y++) for (let x = f.tx - 1; x <= f.tx + d.w; x++) {
     const inside = x >= f.tx && x < f.tx + d.w && y >= f.ty && y < f.ty + d.h;

@@ -10,7 +10,16 @@ export const BASE_PACK = {
     m: { nome: 'Lama', cor: '#5b4632', custo: 8 },
     w: { nome: 'Água', cor: '#3d7ea6', custo: 15 },
     r: { nome: 'Rocha', cor: '#8d8b86', custo: 10 },
-    p: { nome: 'Caminho', cor: '#cbc2b0', custo: 20 },
+    p: { nome: 'Caminho de pedra', cor: '#cbc2b0', custo: 20, caminho: true },
+    q: { nome: 'Caminho de terra', cor: '#a98259', custo: 8, caminho: true },
+    c: { nome: 'Caminho cimentado', cor: '#bdbdb7', custo: 30, caminho: true },
+    k: { nome: 'Cimentado com calçada', cor: '#b4b4ae', custo: 45, caminho: true },
+  },
+  // mobiliário de caminho: sai junto com o caminho, nas bordas ou na calçada
+  furniture: {
+    poste: { nome: 'Poste de luz', custo: 120, base: 1.25, padrao: 5 },
+    lixeira: { nome: 'Lixeira', custo: 60, base: 0.85, padrao: 5 },
+    banco: { nome: 'Banco', custo: 150, base: 1.0, padrao: 5 },
   },
   biomes: {
     savana: { nome: 'Savana', terreno: { g: 0.6, d: 0.3, s: 0.1 }, plantas: ['acacia', 'baoba', 'capim_alto', 'arbusto_seco'] },
@@ -72,6 +81,7 @@ export const BASE_PACK = {
     loja: { nome: 'Loja de presentes', w: 2, h: 2, custo: 4000, venda: 25, custoVenda: 10, cor: '#b0479a', manut: 20 },
     playground: { nome: 'Playground', w: 3, h: 3, custo: 3500, cor: '#f2c230', manut: 10 },
     banco: { nome: 'Banco', w: 1, h: 1, custo: 150, cor: '#7a5230', manut: 0 },
+    mesas: { nome: 'Área de mesas', w: 3, h: 3, custo: 2800, cor: '#c0803a', manut: 12 },
     placa: { nome: 'Placa educativa', w: 1, h: 1, custo: 300, cor: '#2e6b54', manut: 0 },
     centro: { nome: 'Centro de cuidados básicos', w: 3, h: 3, custo: 12000, cor: '#e9ecef', manut: 40, semCaminho: true },
   },

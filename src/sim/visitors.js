@@ -1,10 +1,11 @@
 import { content } from '../content/registry.js';
 import { clamp, rnd, pick, uid, dist, hourOf } from './util.js';
-import { MAP, idx, tileToWorld, worldToTile, astar, isPath, accessTile, viewTiles } from './grid.js';
+import { MAP, idx, tileToWorld, worldToTile, astar, isPath, isPathT, accessTile, viewTiles } from './grid.js';
 import { earn } from './staff.js';
 
 export const isOpen = s => { const h = hourOf(s.clock.min); return h >= 8 && h < 18; };
-export const visitorCap = s => (s.settings.quality !== 'baixo' ? 140 : 70);
+// no máximo 100 visitantes desenhados (70 no gráfico Baixo); os demais contam e pagam, mas não aparecem
+export const visitorCap = s => (s.settings.quality !== 'baixo' ? 100 : 70);
 const entranceTile = s => { const e = s.facilities.find(f => f.type === 'entrada'); return e ? accessTile(s, e) : null; };
 
 export function arrivalRate(s) {
@@ -26,23 +27,27 @@ export function arrive(s, ctx) {
     const p = tileToWorld(et[0], et[1]);
     s.visitors.push({ id: uid(s), x: p.x, z: p.z, route: [], goal: null, useT: 0, hunger: rnd(s) * 0.4, bath: rnd(s) * 0.4, energy: 0.8 + rnd(s) * 0.2,
       sat: 0.6, stay: 150 + rnd(s) * 180, col: Math.floor(rnd(s) * 8), off: { x: (rnd(s) - 0.5) * 1.2, z: (rnd(s) - 0.5) * 1.2 }, loja: false, panic: false, rot: 0 });
-  } else virtualVisit(s);
+  } else { virtualVisit(s); if (!ctx.abstract) (s.vstock ||= []).push(s.clock.min + 150 + rnd(s) * 180); }
 }
+const binCover = s => { const bins = s.furn.reduce((n, f) => n + (f.type === 'lixeira'), 0); return clamp((bins / Math.max(1, (s._pathN || 1) / 12)) * 0.7, 0, 0.85); };
+const has = (s, type) => s.furn.some(f => f.type === type);
+const F2 = (s, t) => s.facilities.filter(f => f.type === t);
 function virtualVisit(s) {
   const C = content(s), fac = t => s.facilities.filter(f => f.type === t);
   const L = fac('lanchonete'), W = fac('banheiro'), J = fac('loja');
   if (L.length) earn(s, 'lanches', 0.7 * (C.facilities.lanchonete.venda - C.facilities.lanchonete.custoVenda));
   if (J.length) earn(s, 'loja', 0.35 * (C.facilities.loja.venda - C.facilities.loja.custoVenda));
   if (W.length) { const w = pick(s, W); w.dirty = clamp((w.dirty || 0) + 0.02); }
-  if (L.length && rnd(s) < 0.2) dropLitterRandom(s);
+  if (L.length && rnd(s) < 0.2 * (1 - binCover(s))) dropLitterRandom(s);
   const r = s.stats.rep;
-  const est = 0.35 + 0.3 * r.animais + 0.1 * !!L.length + 0.1 * !!W.length + 0.08 * !!J.length + 0.07 * !!fac('playground').length - litterPenalty(s);
+  const est = 0.35 + 0.3 * r.animais + 0.1 * !!L.length + 0.1 * !!W.length + 0.08 * !!J.length + 0.07 * !!fac('playground').length
+    + 0.03 * has(s, 'lixeira') + 0.03 * (has(s, 'banco') || !!fac('banco').length) + 0.04 * !!(fac('mesas').length && L.length) - litterPenalty(s);
   recordSat(s, est, 0.02);
 }
 export function litterCount(s) { let n = 0; for (const k in s.litter) n += s.litter[k]; return n; }
 const litterPenalty = s => clamp(litterCount(s) / 60, 0, 0.3);
 function dropLitterRandom(s) {
-  const tiles = []; for (let i = 0; i < MAP * MAP; i++) if (s.terrain[i] === 'p') tiles.push(i);
+  const tiles = []; for (let i = 0; i < MAP * MAP; i++) if (isPathT(s.terrain[i])) tiles.push(i);
   if (tiles.length) { const i = pick(s, tiles); s.litter[i] = Math.min(3, (s.litter[i] || 0) + 1); }
 }
 
@@ -58,6 +63,13 @@ function chooseGoal(s, v) {
   const C = content(s), F = t => s.facilities.filter(f => f.type === t);
   const go = (type, fac) => { const t = accessTile(s, fac); if (t && routeTo(s, v, t[0], t[1])) { v.goal = { type, id: fac.id }; return true; } return false; };
   const nearest = list => list.sort((a, b) => dist(v, tileToWorld(a.tx, a.ty)) - dist(v, tileToWorld(b.tx, b.ty)));
+  if (v.trash && !v.panic) { // lixo na mão: vai até a lixeira mais próxima; sem lixeira por perto, joga no chão
+    v.trash = false;
+    const b = nearest(s.furn.filter(f => f.type === 'lixeira'))[0];
+    if (b && dist(v, tileToWorld(b.tx, b.ty)) < 36 && routeTo(s, v, b.tx, b.ty)) { v.goal = { type: 'bin' }; return; }
+    const c = worldToTile(v.x, v.z), i = idx(c.tx, c.ty); if (isPathT(s.terrain[i]) && rnd(s) < 0.85) s.litter[i] = Math.min(3, (s.litter[i] || 0) + 1);
+  }
+  if (v.next === 'mesas' && !v.leaving && !v.panic) { v.next = null; for (const f of nearest(F('mesas'))) if (go('sit', f)) return; }
   if (v.leaving || v.stay <= 0 || v.energy < 0.1 || !isOpen(s)) {
     v.leaving = true;
     if (!v.loja && !v.panic && rnd(s) < 0.35) { v.loja = true; for (const f of nearest(F('loja'))) if (go('loja', f)) return; }
@@ -67,7 +79,11 @@ function chooseGoal(s, v) {
   }
   if (v.bath > 0.7) { for (const f of nearest(F('banheiro'))) if (go('wc', f)) return; v.sat -= 0.05; v.bath = 0.5; }
   if (v.hunger > 0.6) { for (const f of nearest(F('lanchonete'))) if (go('food', f)) return; v.sat -= 0.05; v.hunger = 0.4; }
-  if (v.energy < 0.35) { for (const f of nearest([...F('playground'), ...F('banco')])) if (go('rest', f)) return; v.sat -= 0.03; v.energy = 0.45; }
+  if (v.energy < 0.35) {
+    const seats = [...F('playground'), ...F('banco'), ...F('mesas'), ...s.furn.filter(f => f.type === 'banco')];
+    for (const f of nearest(seats)) { if (f.ox !== undefined) { if (routeTo(s, v, f.tx, f.ty)) { v.goal = { type: 'rest', furn: f.id }; return; } } else if (go('rest', f)) return; }
+    v.sat -= 0.03; v.energy = 0.45;
+  }
   if (rnd(s) < 0.12) { for (const f of nearest(F('playground'))) if (go('rest', f)) return; }
   const habs = s.habitats.filter(h => s.animals.some(a => a.hab === h.id && !a.escaped));
   if (habs.length) {
@@ -87,10 +103,13 @@ function applyGoal(s, v) {
   const C = content(s), g = v.goal; v.goal = null;
   if (!g) return;
   const f = g.id && s.facilities.find(x => x.id === g.id);
-  if (g.type === 'food' && f) { const D = C.facilities.lanchonete; earn(s, 'lanches', D.venda - D.custoVenda); v.hunger = 0; v.sat += 0.05;
-    if (rnd(s) < 0.3) { const t = worldToTile(v.x, v.z); const i = idx(t.tx, t.ty); if (s.terrain[i] === 'p') s.litter[i] = Math.min(3, (s.litter[i] || 0) + 1); } }
+  if (g.type === 'food' && f) { const D = C.facilities.lanchonete; earn(s, 'lanches', D.venda - D.custoVenda); v.hunger = 0; v.sat += 0.05; v.trash = true;
+    const m = F2(s, 'mesas'); if (m.length && rnd(s) < 0.6) v.next = 'mesas'; }
+  else if (g.type === 'sit' && f) { v.energy = clamp(v.energy + 0.3); v.sat += 0.06; }
+  else if (g.type === 'bin') { v.sat += 0.01; }
   else if (g.type === 'wc' && f) { v.bath = 0; f.dirty = clamp((f.dirty || 0) + 0.04); v.sat += f.dirty > 0.7 ? -0.12 : 0.03; }
   else if (g.type === 'loja' && f) { const D = C.facilities.loja; earn(s, 'loja', D.venda - D.custoVenda); v.sat += 0.05; }
+  else if (g.type === 'rest' && g.furn) { v.energy = clamp(v.energy + 0.5); v.sat += 0.04; }
   else if (g.type === 'rest' && f) { v.energy = clamp(v.energy + 0.5); v.sat += f.type === 'playground' ? 0.07 : 0.03; }
   else if (g.type === 'view') {
     const an = s.animals.filter(a => a.hab === g.id && !a.escaped && C.species[a.sp]);
@@ -130,5 +149,6 @@ export function updateVisitors(s, gameMin, ctx) {
     if (v.goal) applyGoal(s, v);
     chooseGoal(s, v);
   }
-  s.stats.visitorsIn = s.visitors.length;
+  s.vstock = (s.vstock || []).filter(t => t > s.clock.min); if (!isOpen(s)) s.vstock.length = 0;
+  s.stats.visitorsIn = s.visitors.length + s.vstock.length; // o contador inclui quem não é desenhado
 }

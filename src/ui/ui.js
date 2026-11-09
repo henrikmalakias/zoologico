@@ -7,6 +7,7 @@ import { worldToTile, tileToWorld, idx, inMap, AREAS, TILE } from '../sim/grid.j
 import { stars, hire, fireById, expandArea, METAS, VAGAS, SPEEDS, H2, MES, fixedDaily } from '../sim/core.js';
 import { checkHabitat, placeHabitat, paintTerrain, placePlant, checkFacility, placeFacility, buyAnimal, sellAnimal, demolish, setTicket, setSalary, renameHabitat, habitatCost, sculpt, SCULPT_COST } from '../sim/build.js';
 import { heightAt } from '../sim/grid.js';
+import { distributeFurniture, levelSpacing } from '../sim/furn.js';
 import { suitability, habById, habInfo } from '../sim/animals.js';
 import { ALERT_INFO, alertPos, alertTargetName, eligibleStaff, dispatch, taskName, orderTransfer, TRANSFER_ROLES, orderTask, ORDER_ROLES } from '../sim/staff.js';
 import { arrivalRate } from '../sim/visitors.js';
@@ -31,7 +32,7 @@ const ATTR_NOME = { habilidade: 'Habilidade', rapidez: 'Rapidez', dedicacao: 'De
 
 export class UI {
   constructor(root, game) {
-    this.root = root; this.g = game; this.tool = null; this.cat = 'habitat'; this.opts = { biome: 'savana', fence: 'ferro', terrain: 'g', plant: 'acacia', fac: 'lanchonete', sp: 'zebra' };
+    this.root = root; this.g = game; this.tool = null; this.cat = 'habitat'; this.opts = { biome: 'savana', fence: 'ferro', terrain: 'g', plant: 'acacia', fac: 'lanchonete', sp: 'zebra', pathType: 'k', furn: { poste: 5, lixeira: 5, banco: 5 } };
     this.sel = null; this.modal = null; this.alertEls = new Map(); this.sound = sound;
     this.buildHud();
     this.tut = new Tutorial(this);
@@ -167,11 +168,23 @@ export class UI {
       body = [h('div', { class: 'items' }, ...Object.entries(C.biomes).map(([k, b]) => item(o.biome === k, b.nome, 'Bioma', set('biome', k))),
         ...Object.entries(C.fences).map(([k, f]) => item(o.fence === k, f.nome, `R$ ${f.custo}/bloco · alt ${f.altura} m · res ${f.resistencia}`, set('fence', k))))];
       hint = o.fence === 'fosso' ? 'Ilha pronta: arraste para desenhar (mín. 8 x 8). Um fosso de água funda de 2 blocos vira a barreira, com ponte e portão. Ótima para macacos e leões; elefantes nadam, então ainda podem fugir.' : o.fence === 'tela' ? 'Viveiro: cerca com rede por cima. Ideal para macacos, que escalam. Fraco contra animais fortes.' : 'Arraste no mapa para desenhar o habitat (mín. 4 x 4). Use dois dedos para mover a câmera.';
-    } else if (this.cat === 'caminho') { hint = 'Arraste para pintar caminhos (R$ 20/bloco). Visitantes só andam nos caminhos.'; }
+    } else if (this.cat === 'caminho') {
+      const PRE = { p: { poste: 3, lixeira: 3, banco: 3 }, q: { poste: 0, lixeira: 0, banco: 0 }, c: { poste: 5, lixeira: 5, banco: 5 }, k: { poste: 5, lixeira: 5, banco: 5 } };
+      const types = Object.entries(C.terrains).filter(([, t]) => t.caminho);
+      const sl = (type, icon) => {
+        const F = C.furniture[type], lab = h('span', { class: 'sl-val' });
+        const upd = () => { const v = o.furn[type]; lab.textContent = v ? `a cada ~${Math.round(levelSpacing(C, type, v))} m · R$ ${F.custo}` : 'nenhum'; };
+        const inp = h('input', { type: 'range', min: 0, max: 10, step: 1, value: o.furn[type], oninput: e => { o.furn[type] = +e.target.value; upd(); } }); upd();
+        return h('div', { class: 'slrow' }, h('span', { class: 'sl-n' }, `${icon} ${F.nome}`), inp, lab);
+      };
+      body = [h('div', { class: 'items' }, ...types.map(([k, t]) => item(o.pathType === k, t.nome, `R$ ${t.custo}/bloco`, () => { o.pathType = k; o.furn = { ...PRE[k] }; this.renderDrawer(); }))),
+        h('div', { class: 'slbox' }, sl('poste', '💡'), sl('lixeira', '🗑'), sl('banco', '🪑'))];
+      hint = 'Arraste para pintar o caminho. Postes, lixeiras e bancos são espalhados sozinhos ao longo do trecho novo, nas bordas ou na calçada. Arraste de novo sobre um caminho existente para acrescentar mobiliário. Lanchonetes e mesas ganham uma lixeira de brinde.';
+    }
     else if (this.cat === 'relevo') { body = [h('div', { class: 'items' }, ...[['subir', '⬆ Subir'], ['baixar', '⬇ Baixar'], ['suavizar', '〰 Suavizar'], ['nivelar', '▬ Nivelar']].map(([k, n]) => item((o.relevo || 'subir') === k, n, `R$ ${SCULPT_COST} por pincelada`, set('relevo', k))))]; hint = 'Arraste para moldar colinas e vales. Baixar dentro da água deixa o lago mais fundo (elefantes gostam de água funda para o banho). Nivelar usa a altura de onde você começou. Caminhos só aceitam rampas suaves.'; }
-    else if (this.cat === 'terreno') { body = [h('div', { class: 'items' }, ...Object.entries(C.terrains).filter(([k]) => k !== 'p').map(([k, t]) => item(o.terrain === k, t.nome, `R$ ${t.custo}/bloco`, set('terrain', k))))]; hint = 'Arraste para pintar o terreno. Dentro dos habitats, siga o terreno do bioma.'; }
+    else if (this.cat === 'terreno') { body = [h('div', { class: 'items' }, ...Object.entries(C.terrains).filter(([, t]) => !t.caminho).map(([k, t]) => item(o.terrain === k, t.nome, `R$ ${t.custo}/bloco`, set('terrain', k))))]; hint = 'Arraste para pintar o terreno. Dentro dos habitats, siga o terreno do bioma.'; }
     else if (this.cat === 'planta') { body = [h('div', { class: 'items' }, ...Object.entries(C.plants).map(([k, p]) => item(o.plant === k, p.nome, `${C.biomes[p.bioma].nome} · R$ ${p.custo}${p.alta ? ' · alta' : ''}`, set('plant', k))))]; hint = 'Toque ou arraste para plantar. Cada espécie precisa de plantas do seu bioma.'; }
-    else if (this.cat === 'inst') { body = [h('div', { class: 'items' }, ...Object.entries(C.facilities).filter(([, d]) => !d.fixo).map(([k, d]) => item(o.fac === k, d.nome, `R$ ${d.custo.toLocaleString('pt-BR')} · ${d.w}x${d.h}`, set('fac', k))))]; hint = 'Toque no mapa para posicionar. Precisa ficar ao lado de um caminho (exceto o centro de cuidados).'; }
+    else if (this.cat === 'inst') { body = [h('div', { class: 'items' }, ...Object.entries(C.facilities).filter(([, d]) => !d.fixo).map(([k, d]) => item(o.fac === k, d.nome, `R$ ${d.custo.toLocaleString('pt-BR')} · ${d.w}x${d.h}`, set('fac', k))))]; hint = 'Toque no mapa para posicionar. Precisa ficar ao lado de um caminho (exceto o centro de cuidados); a entrada vira sozinha para o caminho. A área de mesas precisa ficar perto de uma lanchonete.'; }
     else if (this.cat === 'animal') { body = [h('div', { class: 'items' }, ...Object.entries(C.species).map(([k, a]) => item(o.sp === k, a.nome, `R$ ${a.custo.toLocaleString('pt-BR')} · ${C.biomes[a.bioma].nome}`, set('sp', k))))];
       body.push(h('button', { class: 'btn sec sm', style: 'margin-top:6px', onclick: () => this.openZoopedia(o.sp) }, `📖 Ver ${C.species[o.sp].nome} na Zoopédia`));
       const S = C.species[o.sp]; hint = `Toque dentro de um habitat para comprar. ${S.nome}: ${S.dieta}, grupo de ${S.social.min} a ${S.social.max}, ${S.espaco} blocos por animal, barreira mín. ${S.barreira.altura} m / res. ${S.barreira.resistencia}${S.agua ? `, ${S.agua} blocos de água` : ''}.`; }
@@ -183,13 +196,20 @@ export class UI {
   }
   toolWantsDrag() { return ['habitat', 'caminho', 'terreno', 'planta', 'relevo'].includes(this.tool); }
   tileAt(cx, cy) { const p = this.g.world.groundAt(cx, cy); if (!p) return null; const t = worldToTile(p.x, p.z); return inMap(t.tx, t.ty) ? t : null; }
-  toolDragStart(cx, cy) { this.hideConfirm(); if (this.tool !== 'habitat') this.g.snapshot(TOOL_NOME[this.tool]); this.dragA = this.tileAt(cx, cy); this.painted = new Set(); this.toolDrag(cx, cy); }
+  finishPath() {
+    const tiles = this.strokeTiles || []; this.strokeTiles = [];
+    if (this.tool !== 'caminho' || !tiles.length) return;
+    const r = distributeFurniture(this.s, tiles, this.opts.furn), n = r.placed, tot = n.poste + n.lixeira + n.banco;
+    if (tot) { sound.cash(); this.toast(`Mobiliário colocado: ${n.poste} poste(s), ${n.lixeira} lixeira(s), ${n.banco} banco(s) · R$ ${r.cost.toLocaleString('pt-BR')}.`, 'bom'); }
+    if (r.semDinheiro) this.toast('O dinheiro acabou antes de colocar todo o mobiliário.', 'ruim');
+  }
+  toolDragStart(cx, cy) { this.strokeTiles = []; this.hideConfirm(); if (this.tool !== 'habitat') this.g.snapshot(TOOL_NOME[this.tool]); this.dragA = this.tileAt(cx, cy); this.painted = new Set(); this.toolDrag(cx, cy); }
   toolDrag(cx, cy) {
     const t = this.tileAt(cx, cy); if (!t || !this.dragA) return; const s = this.s;
     if (this.tool === 'habitat') { const c = checkHabitat(s, this.dragA.tx, this.dragA.ty, t.tx, t.ty, this.opts.fence); this.dragB = t; const r = c.rect; this.g.world.showPreview(r.x, r.y, r.w, r.h, c.ok, 0.6); this.dragMsg = c; return; }
     const k = t.tx + ',' + t.ty; if (this.painted.has(k)) return; this.painted.add(k);
     let r;
-    if (this.tool === 'caminho') r = paintTerrain(s, t.tx, t.ty, 'p');
+    if (this.tool === 'caminho') { r = paintTerrain(s, t.tx, t.ty, this.opts.pathType || 'p'); if (r.ok) (this.strokeTiles ||= []).push([t.tx, t.ty]); }
     else if (this.tool === 'terreno') r = paintTerrain(s, t.tx, t.ty, this.opts.terrain);
     else if (this.tool === 'planta') r = placePlant(s, t.tx, t.ty, this.opts.plant);
     else if (this.tool === 'relevo') { if (this.painted.size === 1) { const w = tileToWorld(t.tx, t.ty); this.levelBase = heightAt(s, w.x, w.z); } r = sculpt(s, t.tx, t.ty, this.opts.relevo || 'subir', this.levelBase); setTimeout(() => this.painted.delete(k), 120); }
@@ -210,6 +230,7 @@ export class UI {
       }, () => this.g.world.hidePreview());
       return;
     }
+    this.finishPath();
     setTimeout(() => this.g.world.hidePreview(), 300);
   }
   toolCancel() { this.dragMsg = null; this.g.world.hidePreview(); }
@@ -217,7 +238,7 @@ export class UI {
     const s = this.s, C = content(s);
     if (this.tool) {
       const t = this.tileAt(cx, cy); if (!t) return;
-      if (['caminho', 'terreno', 'planta', 'relevo'].includes(this.tool)) { this.g.snapshot(TOOL_NOME[this.tool]); this.dragA = t; this.painted = new Set(); this.toolDrag(cx, cy); setTimeout(() => this.g.world.hidePreview(), 300); return; }
+      if (['caminho', 'terreno', 'planta', 'relevo'].includes(this.tool)) { this.g.snapshot(TOOL_NOME[this.tool]); this.dragA = t; this.painted = new Set(); this.strokeTiles = []; this.toolDrag(cx, cy); this.finishPath(); setTimeout(() => this.g.world.hidePreview(), 300); return; }
       if (this.tool === 'habitat') { this.toast('Arraste para desenhar o habitat.', 'ruim'); return; }
       if (this.tool === 'inst') {
         const D = C.facilities[this.opts.fac], c = checkFacility(s, this.opts.fac, t.tx, t.ty);
@@ -546,7 +567,7 @@ export class UI {
     else body = [h('div', { class: 'card' }, h('b', {}, 'Como jogar'),
       ...['Você é o gerente. A equipe faz as rotinas sozinha; você cuida das emergências.', 'Construir > Habitat: arraste para desenhar. Depois plante vegetação do bioma e compre animais.',
         'Cada espécie precisa de bioma, espaço, plantas, terreno, barreira e grupo certos. Toque no habitat para ver o que falta.', 'Contrate tratador, veterinário, faxineiro e segurança em Equipe > Currículos.',
-        'Quando algo dá errado aparece um botão no mapa. Toque nele e escolha quem enviar. Com um subgerente, ele despacha sozinho.', 'Visitantes andam pelos caminhos: coloque lanchonete, banheiro, loja, bancos e placas educativas.',
+        'Quando algo dá errado aparece um botão no mapa. Toque nele e escolha quem enviar. Com um subgerente, ele despacha sozinho.', 'Visitantes andam pelos caminhos: coloque lanchonete, mesas, banheiro, loja e placas educativas, e deixe postes, lixeiras e bancos pelo caminho. Com lixeira por perto, eles não jogam lixo no chão.',
         'Tempo: 1 dia de jogo = 1 hora real. As horas do dia (6h às 20h) passam devagar e a noite passa rápido. ⏩ avança até a manhã (para sozinho em emergência). 👁 AO VIVO: ande pelo parque em tempo real.', 'Salários e manutenção são pagos no fechamento do mês (a cada 30 dias). Comida, remédios e consertos são cobrados na hora.', 'Toque num habitat para ver as sugestões de melhoria, cada uma com um botão para resolver.', 'Com o app fechado o parque continua em tempo real por até 72 h.', 'Relevo: molde colinas e lagos fundos em Construir > Relevo. Ilhas com fosso e viveiros com tela estão em Construir > Habitat.', 'Para mudar um animal de habitat, toque nele e use 🚚 Mover.',
         'Câmera: arraste um dedo para mover; pinça para aproximar; dois dedos girando para rodar; dois dedos arrastando para cima ou para baixo para inclinar; toque duplo para chegar perto. Os botões ⟲ ⟳ ▲ ▼ ＋ － fazem o mesmo, e a bússola volta para o norte. No modo construção, use dois dedos para mover.',
         'Errou uma construção? Use ↶ Desfazer no canto da tela (vale por 60 segundos).', '📖 Zoopédia (em Gerência): fatos reais sobre cada espécie e a lista dos seus animais. Toque num animal e use ✏️ Nome para batizá-lo.'].map(t => h('div', { style: 'margin:5px 0' }, '• ' + t))),
