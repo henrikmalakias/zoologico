@@ -34,6 +34,7 @@ class Game {
     requestAnimationFrame(t => this.frame(t));
     setInterval(() => this.save(), 15000);
     document.addEventListener('visibilitychange', () => this.onVisibility());
+    this.wakeSync(); addEventListener('pointerdown', () => { if (!this.wake) this.wakeSync(); }, { passive: true });
     addEventListener('pagehide', () => this.save());
     this.registerSW(); setTimeout(() => this.checkUpdate(false), 2500);
     document.getElementById('boot')?.remove();
@@ -82,8 +83,19 @@ class Game {
     sound.undo(); this.ui.toast(`Desfeito: ${u.label}.`, 'bom');
   }
   async save() { try { this.state.clock.lastRealTs = Date.now(); this.saveWhere = await saveGame(this.state); this.lastSave = Date.now(); } catch (e) { console.warn('save', e); } }
+  // mantém a tela acesa enquanto o jogo está aberto (Screen Wake Lock); some sozinho ao sair do app
+  async wakeSync() {
+    try {
+      const want = this.state.settings.telaLigada !== false && !document.hidden;
+      if (!want) { if (this.wake) { const w = this.wake; this.wake = null; await w.release(); } return; }
+      if (this.wake || !navigator.wakeLock) return;
+      const w = await navigator.wakeLock.request('screen'); this.wake = w;
+      w.addEventListener('release', () => { if (this.wake === w) this.wake = null; });
+    } catch (e) { this.wake = null; }
+  }
   onVisibility() {
-    if (document.hidden) { this.save(); this.hiddenAt = Date.now(); return; }
+    if (document.hidden) { this.save(); this.hiddenAt = Date.now(); this.wake = null; return; }
+    this.wakeSync();
     const rep = catchUp(this.state, Date.now()); this.last = performance.now();
     if (rep && rep.minutos > 10) this.ui.showReport(rep, '📰 Enquanto você esteve fora');
   }
@@ -99,7 +111,7 @@ class Game {
   async copySave() { try { await navigator.clipboard.writeText(JSON.stringify(serialize(this.state))); this.ui.toast('Save copiado! Cole num bloco de notas para guardar.', 'bom'); } catch (e) { this.ui.toast('Não foi possível copiar aqui.', 'ruim'); } }
   pasteSave(t) { try { this.replaceState(deserialize(t)); this.ui.toast('Save carregado!', 'bom'); } catch (e) { this.ui.toast('Save inválido: ' + e.message, 'ruim'); } }
   async importSave() { try { const s = await importFile(); this.replaceState(s); this.ui.toast('Save importado!', 'bom'); } catch (e) { this.ui.toast(e.message, 'ruim'); } }
-  async newGame(opts = {}) { await backup(this.state, 'antes-novo-jogo'); const q = this.state.settings; const s = newGame(Date.now(), opts); Object.assign(s.settings, { quality: q.quality, autoQualidade: q.autoQualidade, mostrarFps: q.mostrarFps, som: q.som, volume: q.volume, ambiente: q.ambiente }); this.replaceState(s); this.undoInfo = null; this.ui.closeModal(); this.ui.tut.restart(); this.ui.welcome(); }
+  async newGame(opts = {}) { await backup(this.state, 'antes-novo-jogo'); const q = this.state.settings; const s = newGame(Date.now(), opts); Object.assign(s.settings, { quality: q.quality, autoQualidade: q.autoQualidade, mostrarFps: q.mostrarFps, telaLigada: q.telaLigada, som: q.som, volume: q.volume, ambiente: q.ambiente }); this.replaceState(s); this.undoInfo = null; this.ui.closeModal(); this.ui.tut.restart(); this.ui.welcome(); }
   replaceState(s) {
     sound.configure(s.settings);
     s._events = []; s.clock.lastRealTs = Date.now(); this.state = s;

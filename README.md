@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.6.1
+# Projeto Zoológico — v1.6.2
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 

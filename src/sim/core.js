@@ -15,7 +15,7 @@ export function timeFactor(s) { const T = content(s).tempo, h = hourOf(s.clock.m
 export const H2 = 2 * 3600e3, H72 = 72 * 3600e3;
 export const VAGAS = [1, 1, 2, 3];
 
-export const DEFAULT_SETTINGS = () => ({ quality: 'baixo', fugas: true, tranquilo: false, autoQualidade: true, mostrarFps: false, som: true, volume: 0.7, ambiente: true, tutorial: { passo: 0, feito: false } });
+export const DEFAULT_SETTINGS = () => ({ quality: 'baixo', fugas: true, tranquilo: false, autoQualidade: true, mostrarFps: false, telaLigada: true, som: true, volume: 0.7, ambiente: true, tutorial: { passo: 0, feito: false } });
 export function newGame(now = Date.now(), opts = {}) {
   const s = {
     schemaVersion: SCHEMA, gameVersion: APP_VERSION, packs: { base: '1.0.0' }, rng: (now % 2147483647) | 0, nextId: 1,
