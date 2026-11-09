@@ -1,6 +1,6 @@
 import { content } from '../content/registry.js';
 import { clamp, rnd, uid, log } from './util.js';
-import { MAP, idx, inMap, inArea, rebuildOcc, isPath, isPathT, accessTile, orientFacility, CW, ci, tileCorners, tileSlope, WATER_Y, worldToTile } from './grid.js';
+import { MAP, idx, inMap, inArea, rebuildOcc, isPath, isPathT, accessTile, orientFacility, CW, ci, tileCorners, tileSlope, WATER_Y, worldToTile, fixShore } from './grid.js';
 import { removeFurnAt, addFurnNear } from './furn.js';
 import { newAnimal, habById } from './animals.js';
 import { spend, earn } from './staff.js';
@@ -371,6 +371,6 @@ export function sculpt(s, tx, ty, mode, base = 0) {
   for (let y = ty - 3; y <= ty + 3; y++) for (let x = tx - 3; x <= tx + 3; x++) if (inMap(x, y) && isPathT(s.terrain[idx(x, y)]) && tileSlope(s, x, y) > 0.9) {
     for (const [k, v] of before) H[k] = v; return R(false, 'Muito íngreme para o caminho. Caminhos aceitam no máximo uma rampa suave.');
   }
-  spend(s, 'construcao', SCULPT_COST); s._hver = (s._hver || 0) + 1;
+  spend(s, 'construcao', SCULPT_COST); s._hver = (s._hver || 0) + 1; fixShore(s);
   return R(true);
 }

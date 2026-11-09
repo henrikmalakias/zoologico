@@ -121,10 +121,10 @@ export function buildAnimal(kit, sp, male) {
 }
 export function animateAnimal(obj, a, dt, moving) {
   const u = obj.userData, d = u.d;
-  const sleeping = a.st === 'sleep' || a.st === 'sedado';
+  const sleeping = a.st === 'sleep' || a.st === 'tree_sleep' || a.st === 'sedado';
   u.phase += dt * (moving ? 7 * (1.4 / Math.max(0.6, d.legH)) : 1.6);
   const p = u.phase;
-  if (u.bird && a.st === 'sleep') { u.legs[0].rotation.x = 0; u.legs[1].rotation.x = -2.6; u.neck.rotation.x += (-1.0 - u.neck.rotation.x) * Math.min(1, dt * 3); u.rig.position.y = 0; return; }
+  if (u.bird && (a.st === 'sleep' || a.st === 'tree_sleep')) { u.legs[0].rotation.x = 0; u.legs[1].rotation.x = -2.6; u.neck.rotation.x += (-1.0 - u.neck.rotation.x) * Math.min(1, dt * 3); u.rig.position.y = 0; return; }
   if (sleeping) {
     u.rig.position.y += (-(d.legH * 0.75) - u.rig.position.y) * Math.min(1, dt * 3);
     u.legs.forEach((l, i) => { l.rotation.x = i < 2 ? -1.3 : 1.3; });
@@ -134,10 +134,10 @@ export function animateAnimal(obj, a, dt, moving) {
   }
   u.rig.position.y += (0 - u.rig.position.y) * Math.min(1, dt * 4);
   u.rig.position.z = a.st === 'empurrar' ? Math.sin(p * 6) * 0.15 : 0;
-  if (a.st === 'pulando') { u.legs.forEach((l, i) => { l.rotation.x = i < 2 ? -0.9 : 0.9; }); return; }
+  if (a.st === 'pulando' || a.st === 'salto') { u.legs.forEach((l, i) => { l.rotation.x = i < 2 ? -0.9 : 0.9; }); return; }
   if (moving) { u.legs.forEach((l, i) => { l.rotation.x = Math.sin(p + (i === 0 || i === 3 ? 0 : Math.PI)) * 0.55; }); u.rig.position.y = Math.abs(Math.sin(p)) * 0.04; }
   else u.legs.forEach(l => { l.rotation.x *= 0.85; });
-  const eating = a.st === 'eat' || a.st === 'drink';
+  const eating = a.st === 'eat' || a.st === 'drink' || a.st === 'filtrar';
   const nt = eating ? (u.sp === 'girafa' ? 0.9 : u.bird ? 2.2 : 1.0) : Math.sin(p * 0.3) * 0.06;
   u.neck.rotation.x += (nt - u.neck.rotation.x) * Math.min(1, dt * 4);
   u.tail.rotation.z = Math.sin(p * 1.3) * 0.35;

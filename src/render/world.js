@@ -6,6 +6,7 @@ let LIB = null; export const library = () => (LIB ||= new ModelLibrary());
 import { content } from '../content/registry.js';
 import { MAP, TILE, HALF, idx, inMap, tileToWorld, AREAS, CW, heightAt, walkY, WATER_Y, bridgeTiles, isPathT, isPath, DIR_ROT } from '../sim/grid.js';
 import { edges } from '../sim/habshape.js';
+import { DRAFT } from '../sim/animals.js';
 import { hourOf } from '../sim/util.js';
 import { UltraSky, loadTerrainArrays, terrainData, fillTerrainData, terrainMaterial, waterNormalTexture, Grass, addFur, addSkinDetail, gradeMaterial } from './ultra.js';
 
@@ -19,6 +20,14 @@ const stoneWall = () => { const c = document.createElement('canvas'); c.width = 
 const SKY = { night: C3('#0d1a33'), dawn: C3('#e9a36a'), day: C3('#8fc6ea') };
 const VCOLS = ['#d64545', '#3a7bd5', '#f2c230', '#4caf50', '#9c27b0', '#ff8a3d', '#e0e0e0', '#26a69a'];
 
+// pele/pelo molhado no Ultra (1.7.2a): mais escuro e com mais brilho até secar
+function wetMaterial(tpl, near) {
+  const key = near ? 'wetNear' : 'wetFar', U = tpl.userData; if (U[key]) return U[key];
+  const src = near ? U.skinMat : U.farMat, m = src.clone();
+  m.onBeforeCompile = src.onBeforeCompile; m.customProgramCacheKey = src.customProgramCacheKey;
+  m.color.setScalar(0.62); m.roughness = Math.min(m.roughness, 0.5);
+  return (U[key] = m);
+}
 export class World {
   constructor(container, quality) { this.container = container; this.build(quality); }
   build(q) {
@@ -143,7 +152,7 @@ export class World {
     }
     for (const i of todo) { const x = i % MAP, y = (i / MAP) | 0; this.paintTile(s, i, !(x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1)); changed = true; }
     if (changed) { this.dirty = true; this.ttex.needsUpdate = true; this.cache.terrain = s.terrain.slice(); this.cache.area = s.areaLevel; this.tsig = (this.tsig || 0) + 1; if (this.tdata) fillTerrainData(this.tdata, s); }
-    if (water || !this.waterBuilt) this.rebuildWater(s);
+    if (water || !this.waterBuilt || this.cache.wver !== s._ver) { this.cache.wver = s._ver; this.rebuildWater(s); }
     if (s.height && this.cache.hver !== (s._hver || 0)) {
       this.cache.hver = s._hver || 0; const pos = this.ground.geometry.attributes.position;
       for (let i = 0; i < CW * CW; i++) pos.setY(i, s.height[i]);
@@ -156,8 +165,13 @@ export class World {
   rebuildWater(s) {
     this.waterBuilt = true;
     for (const c of [...this.waterG.children]) { c.geometry.dispose(); this.waterG.remove(c); }
-    const cover = new Set();
-    for (let i = 0; i < MAP * MAP; i++) if (s.terrain[i] === 'w') { const x = i % MAP, y = (i / MAP) | 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (inMap(x + dx, y + dy)) cover.add(idx(x + dx, y + dy)); }
+    // a margem só entra em blocos do mesmo lado da cerca (mesmo habitat, ou ambos fora) e sem caminho nem instalação:
+    // a água termina na linha do muro/cerca e não aparece por baixo dele nem em cima da calçada (1.7.2a)
+    const cover = new Set(), O = s._occ, edge = i => !O || (!O.fac[i] && !isPathT(s.terrain[i]));
+    for (let i = 0; i < MAP * MAP; i++) if (s.terrain[i] === 'w') {
+      const x = i % MAP, y = (i / MAP) | 0, zone = O ? O.hab[i] : 0; cover.add(i);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (!inMap(x + dx, y + dy)) continue; const j = idx(x + dx, y + dy); if (s.terrain[j] === 'w' || ((!O || O.hab[j] === zone) && edge(j))) cover.add(j); }
+    }
     if (!cover.size) return;
     if (!this.lakeMat) { this.lakeMat = this.waterMat.clone(); this.lakeMat.vertexColors = true; this.lakeMat.transparent = true; this.lakeMat.depthWrite = false; this.lakeMat.normalMap = this.waterMat.normalMap; }
     const N = 2, pos = [], col = [], ind = [], Hh = (x, z) => heightAt(s, x, z);
@@ -361,17 +375,22 @@ export class World {
       let e = this.maps.animals.get(a.id);
       if (e && e.kind !== kind) { this.layers.animals.remove(e.o); freeMerged(e.o); e = null; }
       if (!e) { const o = tpl ? sdfInstance(tpl) : mergeRig(buildAnimal(this.kit, a.sp, a.sex === 'M')); o.userData.kind = 'animal'; o.userData.id = a.id; o.position.set(a.x, 0, a.z); this.layers.animals.add(o); e = { o, px: a.x, pz: a.z, kind }; this.maps.animals.set(a.id, e); }
-      const o = e.o, moving = Math.hypot(a.x - e.px, a.z - e.pz) > 0.002 && dt > 0 && !a.carriedBy;
+      const o = e.o, climbing = a.st === 'climb_up' || a.st === 'climb_down', moving = (Math.hypot(a.x - e.px, a.z - e.pz) > 0.002 || climbing) && dt > 0 && !a.carriedBy;
       e.px = a.x; e.pz = a.z;
-      let x = a.x, z = a.z, rot = a.rot || 0, y = walkY(s, x, z) + (a.jy || 0);
-      if (a.carriedBy) { const v = this.maps.staff.get(a.carriedBy)?.veh; if (v) { const r = v.rotation.y; x = v.position.x - Math.sin(r) * (-v.userData.bedZ); z = v.position.z - Math.cos(r) * (-v.userData.bedZ); y = v.position.y + v.userData.bedY; rot = r + Math.PI / 2; } }
-      o.position.set(x, y, z); o.rotation.y = rot;
       const S = C.species[a.sp]; let sc = a.age < S.vida.adulto ? 0.5 + 0.5 * (a.age / S.vida.adulto) : 1;
+      let x = a.x, z = a.z, rot = a.rot || 0, y = walkY(s, x, z) + (a.jy || 0) + (a.cy || 0);
+      // na água funda o corpo boia na linha d'água (hipopótamo: só olhos e narinas de fora)
+      if (!a.cy && s.height) { const fl = WATER_Y - (DRAFT[a.sp] ?? 1) * sc; if (fl > y && a._nada) y = fl; }
+      if (a.carriedBy) { const v = this.maps.staff.get(a.carriedBy)?.veh; if (v) { const r = v.rotation.y; x = v.position.x - Math.sin(r) * (-v.userData.bedZ); z = v.position.z - Math.cos(r) * (-v.userData.bedZ); y = v.position.y + v.userData.bedY; rot = r + Math.PI / 2; } }
+      // subindo/descendo o tronco: corpo na vertical, de frente para a árvore
+      e.pitch = (e.pitch || 0) + ((climbing ? -1.3 : 0) - (e.pitch || 0)) * Math.min(1, dt * 6);
+      o.position.set(x, y, z); o.rotation.order = 'YXZ'; o.rotation.y = rot; o.rotation.x = e.pitch;
       if (a.carriedBy && (a.sp === 'girafa')) sc *= 0.75;
       o.scale.setScalar(sc);
       if (kind === 'sdf') {
         animateSDFAnimal(o, a, dt, moving, a.sp);
-        if (tpl?.userData.ultra) { const d2 = this.camera.position.distanceToSquared(o.position), near = this.ultra && d2 < (e.near ? 1900 : 1500); e.near = near; for (const c of o.children) if (c.userData.fur) c.visible = near; o.children[0].material = this.ultra ? (near ? tpl.userData.skinMat : tpl.userData.farMat) : tpl.userData.baseMat; }
+        if (tpl?.userData.ultra) { const d2 = this.camera.position.distanceToSquared(o.position), near = this.ultra && d2 < (e.near ? 1900 : 1500); e.near = near; for (const c of o.children) if (c.userData.fur) c.visible = near; const wet = this.ultra && (a._wet || 0) > 0.2 && !a.carriedBy;
+          o.children[0].material = this.ultra ? (wet ? wetMaterial(tpl, near) : near ? tpl.userData.skinMat : tpl.userData.farMat) : tpl.userData.baseMat; }
       } else animateAnimal(o, a, dt, moving);
     }
     for (const [id, e] of this.maps.animals) if (!seen.has(id)) { this.layers.animals.remove(e.o); freeMerged(e.o); this.maps.animals.delete(id); }

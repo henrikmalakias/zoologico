@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.7.1
+# Projeto Zoológico — v1.7.2
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -31,6 +31,12 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `src/render/ultra.js`: céu 360° por hora (Poly Haven, CC0), luz do ambiente, terreno com texturas (array de texturas), capim instanciado, água com ondas, copas de folhas, pelo em camadas e rugas.
 - `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
 - Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.
+
+## Árvores, água e macacos (1.7.2 = etapa 1.7.2a)
+- Árvores altas (`alta: true` em `src/content/base.js`) têm `tronco` (raio sólido), `galho` (altura onde os macacos sentam) e `copa`. Em `habObstacles` só elas são sólidas; `collide` empurra para fora do tronco e `detour` desvia as rotas.
+- Água por espécie: `aguaModo` (anfibio/vadeador/evita) e `aguaMax` (profundidade máxima). `depthAt` (grid.js) mede a profundidade; rotas e destinos evitam o que for fundo demais. `DRAFT` (animals.js) é o calado de quem boia.
+- `fixShore` (grid.js) deixa raso o canto onde a água encosta em caminho, instalação ou cerca; `rebuildWater` só estende a margem para blocos do mesmo lado da cerca.
+- Versões com letra (ex.: 1.7.2b) são aceitas na checagem de atualização a partir da 1.7.2.
 
 ## Sincronia com o Google Drive (1.7.1)
 `src/save/drive.js` guarda o save numa pasta oculta do app no Drive (escopo `drive.appdata`, o jogo não vê outros arquivos). Precisa de um ID de cliente OAuth, criado uma vez:

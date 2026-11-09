@@ -28,6 +28,7 @@ export function rebuildOcc(s) {
   let pn = 0; for (let i = 0; i < n; i++) if (isPathT(s.terrain[i])) pn++; s._pathN = pn;
   s._ver = (s._ver || 0) + 1;
   rebuildBridges(s);
+  fixShore(s);
 }
 export const habAt = (s, x, y) => (inMap(x, y) ? s._occ.hab[idx(x, y)] : 0);
 
@@ -129,6 +130,32 @@ export function heightAt(s, wx, wz) {
 export const tileCorners = (s, x, y) => [s.height[ci(x, y)], s.height[ci(x + 1, y)], s.height[ci(x, y + 1)], s.height[ci(x + 1, y + 1)]];
 export const tileSlope = (s, x, y) => { const c = tileCorners(s, x, y); return Math.max(...c) - Math.min(...c); };
 export const waterDepth = (s, x, y) => (s.terrain[idx(x, y)] === 'w' ? WATER_Y - tileCorners(s, x, y).reduce((a, b) => a + b, 0) / 4 : 0);
+// profundidade da água num ponto (m): só onde há água no bloco ou num vizinho (a margem rasa entra)
+export function depthAt(s, wx, wz) {
+  if (!s.height) return 0;
+  const t = worldToTile(wx, wz); if (!inMap(t.tx, t.ty)) return 0;
+  if (s._bridge && s._bridge.has(idx(t.tx, t.ty))) return 0;
+  let wet = false;
+  for (let dy = -1; dy <= 1 && !wet; dy++) for (let dx = -1; dx <= 1; dx++) { const x = t.tx + dx, y = t.ty + dy; if (inMap(x, y) && s.terrain[idx(x, y)] === 'w') { wet = true; break; } }
+  return wet ? Math.max(0, WATER_Y - heightAt(s, wx, wz)) : 0;
+}
+// margens firmes (1.7.2a): onde a água encosta num caminho, numa instalação ou numa cerca (bloco de outro habitat
+// ou de fora), o canto comum fica raso (4 cm), assim a água termina ali e não passa por baixo do muro/caminho
+export function fixShore(s) {
+  if (!s.height || !s._occ) return false;
+  const H = s.height, O = s._occ, T = s.terrain; let changed = false;
+  const zone = i => (O.fac[i] ? -1 : isPathT(T[i]) ? -2 : O.hab[i]);
+  for (let cy = 1; cy < MAP; cy++) for (let cx = 1; cx < MAP; cx++) {
+    const q = [idx(cx - 1, cy - 1), idx(cx, cy - 1), idx(cx - 1, cy), idx(cx, cy)];
+    let wetZ = null, firm = false;
+    for (const i of q) if (T[i] === 'w') { if (wetZ === null) wetZ = O.hab[i]; else if (O.hab[i] !== wetZ) firm = true; }
+    if (wetZ === null) continue;
+    for (const i of q) if (T[i] !== 'w') { const z = zone(i); if (z < 0 || z !== wetZ) firm = true; }
+    if (firm) { const k = ci(cx, cy), v = WATER_Y - 0.04; if (H[k] < v) { H[k] = v; changed = true; } }
+  }
+  if (changed) s._hver = (s._hver || 0) + 1;
+  return changed;
+}
 // altura para pisar (pontes das ilhas ficam acima da água)
 export function walkY(s, wx, wz) {
   const t = worldToTile(wx, wz);

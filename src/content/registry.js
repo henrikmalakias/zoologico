@@ -1,6 +1,6 @@
 import { BASE_PACK } from './base.js';
 
-export const APP_VERSION = '1.7.1';
+export const APP_VERSION = '1.7.2';
 export const AVAILABLE_PACKS = { base: BASE_PACK };
 
 // Catálogo de expansões. "em_breve" = ainda não publicada.
@@ -19,6 +19,14 @@ export const DLC_CATALOG = [
 ];
 
 export const CHANGELOG = [
+  { versao: '1.7.2', data: '09/11/2026', titulo: 'Versão 1.7.2 (etapa 1.7.2a): árvores, água e macacos nas árvores', itens: [
+    'Árvores sólidas: os animais não atravessam mais troncos (o do baobá é bem grosso) e desviam deles no caminho; arbustos, capim e samambaia continuam atravessáveis',
+    'Água por espécie: hipopótamo passa o dia na água e boia com só olhos e narinas de fora; elefante entra até a barriga e toma banho com a tromba; rinoceronte e tartaruga só no raso; flamingo filtra comida na água rasa; leão, zebra, girafa, macaco e gorila desviam da água funda',
+    'Quem entra na água sai molhado (no Ultra, pele e pelo mais escuros por um tempo)',
+    'Macacos (e gorilas jovens) sobem nas árvores altas, andam e pulam entre os galhos e dormem lá em cima à noite. Sem árvore alta no habitat, ficam no chão e aparece uma sugestão',
+    'Galho por cima da cerca facilita um pouco a fuga de quem sobe (nunca no viveiro com tela; nada muda no Modo Tranquilo)',
+    'Ilhas e lagos: a água não aparece mais por fora do muro nem em cima do caminho/calçada; a água termina na linha da cerca',
+  ] },
   { versao: '1.7.1', data: '09/11/2026', titulo: 'Versão 1.7.1: som, animais mais naturais e sincronia com o Drive', itens: [
     'Vozes novas: leão, rinoceronte e gorila (e as demais) refeitas com timbre de garganta e formantes, sem o som de "ruído grave". Cada voz é gerada uma vez e reaproveitada',
     'Burburinho do público: vozes indistintas que aumentam com o número de visitantes e com a câmera perto (também no AO VIVO); só durante a visitação. Entra em Configurações > Sons do ambiente',

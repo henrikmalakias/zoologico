@@ -76,9 +76,10 @@ export function clampInside(h, p, m = 0.25) {
   if (best < 0) return p;
   return clampInCell(h, best, p, m);
 }
-export function segInside(h, a, b, m = 0.3) {
+// ok(x, z): restrição extra opcional (1.7.2a: água funda demais para a espécie)
+export function segInside(h, a, b, m = 0.3, ok) {
   const d = Math.hypot(b.x - a.x, b.z - a.z), n = Math.max(1, Math.ceil(d / 0.7));
-  for (let k = 1; k <= n; k++) { const f = k / n; if (!insideAt(h, a.x + (b.x - a.x) * f, a.z + (b.z - a.z) * f, m)) return false; }
+  for (let k = 1; k <= n; k++) { const f = k / n, x = a.x + (b.x - a.x) * f, z = a.z + (b.z - a.z) * f; if (!insideAt(h, x, z, m) || (ok && !ok(x, z))) return false; }
   return true;
 }
 export function randomPoint(h, m, r) {
@@ -87,21 +88,21 @@ export function randomPoint(h, m, r) {
   return clampInCell(h, i, { x: c.x + (r() - 0.5) * TILE, z: c.z + (r() - 0.5) * TILE }, m);
 }
 // caminho entre dois pontos por dentro do habitat (contorna os cantos de formatos em L, U...)
-export function routeInside(h, a, b, m = 0.4) {
-  if (segInside(h, a, b, m)) return [b];
+export function routeInside(h, a, b, m = 0.4, ok) {
+  if (segInside(h, a, b, m, ok)) return [b];
   const W = walkSet(h), s0 = worldToTile(a.x, a.z), g0 = worldToTile(b.x, b.z), si = idx(s0.tx, s0.ty), gi = idx(g0.tx, g0.ty);
   if (!W.has(si) || !W.has(gi)) return [b];
   const from = new Map([[si, -1]]), q = [si];
   for (let k = 0; k < q.length && !from.has(gi); k++) {
     const i = q[k], x = tx(i), y = ty(i);
-    for (const [dx, dy] of Object.values(DIRS)) { const nx = x + dx, ny = y + dy, ni = idx(nx, ny); if (inMap(nx, ny) && W.has(ni) && !from.has(ni)) { from.set(ni, i); q.push(ni); } }
+    for (const [dx, dy] of Object.values(DIRS)) { const nx = x + dx, ny = y + dy, ni = idx(nx, ny); if (inMap(nx, ny) && W.has(ni) && !from.has(ni) && (!ok || ni === gi || ok(...Object.values(tileToWorld(nx, ny))))) { from.set(ni, i); q.push(ni); } }
   }
-  if (!from.has(gi)) return [b];
+  if (!from.has(gi)) return ok ? null : [b];
   const tiles = []; for (let c = gi; c !== -1; c = from.get(c)) tiles.push(c); tiles.reverse();
   const pts = tiles.map(i => tileToWorld(tx(i), ty(i))); pts[pts.length - 1] = b;
   // puxa o fio: só mantém os pontos onde a linha reta deixa de caber
   const out = []; let cur = a, k = 0;
-  while (k < pts.length - 1) { let j = pts.length - 1; while (j > k + 1 && !segInside(h, cur, pts[j], m)) j--; out.push(pts[j]); cur = pts[j]; k = j; }
+  while (k < pts.length - 1) { let j = pts.length - 1; while (j > k + 1 && !segInside(h, cur, pts[j], m, ok)) j--; out.push(pts[j]); cur = pts[j]; k = j; }
   if (!out.length || out[out.length - 1] !== b) out.push(b);
   return out;
 }

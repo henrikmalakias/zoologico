@@ -44,9 +44,9 @@ function animateSDFBird(o, a, dt, moving, an) {
   const u = o.userData.sdf, B = u.bones;
   const k = Math.min(1, dt * 2.5);
   u.lie = (u.lie ?? 0) + ((a.st === 'sedado' ? 1 : 0) - (u.lie ?? 0)) * k;
-  u.rest = (u.rest ?? 0) + ((a.st === 'sleep' ? 1 : 0) - (u.rest ?? 0)) * k;
+  u.rest = (u.rest ?? 0) + ((a.st === 'sleep' || a.st === 'tree_sleep' ? 1 : 0) - (u.rest ?? 0)) * k;
   u.walk = (u.walk ?? 0) + ((moving ? 1 : 0) - (u.walk ?? 0)) * Math.min(1, dt * 6);
-  u.eat = (u.eat ?? 0) + (((a.st === 'eat' || a.st === 'drink') ? 1 : 0) - (u.eat ?? 0)) * k;
+  u.eat = (u.eat ?? 0) + (((a.st === 'eat' || a.st === 'drink' || a.st === 'filtrar') ? 1 : 0) - (u.eat ?? 0)) * k;
   u.phase += dt * (moving ? an.freq : 1.2);
   const p = u.phase, L = u.lie, W = u.walk * (1 - L), Rr = u.rest * (1 - L);
   B.raiz.position.y = -L * 0.75; B.raiz.rotation.z = L * 0.5;
@@ -67,18 +67,19 @@ function animateSDFBird(o, a, dt, moving, an) {
 export function animateSDFAnimal(o, a, dt, moving, sp) {
   const sd = spec(sp); if (sd.tipo === 'ave') return animateSDFBird(o, a, dt, moving, sd.anim);
   const u = o.userData.sdf, B = u.bones, an = sd.anim;
-  const lying = a.st === 'sleep' || a.st === 'sedado';
+  const lying = a.st === 'sleep' || a.st === 'tree_sleep' || a.st === 'sedado';
   const k = Math.min(1, dt * 2.5);
   u.lie = (u.lie ?? 0) + ((lying ? 1 : 0) - (u.lie ?? 0)) * k;
   u.walk = (u.walk ?? 0) + ((moving ? 1 : 0) - (u.walk ?? 0)) * Math.min(1, dt * 6);
-  u.eat = (u.eat ?? 0) + (((a.st === 'eat' || a.st === 'drink') ? 1 : 0) - (u.eat ?? 0)) * k;
-  u.phase += dt * (moving ? an.freq : 1.3);
+  u.eat = (u.eat ?? 0) + (((a.st === 'eat' || a.st === 'drink' || a.st === 'filtrar') ? 1 : 0) - (u.eat ?? 0)) * k;
+  u.phase += dt * (moving ? an.freq * (a._nada ? 0.6 : 1) : 1.3);
+  u.bath = (u.bath ?? 0) + ((a.st === 'bath' ? 1 : 0) - (u.bath ?? 0)) * k;
   const p = u.phase, L = u.lie, W = u.walk * (1 - L);
   const legF = B.pernaFE1.userData.rest.y + B.peito.userData.rest.y + B.coluna.userData.rest.y + B.quadril.userData.rest.y;
   B.raiz.position.y = -L * legF * 0.72 + W * Math.abs(Math.sin(p * 2)) * 0.015 * legF;
   B.raiz.rotation.z = a.st === 'sedado' ? L * 0.3 : 0;
   B.raiz.position.z = a.st === 'empurrar' ? Math.sin(u.phase * 7) * 0.15 : 0;
-  if (a.st === 'pulando') { for (const [n, , front] of LEGS) { B[n + '1'].rotation.x = front ? -0.9 : 0.9; B[n + '2'].rotation.x = front ? 1.2 : -1.0; } B.pescoco.rotation.x = -0.2; return; }
+  if (a.st === 'pulando' || a.st === 'salto') { for (const [n, , front] of LEGS) { B[n + '1'].rotation.x = front ? -0.9 : 0.9; B[n + '2'].rotation.x = front ? 1.2 : -1.0; } B.pescoco.rotation.x = -0.2; return; }
   for (const [n, off, front] of LEGS) {
     const ph = p + off * Math.PI * 2, sw = Math.sin(ph) * an.passo * W, lift = Math.max(0, -Math.cos(ph)) * W;
     if (front) { B[n + '1'].rotation.x = sw * 0.85 - L * 1.25; B[n + '2'].rotation.x = lift * 0.9 + L * 0.15; B[n + '3'].rotation.x = lift * 0.5; }
@@ -91,7 +92,8 @@ export function animateSDFAnimal(o, a, dt, moving, sp) {
   if (B.cauda1) { B.cauda1.rotation.z = Math.sin(p * 1.3) * 0.3; B.cauda2.rotation.z = Math.sin(p * 1.3 - 0.7) * 0.4; B.cauda3.rotation.z = Math.sin(p * 1.3 - 1.4) * 0.45; B.cauda1.rotation.x = W * 0.2; }
   B.peito.scale.setScalar(1 + Math.sin(p * 1.6) * 0.01 * (1 - W));
   if (B.orelhaE) { B.orelhaE.rotation.y = Math.sin(p * 1.1) * 0.22; B.orelhaD.rotation.y = -Math.sin(p * 1.1 + 0.4) * 0.22; }
-  if (B.tromba1) { for (let i = 1; i <= 4; i++) B['tromba' + i].rotation.x = Math.sin(p * 0.8 + i * 0.5) * 0.08 * i - u.eat * 0.35 * (i === 4 ? -1.5 : 1) + W * 0.05; }
+  // banho: tromba sobe e esguicha água nas costas
+  if (B.tromba1) { for (let i = 1; i <= 4; i++) B['tromba' + i].rotation.x = Math.sin(p * 0.8 + i * 0.5) * 0.08 * i - u.eat * 0.35 * (i === 4 ? -1.5 : 1) + W * 0.05 - u.bath * (0.45 + 0.25 * Math.sin(p * 1.7)) * (i === 1 ? 0.6 : 1); }
 }
 export function animateSDFHuman(o, dt, moving, action, t) {
   const u = o.userData.sdf, B = u.bones;

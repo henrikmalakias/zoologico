@@ -8,7 +8,7 @@ import { stars, hire, fireById, expandArea, METAS, VAGAS, SPEEDS, H2, MES, fixed
 import { checkExpand, expandHabitat, checkShrink, shrinkHabitat, movableAt, moveObject, checkHabitat, placeHabitat, paintTerrain, placePlant, checkFacility, placeFacility, buyAnimal, sellAnimal, demolish, setTicket, setSalary, renameHabitat, habitatCost, sculpt, SCULPT_COST } from '../sim/build.js';
 import { heightAt } from '../sim/grid.js';
 import { distributeFurniture, levelSpacing } from '../sim/furn.js';
-import { suitability, habById, habInfo } from '../sim/animals.js';
+import { suitability, habById, habInfo, climber } from '../sim/animals.js';
 import { ALERT_INFO, alertPos, alertTargetName, eligibleStaff, dispatch, taskName, orderTransfer, TRANSFER_ROLES, orderTask, ORDER_ROLES } from '../sim/staff.js';
 import { arrivalRate } from '../sim/visitors.js';
 
@@ -25,7 +25,7 @@ const pct = v => Math.round(v * 100) + '%';
 const meter = (v, invert) => { const x = invert ? 1 - v : v; return h('div', { class: 'meter' + (x < 0.3 ? ' bad' : x < 0.55 ? ' warn' : '') }, h('i', { style: `width:${clamp(v) * 100}%` })); };
 const starStr = n => '★'.repeat(n) + '☆'.repeat(5 - n);
 const ICON = { doenca: '🩺', fome: '🍖', cerca: '🚧', brecha: '🧱', portao: '🚪', fuga: '🏃' };
-const ST_NOME = { idle: 'Parado', walk: 'Andando', eat_go: 'Indo comer', eat: 'Comendo', drink_go: 'Indo beber', drink: 'Bebendo', sleep: 'Dormindo', roam: 'Solto pelo parque', sedado: 'Sedado', bath_go: 'Indo se banhar', bath: 'Tomando banho', fugindo: 'Fugindo!', empurrar: 'Forçando a cerca!', pulando: 'Pulando a cerca!' };
+const ST_NOME = { idle: 'Parado', walk: 'Andando', eat_go: 'Indo comer', eat: 'Comendo', drink_go: 'Indo beber', drink: 'Bebendo', sleep: 'Dormindo', roam: 'Solto pelo parque', sedado: 'Sedado', bath_go: 'Indo se banhar', bath: 'Tomando banho', filtrar_go: 'Indo para a água rasa', filtrar: 'Filtrando comida na água', tree_go: 'Indo para uma árvore', climb_up: 'Subindo na árvore', tree: 'Na árvore', tree_move: 'Andando nos galhos', salto: 'Pulando de galho em galho', tree_sleep: 'Dormindo na árvore', climb_down: 'Descendo da árvore', fugindo: 'Fugindo!', empurrar: 'Forçando a cerca!', pulando: 'Pulando a cerca!' };
 const TOOL_NOME = { caminho: 'caminho', terreno: 'terreno', planta: 'plantas', relevo: 'relevo' };
 const STATUS_COR = { 'Pouco preocupante': '#2e8b57', 'Quase ameaçada': '#7cb342', 'Quase ameaçado': '#7cb342', 'Vulnerável': '#f2c230', 'Em perigo': '#f29c30', 'Criticamente em perigo': '#e53935' };
 const ATTR_NOME = { habilidade: 'Habilidade', rapidez: 'Rapidez', dedicacao: 'Dedicação', decisao: 'Decisão', economia: 'Economia' };
@@ -338,6 +338,7 @@ export class UI {
         out.push([`🌳 Faltam ${S.plantas - have} planta(s) ${S.plantasAltas ? 'altas ' : ''}de ${C.biomes[S.bioma].nome.toLowerCase()}.`, 'Plantar', tool('planta', { plant }), 0]); }
       if (P.agua < 0.95) { if (S.agua && I.water < S.agua) out.push([`💧 ${nome} precisa de pelo menos ${S.agua} blocos de água.`, 'Criar lago', tool('terreno', { terrain: 'w' }), 0]);
         if (S.aguaFunda && I.deep < S.aguaFunda) out.push([`🌊 ${nome} quer ${S.aguaFunda} blocos de água funda para o banho.`, 'Aprofundar lago', tool('relevo', { relevo: 'baixar' }), 0]); }
+      if (climber(S, an.find(a => a.sp === sp)) && !Object.values(I.tall).reduce((x, y) => x + y, 0)) out.push([`🐒 Sem árvore alta: ${nome.toLowerCase()} não tem onde subir nem dormir no alto.`, 'Plantar árvore', tool('planta', { plant: Object.entries(C.plants).find(([, v]) => v.bioma === hb.biome && v.alta)?.[0] || Object.entries(C.plants).find(([, v]) => v.alta)[0] }), 0]);
       if (P.cerca < 0.95) { const F = C.fences[hb.fence]; out.push([F.fosso ? `🏊 ${nome} sabe nadar: a ilha não segura 100%.` : `🧱 Barreira fraca para ${nome.toLowerCase()} (precisa ${S.barreira.altura} m de altura e resistência ${S.barreira.resistencia}; tem ${F.altura} m e ${F.resistencia}).`, 'Transferir', move(sp), 1]); }
       if (P.grupo < 0.95) out.push(n < S.social.min ? [`👥 Grupo pequeno: ${nome.toLowerCase()} vive em grupos de ${S.social.min} a ${S.social.max} (tem ${n}).`, 'Comprar mais', tool('animal', { sp }), 0] : [`👥 Grupo grande demais (máx. ${S.social.max}).`, 'Transferir um', move(sp), 0]);
       if (P.convivencia < 0.95) out.push([`⚠ Há um predador junto: ${nome.toLowerCase()} fica estressado.`, 'Transferir', move(sp), 1]);
