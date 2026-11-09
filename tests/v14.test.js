@@ -52,7 +52,7 @@ ok(t.settings.tranquilo && !t.settings.fugas && t.money === 120000, 'novo jogo n
 const th = placeHabitat(t, 25, 26, 32, 32, 'savana', 'ferro').hab; for (let i = 0; i < 2; i++) buyAnimal(t, 'leao', 28, 29);
 th.fenceHp = 0.05;
 simulateAbstract(t, 6 * 1440, { now }); // sem tratador: fome e sede
-ok(t.animals.length === 2 && t.animals.every(a => !a.escaped), `ninguém morreu nem fugiu em 6 dias sem cuidados (${t.animals.length} leões)`);
+ok(!t.stats.mortes && t.animals.length >= 2 && t.animals.every(a => !a.escaped), `ninguém morreu nem fugiu em 6 dias sem cuidados (${t.animals.length} leões, ${t.stats.mortes || 0} mortes)`);
 const n = newGame(now); const nh = placeHabitat(n, 25, 26, 32, 32, 'savana', 'ferro').hab; for (let i = 0; i < 2; i++) buyAnimal(n, 'leao', 28, 29);
 simulateAbstract(n, 6 * 1440, { now });
 ok(n.animals.filter(a => a.sp === 'leao').length < 2 || n.animals.some(a => a.escaped) || n.stats.mortes > 0, 'modo Normal: sem cuidados há consequências');
