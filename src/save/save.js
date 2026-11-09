@@ -86,9 +86,16 @@ export function exportFile(s) {
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 export function importFile() {
+  // Safari do iPad só entrega o arquivo se o seletor estiver na página e sem filtro de tipo (arquivos .json do Drive aparecem cinza)
   return new Promise((res, rej) => {
-    const i = document.createElement('input'); i.type = 'file'; i.accept = '.json,application/json';
-    i.onchange = () => { const f = i.files[0]; if (!f) return rej(new Error('Nenhum arquivo.')); const r = new FileReader(); r.onload = () => { try { res(deserialize(r.result)); } catch (e) { rej(e); } }; r.readAsText(f); };
+    const i = document.createElement('input'); i.type = 'file'; i.accept = '*/*'; i.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(i);
+    const fim = () => setTimeout(() => i.remove(), 1000);
+    i.addEventListener('change', async () => {
+      const f = i.files && i.files[0]; if (!f) { fim(); return rej(new Error('Nenhum arquivo escolhido.')); }
+      try { const t = f.text ? await f.text() : await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(r.error); r.readAsText(f); }); fim(); res(deserialize(t)); }
+      catch (e) { fim(); rej(new Error(e.message && e.message !== 'Unexpected token' ? e.message : 'Esse arquivo não é um save do jogo.')); }
+    });
     i.click();
   });
 }

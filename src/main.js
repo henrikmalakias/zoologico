@@ -14,13 +14,14 @@ import { startEscape } from './sim/animals.js';
 import { content } from './content/registry.js';
 import * as sound from './audio/sound.js';
 import { distributeFurniture } from './sim/furn.js';
+import { DriveSync, LOCAIS } from './save/drive.js';
 
 class Game {
   async start() {
     const app = document.getElementById('app');
     let s = null;
     try { s = await loadGame(); } catch (e) { console.warn(e); }
-    let report = null;
+    const localSavedAt = s?.savedAt || 0; let report = null;
     if (s) report = catchUp(s, Date.now()); else s = newGame(Date.now());
     this.state = s; this.live = false;
     this.world = new World(app, s.settings.quality); this.world.setEco(s.settings.economia !== false);
@@ -40,6 +41,9 @@ class Game {
     this.registerSW(); setTimeout(() => this.checkUpdate(false), 2500); setInterval(() => { if (!document.hidden) this.checkUpdate(false); }, 20 * 60e3);
     document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - (this.lastUpdCheck || 0) > 10 * 60e3) this.checkUpdate(false); });
     document.getElementById('boot')?.remove();
+    this.drive = await new DriveSync(this).init(); this.drive.abrir(localSavedAt);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.drive.aoSair(); else if (this.drive.ativo) this.drive.sync('volta'); });
+    addEventListener('pagehide', () => this.drive.aoSair());
   }
   wireEvents() {
     // eventos da simulação viram avisos na tela
@@ -114,6 +118,18 @@ class Game {
     const rep = catchUp(this.state, Date.now()); this.last = performance.now();
     if (rep && rep.minutos > 10) this.ui.showReport(rep, '📰 Enquanto você esteve fora');
   }
+  // ---------- Google Drive ----------
+  currentSave() { this.state.clock.lastRealTs = Date.now(); return serialize(this.state); }
+  backup(label) { return backup(this.state, label); }
+  syncDrive() { return this.drive.sync('manual', true); }
+  // aplica o save vindo do Drive: mantém os ajustes do aparelho e simula o tempo que passou
+  async aplicaRemoto(texto, motivo) {
+    const r = deserialize(texto), loc = this.state.settings;
+    for (const k of LOCAIS) if (loc[k] !== undefined) r.settings[k] = loc[k];
+    const rep = catchUp(r, Date.now()); this.replaceState(r); this.ui.closeSheet?.();
+    this.ui.toast(motivo === 'abrir' ? '☁ Zoológico mais recente baixado do Drive.' : '☁ Zoológico do Drive carregado.', 'bom');
+    if (rep && rep.minutos > 10) this.ui.showReport(rep, '📰 Enquanto você esteve fora');
+  }
   advance(hour) { const rep = advanceTo(this.state, hour, Date.now()); this.ui.showReport(rep, '⏩ Relógio avançado'); this.save(); }
   toggleLive() {
     const s = this.state;
@@ -158,5 +174,5 @@ class Game {
 }
 const cmp = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
 
-const game = new Game(); window.__game = game; window.__api = { ...B, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
+const game = new Game(); window.__game = game; window.__sound = sound; window.__api = { ...B, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
 game.start().catch(e => { console.error(e); const b = document.getElementById('boot'); if (b) b.textContent = 'Erro ao iniciar: ' + e.message; });

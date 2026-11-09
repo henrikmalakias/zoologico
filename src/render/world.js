@@ -7,7 +7,7 @@ import { content } from '../content/registry.js';
 import { MAP, TILE, HALF, idx, inMap, tileToWorld, AREAS, CW, heightAt, walkY, WATER_Y, bridgeTiles, isPathT, isPath, DIR_ROT } from '../sim/grid.js';
 import { edges } from '../sim/habshape.js';
 import { hourOf } from '../sim/util.js';
-import { UltraSky, loadTerrainArrays, terrainData, fillTerrainData, terrainMaterial, waterNormalTexture, Grass, addFur, addSkinDetail } from './ultra.js';
+import { UltraSky, loadTerrainArrays, terrainData, fillTerrainData, terrainMaterial, waterNormalTexture, Grass, addFur, addSkinDetail, gradeMaterial } from './ultra.js';
 
 const C3 = c => new THREE.Color(c);
 const freeMerged = o => o.traverse(m => { if (m.userData?.merged) m.geometry.dispose(); });
@@ -34,7 +34,7 @@ export class World {
     this.sun = new THREE.DirectionalLight('#fff3dd', 2.0); sc.add(this.sun); sc.add(this.sun.target);
     if (this.hi) {
       const s = this.sun.shadow; this.sun.castShadow = true; s.mapSize.set(2048, 2048);
-      Object.assign(s.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 10, far: 300 }); s.bias = -0.0005; s.normalBias = 0.04;
+      Object.assign(s.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 10, far: 300 }); s.bias = -0.0005; s.normalBias = 0.04; if (this.ultra) s.radius = 3;
       sc.fog = new THREE.Fog('#8fc6ea', 120, 330);
       const pm = new THREE.PMREMGenerator(r); const envScene = new THREE.Scene();
       const sky = new THREE.Mesh(new THREE.SphereGeometry(50, 16, 8), new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
@@ -356,7 +356,7 @@ export class World {
     for (const a of s.animals) {
       if (!C.species[a.sp]) continue; seen.add(a.id);
       const vkey = a.sp === 'leao' || a.sp === 'gorila' ? a.sp + ':' + a.sex : a.sp + ':F';
-      let tpl = null; if (L) { L.request(vkey); tpl = L.get(vkey); if (tpl && this.ultra && !tpl.userData.ultra) { tpl.userData.ultra = true; tpl.userData.baseMat = tpl.children[0].material; addFur(tpl, a.sp); addSkinDetail(tpl, a.sp); tpl.userData.skinMat = tpl.children[0].material; tpl.children[0].material = tpl.userData.baseMat; } }
+      let tpl = null; if (L) { L.request(vkey); tpl = L.get(vkey); if (tpl && this.ultra && !tpl.userData.ultra) { tpl.userData.ultra = true; tpl.userData.baseMat = tpl.children[0].material; addFur(tpl, a.sp); addSkinDetail(tpl, a.sp); tpl.userData.skinMat = tpl.children[0].material; tpl.userData.farMat = gradeMaterial(tpl.userData.baseMat.clone()); tpl.children[0].material = tpl.userData.baseMat; } }
       const kind = tpl ? 'sdf' : 'proc';
       let e = this.maps.animals.get(a.id);
       if (e && e.kind !== kind) { this.layers.animals.remove(e.o); freeMerged(e.o); e = null; }
@@ -371,7 +371,7 @@ export class World {
       o.scale.setScalar(sc);
       if (kind === 'sdf') {
         animateSDFAnimal(o, a, dt, moving, a.sp);
-        if (tpl?.userData.ultra) { const near = this.ultra && this.camera.position.distanceToSquared(o.position) < 1600; for (const c of o.children) if (c.userData.fur) c.visible = near; o.children[0].material = this.ultra ? tpl.userData.skinMat : tpl.userData.baseMat; }
+        if (tpl?.userData.ultra) { const d2 = this.camera.position.distanceToSquared(o.position), near = this.ultra && d2 < (e.near ? 1900 : 1500); e.near = near; for (const c of o.children) if (c.userData.fur) c.visible = near; o.children[0].material = this.ultra ? (near ? tpl.userData.skinMat : tpl.userData.farMat) : tpl.userData.baseMat; }
       } else animateAnimal(o, a, dt, moving);
     }
     for (const [id, e] of this.maps.animals) if (!seen.has(id)) { this.layers.animals.remove(e.o); freeMerged(e.o); this.maps.animals.delete(id); }
@@ -497,6 +497,7 @@ export class World {
       const f = this.focus(), h = (s.clock.min % 1440) / 60;
       if (this.usky) {
         const dir = this.usky.update(h, this.sun, this.hemi, this.scene.fog, this.camera.position);
+        this.sun.intensity *= 0.9; this.hemi.intensity *= 1.2; // sombra mais suave, menos contraste
         const span = Math.min(80, Math.max(25, this.camera.position.distanceTo(new THREE.Vector3(f.x, 0, f.z)) * 0.8));
         Object.assign(this.sun.shadow.camera, { left: -span, right: span, top: span, bottom: -span }); this.sun.shadow.camera.updateProjectionMatrix();
         this.sun.target.position.set(f.x, 0, f.z); this.sun.position.set(f.x + dir.x * 150, dir.y * 150, f.z + dir.z * 150);

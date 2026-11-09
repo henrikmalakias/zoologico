@@ -23,16 +23,17 @@ const ready = () => S.on && ctx && ctx.state === 'running';
 
 // ---------- blocos básicos ----------
 function env(g, t, a, peak, d, end = 0.0001) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(end, t + a + d); }
+let X = null; const cx = () => X || ctx;
 function tone({ type = 'sine', f0, f1, t = 0, a = 0.01, d = 0.2, peak = 0.3, out = master, vib = 0, vibF = 6, filter }) {
-  const now = ctx.currentTime + t, o = ctx.createOscillator(), g = ctx.createGain();
+  const now = cx().currentTime + t, o = cx().createOscillator(), g = cx().createGain();
   o.type = type; o.frequency.setValueAtTime(f0, now); if (f1) o.frequency.exponentialRampToValueAtTime(f1, now + a + d);
-  if (vib) { const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = vibF; lg.gain.value = vib; l.connect(lg).connect(o.frequency); l.start(now); l.stop(now + a + d + 0.05); }
+  if (vib) { const l = cx().createOscillator(), lg = cx().createGain(); l.frequency.value = vibF; lg.gain.value = vib; l.connect(lg).connect(o.frequency); l.start(now); l.stop(now + a + d + 0.05); }
   env(g, now, a, peak, d);
-  let node = o; if (filter) { const f = ctx.createBiquadFilter(); f.type = filter.type || 'lowpass'; f.frequency.value = filter.f; f.Q.value = filter.q ?? 1; o.connect(f); node = f; }
+  let node = o; if (filter) { const f = cx().createBiquadFilter(); f.type = filter.type || 'lowpass'; f.frequency.value = filter.f; f.Q.value = filter.q ?? 1; o.connect(f); node = f; }
   node.connect(g).connect(out); o.start(now); o.stop(now + a + d + 0.05);
 }
 function noise({ t = 0, a = 0.01, d = 0.3, peak = 0.3, f = 800, f1, q = 1, type = 'bandpass', out = master }) {
-  const now = ctx.currentTime + t, n = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain();
+  const now = cx().currentTime + t, n = cx().createBufferSource(), fl = cx().createBiquadFilter(), g = cx().createGain();
   n.buffer = noiseBuf; fl.type = type; fl.frequency.setValueAtTime(f, now); if (f1) fl.frequency.exponentialRampToValueAtTime(f1, now + a + d); fl.Q.value = q;
   env(g, now, a, peak, d); n.connect(fl).connect(g).connect(out); n.start(now, Math.random() * 0.5); n.stop(now + a + d + 0.05);
 }
@@ -51,23 +52,125 @@ export function alarm() { if (!ready()) return; for (let i = 0; i < 3; i++) { to
 export function undo() { if (!ready()) return; tone({ type: 'sine', f0: 700, f1: 350, d: 0.18, peak: 0.12 }); }
 
 // ---------- vozes dos animais ----------
+// Cada voz é gerada UMA vez (OfflineAudioContext), guardada como AudioBuffer e reaproveitada
+// com pequena variação de velocidade/volume a cada uso.
+// voz com formantes: fonte "glotal" (serra + ruído de sopro) passando por filtros de vogal, com vibrato e tremor de amplitude (rosnado)
+function voz({ t = 0, dur = 1, f0, f1, fm, formantes, am = 0, amF = 25, amD = 0.5, sopro = 0.2, peak = 0.5, jit = 0.01, out, ataque = 0.05, soltar }) {
+  const c = cx(), now = c.currentTime + t, o = c.createOscillator(), mix = c.createGain(), g = c.createGain();
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, now);
+  if (fm) o.frequency.linearRampToValueAtTime(fm[1], now + dur * fm[0]);
+  o.frequency.linearRampToValueAtTime(f1 ?? f0, now + dur);
+  const lf = c.createOscillator(), lg = c.createGain(); lf.frequency.value = 7 + Math.random() * 3; lg.gain.value = f0 * jit * 3; lf.connect(lg).connect(o.frequency); lf.start(now); lf.stop(now + dur + 0.1);
+  o.connect(mix);
+  if (sopro) { const n = c.createBufferSource(), ng = c.createGain(); n.buffer = noiseBuf; n.loop = true; ng.gain.value = sopro; n.connect(ng).connect(mix); n.start(now, Math.random()); n.stop(now + dur + 0.1); }
+  const sum = c.createGain();
+  for (const [f, q, gn] of formantes) { const b = c.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q; const bg = c.createGain(); bg.gain.value = gn; mix.connect(b); b.connect(bg).connect(sum); }
+  // um pouco de distorção dá o "grão" de garganta
+  const sh = c.createWaveShaper(), k = new Float32Array(257); for (let i = 0; i < 257; i++) { const x = i / 128 - 1; k[i] = Math.tanh(x * 2.2); } sh.curve = k;
+  sum.connect(sh);
+  const amg = c.createGain(); amg.gain.value = 1;
+  if (am) { const l = c.createOscillator(), lg2 = c.createGain(); l.frequency.value = amF; lg2.gain.value = amD; amg.gain.value = 1 - amD; l.connect(lg2).connect(amg.gain); l.start(now); l.stop(now + dur + 0.1); }
+  sh.connect(amg).connect(g);
+  g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(peak, now + ataque);
+  g.gain.setValueAtTime(peak, now + Math.max(ataque, dur * (soltar ?? 0.55))); g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  g.connect(out); o.start(now); o.stop(now + dur + 0.1);
+}
+function pancada({ t = 0, f = 110, peak = 0.5, out, ressoa = 220, ruido = 0.5 }) { // batida oca (peito, tambor)
+  tone({ type: 'sine', f0: f * 1.6, f1: f * 0.6, t, a: 0.004, d: 0.13, peak, out });
+  noise({ t, a: 0.003, d: 0.07, peak: peak * ruido, f: ressoa, q: 1.2, out });
+  noise({ t, a: 0.003, d: 0.05, peak: peak * 0.18, f: 1800, q: 0.8, out });
+}
 const VOZ = {
-  leao(o) { tone({ type: 'sawtooth', f0: 95, f1: 60, a: 0.25, d: 1.3, peak: 0.5, out: o, vib: 6, vibF: 9, filter: { f: 420, q: 2 } }); noise({ a: 0.2, d: 1.3, peak: 0.25, f: 300, f1: 150, q: 2, out: o }); },
-  elefante(o) { tone({ type: 'sawtooth', f0: 420, f1: 720, a: 0.12, d: 0.9, peak: 0.35, out: o, vib: 25, vibF: 12, filter: { f: 2400, q: 3 } }); noise({ a: 0.1, d: 0.8, peak: 0.12, f: 1500, q: 3, out: o }); },
-  zebra(o) { for (let i = 0; i < 3; i++) { tone({ type: 'sawtooth', f0: 520, f1: 340, t: i * 0.22, a: 0.02, d: 0.14, peak: 0.25, out: o, filter: { f: 1800, q: 2 } }); noise({ t: i * 0.22, d: 0.12, peak: 0.12, f: 1200, out: o }); } },
-  girafa(o) { tone({ type: 'sine', f0: 92, a: 0.3, d: 1.2, peak: 0.2, out: o, vib: 2, vibF: 15 }); },
-  macaco(o) { for (let i = 0; i < 6; i++) tone({ type: 'square', f0: 1400 + Math.random() * 600, f1: 900, t: i * 0.09, a: 0.005, d: 0.06, peak: 0.08, out: o, filter: { f: 3000 } }); },
-  hipopotamo(o) { for (let i = 0; i < 4; i++) tone({ type: 'sawtooth', f0: 140 - i * 10, f1: 80, t: i * 0.28, a: 0.03, d: 0.22, peak: 0.35, out: o, filter: { f: 500, q: 3 } }); },
-  rinoceronte(o) { noise({ a: 0.02, d: 0.35, peak: 0.35, f: 600, f1: 250, q: 1.5, out: o }); noise({ t: 0.5, a: 0.02, d: 0.3, peak: 0.3, f: 550, f1: 250, q: 1.5, out: o }); },
-  flamingo(o) { for (let i = 0; i < 3; i++) tone({ type: 'sawtooth', f0: 600, f1: 520, t: i * 0.25 + Math.random() * 0.1, a: 0.02, d: 0.16, peak: 0.15, out: o, filter: { f: 1500, q: 6 } }); },
-  gorila(o) { for (let i = 0; i < 8; i++) { tone({ type: 'sine', f0: 110, f1: 60, t: i * 0.11, a: 0.005, d: 0.09, peak: 0.45, out: o }); noise({ t: i * 0.11, d: 0.06, peak: 0.15, f: 200, out: o }); } },
-  tartaruga(o) { tone({ type: 'sine', f0: 120, f1: 90, a: 0.1, d: 0.5, peak: 0.12, out: o }); },
+  leao(o) { // rugido: sobe, mantém pulsando e termina em grunhidos
+    voz({ dur: 2.1, f0: 105, fm: [0.22, 170], f1: 70, formantes: [[650, 5, 1], [1150, 6, 0.8], [2400, 5, 0.4], [180, 3, 0.8]], am: 1, amF: 24, amD: 0.55, sopro: 0.25, peak: 0.55, out: o, ataque: 0.12, soltar: 0.6 });
+    for (let i = 0; i < 3; i++) voz({ t: 2.2 + i * 0.34, dur: 0.3, f0: 95 - i * 8, f1: 70, formantes: [[550, 5, 1], [1000, 6, 0.7], [160, 3, 0.8]], sopro: 0.2, peak: 0.4 - i * 0.07, out: o, ataque: 0.04, soltar: 0.3 });
+  },
+  elefante(o) { // barrito: trombeta nasal subindo, com tremor
+    voz({ dur: 1.4, f0: 330, fm: [0.35, 640], f1: 520, formantes: [[900, 8, 1], [1800, 8, 0.8], [3000, 6, 0.4]], am: 1, amF: 14, amD: 0.3, sopro: 0.15, peak: 0.42, out: o, ataque: 0.08, soltar: 0.65 });
+    voz({ t: 1.5, dur: 0.5, f0: 120, f1: 80, formantes: [[300, 5, 1], [700, 5, 0.6]], sopro: 0.3, peak: 0.3, out: o });
+  },
+  zebra(o) { // relincho: três latidos agudos e um suspiro
+    for (let i = 0; i < 3; i++) voz({ t: i * 0.24, dur: 0.22, f0: 650 - i * 40, f1: 380, formantes: [[900, 6, 1], [2100, 7, 0.8], [3200, 6, 0.3]], sopro: 0.25, peak: 0.34, out: o, ataque: 0.02, soltar: 0.3 });
+    noise({ t: 0.8, a: 0.1, d: 0.4, peak: 0.1, f: 1400, q: 1, out: o });
+  },
+  girafa(o) { // ronco baixo e curto (girafas quase não fazem som)
+    voz({ dur: 1.1, f0: 85, f1: 70, formantes: [[220, 4, 1], [480, 5, 0.6]], sopro: 0.35, peak: 0.25, out: o, ataque: 0.2, soltar: 0.5 });
+  },
+  macaco(o) { // guinchos e "hu-hu"
+    for (let i = 0; i < 7; i++) voz({ t: i * 0.11, dur: 0.1, f0: 1100 + Math.random() * 500, f1: 800 + Math.random() * 300, formantes: [[1500, 7, 1], [2600, 7, 0.7]], sopro: 0.2, peak: 0.14, out: o, ataque: 0.01, soltar: 0.2 });
+  },
+  hipopotamo(o) { // risada rouca de hipopótamo: "hô-hô-hô-hô"
+    for (let i = 0; i < 5; i++) voz({ t: i * 0.3, dur: 0.26, f0: 130 - i * 8, f1: 80, formantes: [[420, 5, 1], [900, 6, 0.8], [180, 3, 0.6]], am: 1, amF: 30, amD: 0.4, sopro: 0.3, peak: 0.42, out: o, ataque: 0.03, soltar: 0.3 });
+  },
+  rinoceronte(o) { // bufo (ar pelo nariz) + resmungo curto
+    noise({ a: 0.03, d: 0.3, peak: 0.28, f: 2200, f1: 900, q: 0.9, out: o }); noise({ t: 0.05, a: 0.02, d: 0.25, peak: 0.16, f: 5000, q: 0.7, type: 'highpass', out: o });
+    noise({ t: 0.55, a: 0.03, d: 0.25, peak: 0.24, f: 2000, f1: 800, q: 0.9, out: o });
+    voz({ t: 0.95, dur: 0.6, f0: 135, f1: 95, formantes: [[450, 5, 1], [950, 6, 0.8], [1800, 5, 0.3]], sopro: 0.3, peak: 0.3, out: o, ataque: 0.06, soltar: 0.4 });
+  },
+  flamingo(o) { // grasnidos nasais
+    for (let i = 0; i < 3; i++) voz({ t: i * 0.26, dur: 0.2, f0: 520, fm: [0.4, 640], f1: 480, formantes: [[1100, 9, 1], [2500, 8, 0.7]], sopro: 0.15, peak: 0.2, out: o, ataque: 0.03, soltar: 0.3 });
+  },
+  gorila(o) { // batidas no peito (ocas) e dois "hu-hu" graves
+    const ts = [0, 0.13, 0.27, 0.39, 0.54, 0.66, 0.8, 0.93]; ts.forEach((t, i) => pancada({ t: 0.05 + t, f: 95 + (i % 2) * 12, peak: 0.34, out: o, ressoa: 260 }));
+    voz({ t: 1.2, dur: 0.35, f0: 190, f1: 140, formantes: [[500, 6, 1], [1000, 6, 0.5]], sopro: 0.25, peak: 0.25, out: o, ataque: 0.05, soltar: 0.3 });
+    voz({ t: 1.62, dur: 0.4, f0: 170, f1: 120, formantes: [[480, 6, 1], [950, 6, 0.5]], sopro: 0.25, peak: 0.22, out: o, ataque: 0.05, soltar: 0.3 });
+  },
+  tartaruga(o) { voz({ dur: 0.7, f0: 120, f1: 95, formantes: [[300, 5, 1], [650, 5, 0.5]], sopro: 0.4, peak: 0.12, out: o, ataque: 0.1 }); },
 };
+const DURA = { leao: 3.5, elefante: 2.2, zebra: 1.4, girafa: 1.4, macaco: 1.1, hipopotamo: 1.9, rinoceronte: 1.7, flamingo: 1.2, gorila: 2.2, tartaruga: 1 };
+const vozBuf = {}, vozPend = {};
+function renderBuf(dur, fn) {
+  const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!OC || !ctx) return Promise.resolve(null);
+  const oc = new OC(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate); X = oc;
+  try { const lim = oc.createDynamicsCompressor(); lim.connect(oc.destination); fn(lim); } finally { X = null; }
+  return oc.startRendering().catch(() => null);
+}
+function garanteVoz(sp) {
+  if (vozBuf[sp] || vozPend[sp] || !VOZ[sp] || !ctx) return;
+  vozPend[sp] = renderBuf(DURA[sp] || 2, o => VOZ[sp](o)).then(b => { vozBuf[sp] = b; });
+}
 // x: -1 (esquerda) .. 1 (direita); dist: metros até a câmera
 export function animal(sp, x, dist) {
   if (!ready() || !VOZ[sp]) return;
   const vol = Math.min(1, 25 / Math.max(10, dist)) ** 1.3; if (vol < 0.06) return;
-  VOZ[sp](panned(x, vol));
+  const b = vozBuf[sp]; if (!b) { garanteVoz(sp); return; } // na 1ª vez gera e toca da próxima
+  const n = ctx.createBufferSource(); n.buffer = b; n.playbackRate.value = 0.93 + Math.random() * 0.14;
+  n.connect(panned(x, vol * (0.85 + Math.random() * 0.3))); n.start();
+}
+
+// ---------- burburinho do público ----------
+// Vozes indistintas (sílabas com formantes de vogal) em laço de 9 s, gerado uma vez; o volume segue o número de visitantes.
+const VOGAIS = [[730, 1090], [530, 1840], [270, 2290], [570, 840], [300, 870], [660, 1720]];
+function babble(o) {
+  const N = 16; for (let v = 0; v < N; v++) {
+    const base = v % 5 === 0 ? 300 : v % 2 ? 210 : 115, pan = Math.random() * 2 - 1;
+    const sa = cx().createGain(); sa.gain.value = 0.13; const pn = cx().createStereoPanner ? cx().createStereoPanner() : null; let dest = sa;
+    if (pn) { pn.pan.value = pan; sa.connect(pn); pn.connect(o); } else sa.connect(o);
+    let t = Math.random() * 0.6; while (t < 8.4) {
+      const n = 2 + Math.floor(Math.random() * 5); // frase de n sílabas
+      for (let i = 0; i < n && t < 8.4; i++) {
+        const [f1, f2] = VOGAIS[Math.floor(Math.random() * VOGAIS.length)], d = 0.1 + Math.random() * 0.12, p = base * (0.9 + Math.random() * 0.3);
+        voz({ t, dur: d, f0: p, f1: p * (0.85 + Math.random() * 0.25), formantes: [[f1, 7, 1], [f2, 8, 0.6], [2800, 8, 0.15]], sopro: 0.15, peak: 0.6, out: dest, ataque: 0.025, soltar: 0.4, jit: 0.02 });
+        if (Math.random() < 0.3) noise({ t: t + d * 0.7, a: 0.01, d: 0.07, peak: 0.05, f: 6500, q: 1.5, out: dest });
+        t += d + 0.02 + Math.random() * 0.05;
+      }
+      t += 0.25 + Math.random() * 1.4; // pausa entre falas
+    }
+  }
+}
+let crowdBuf = null, crowdPend = false, crowdSrc = null, crowdG = null, crowdLevel = 0;
+export function crowd(dt, count, zoomDist, hour) {
+  if (!ctx || !S.on || !S.ambiente) { if (crowdG) crowdG.gain.setTargetAtTime(0, ctx.currentTime, 0.3); return; }
+  if (!ready()) return;
+  const open = hour >= 8 && hour < 18, alvo = !open || count < 3 ? 0 : Math.min(1, count / 70) ** 0.6 * 0.5 * Math.min(1, 55 / Math.max(15, zoomDist)) ** 0.8;
+  if (alvo > 0 && !crowdBuf) { if (!crowdPend) { crowdPend = true; renderBuf(9, babble).then(b => { crowdBuf = b; }); } return; }
+  if (!crowdBuf) return;
+  if (!crowdSrc) {
+    crowdSrc = ctx.createBufferSource(); crowdSrc.buffer = crowdBuf; crowdSrc.loop = true; crowdG = ctx.createGain(); crowdG.gain.value = 0;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3800; // um pouco abafado: está longe
+    crowdSrc.connect(lp).connect(crowdG).connect(amb); crowdSrc.start();
+  }
+  crowdLevel += (alvo - crowdLevel) * Math.min(1, dt * 0.8); crowdG.gain.setTargetAtTime(crowdLevel, ctx.currentTime, 0.2);
 }
 
 // ---------- ambiente ----------
@@ -85,4 +188,13 @@ export function ambience(dt, hour, zoomDist) {
     const o = panned(Math.random() * 2 - 1, 0.25 * near, amb);
     for (let i = 0; i < 4; i++) tone({ type: 'sine', f0: 4300 + Math.random() * 200, t: i * 0.05, a: 0.004, d: 0.03, peak: 0.04, out: o });
   }
+}
+
+// diagnóstico (testes): gera cada voz e o burburinho e devolve duração, pico, energia e centro espectral aproximado
+export async function diag() {
+  ensure(); const out = {};
+  const stat = b => { if (!b) return null; const d = b.getChannelData(0); let pk = 0, e = 0, bad = 0, zc = 0; for (let i = 0; i < d.length; i++) { const v = d[i]; if (!Number.isFinite(v)) bad++; pk = Math.max(pk, Math.abs(v)); e += v * v; if (i && (d[i - 1] < 0) !== (v < 0)) zc++; } return { dur: +(d.length / b.sampleRate).toFixed(2), pico: +pk.toFixed(2), rms: +Math.sqrt(e / d.length).toFixed(3), bad, cruz: Math.round(zc / (d.length / b.sampleRate) / 2) }; };
+  for (const sp of Object.keys(VOZ)) { garanteVoz(sp); await vozPend[sp]; out[sp] = stat(vozBuf[sp]); }
+  out.burburinho = stat(await renderBuf(9, babble));
+  return out;
 }

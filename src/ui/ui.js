@@ -393,6 +393,9 @@ export class UI {
     this.el.confirm.classList.remove('hidden');
   }
   hideConfirm() { this.el.confirm.classList.add('hidden'); }
+  askChoice(title, opcoes) { // modal com vários botões: opcoes = [[rótulo, ação], ...]
+    this.showModal(() => h('div', {}, h('h3', {}, '☁ Google Drive'), h('p', {}, title), ...opcoes.map(([n, f], i) => h('button', { class: 'btn ' + (i ? 'sec' : ''), style: 'display:block;width:100%;margin:6px 0', onclick: () => { this.closeModal(); f(); } }, n))));
+  }
   askText(title, value, done, big) {
     const inp = h(big ? 'textarea' : 'input', { value: big ? null : value, style: 'width:100%;font-size:15px;padding:8px;border-radius:10px;border:0;margin:8px 0;' + (big ? 'height:140px' : '') });
     const box = h('div', {}, h('h3', {}, title), inp, h('button', { class: 'btn', onclick: () => { const v = inp.value.trim(); this.closeModal(); if (v) done(v); } }, 'OK'));
@@ -596,7 +599,7 @@ export class UI {
         h('button', { class: 'btn sm ' + (s.settings.fugas && !s.settings.tranquilo ? '' : 'sec'), disabled: s.settings.tranquilo, onclick: () => { s.settings.fugas = !s.settings.fugas; this.renderModal(); } }, s.settings.fugas && !s.settings.tranquilo ? 'Ativa' : 'Desligada')),
       h('h3', { style: 'margin-top:10px' }, '🔊 Som'),
       tg('som', 'Som', 'Cliques, dinheiro, alertas e vozes dos animais.', () => sound.configure(s.settings)),
-      tg('ambiente', 'Sons do ambiente', 'Pássaros de dia e grilos à noite.', () => sound.configure(s.settings)),
+      tg('ambiente', 'Sons do ambiente', 'Pássaros de dia, grilos à noite e burburinho do público.', () => sound.configure(s.settings)),
       h('div', { class: 'row' }, h('b', {}, 'Volume'), h('input', { type: 'range', min: 0, max: 100, step: 5, value: Math.round(s.settings.volume * 100), style: 'max-width:180px', oninput: e => { s.settings.volume = +e.target.value / 100; sound.configure(s.settings); }, onchange: () => sound.cash() }))];
     else if (tab === 'save') body = [
       h('p', {}, `O jogo salva sozinho a cada 15 segundos e ao sair. Último salvamento: ${g.lastSave ? new Date(g.lastSave).toLocaleTimeString('pt-BR') : '—'} (${{ idb: 'no aparelho', ls: 'no navegador', mem: 'só na memória: exporte para não perder' }[g.saveWhere] || '—'}).`),
@@ -604,6 +607,13 @@ export class UI {
         h('button', { class: 'btn sec', onclick: () => g.exportSave() }, '⬇ Exportar arquivo'), h('button', { class: 'btn sec', onclick: () => g.importSave() }, '⬆ Importar arquivo'),
         h('button', { class: 'btn sec', onclick: () => g.copySave() }, '📋 Copiar save'), h('button', { class: 'btn sec', onclick: () => this.askText('Cole aqui o save copiado', '', t => g.pasteSave(t), true) }, '📥 Colar save')),
       h('p', { class: 'muted' }, 'Exporte o save de vez em quando como cópia de segurança. No iPhone, o sistema pode limpar dados de sites pouco usados.'),
+      h('h3', { style: 'margin-top:12px' }, '☁ Sincronia com o Google Drive'),
+      h('p', { class: 'muted' }, 'Joga no celular e no iPad com o mesmo zoológico. O save fica numa pasta oculta do jogo no seu Drive (o jogo não vê seus outros arquivos). Ao abrir, o mais recente é carregado; mudanças são enviadas a cada 3 minutos e ao sair. Se os dois aparelhos mudaram, o jogo pergunta qual manter. Os gráficos, som e economia continuam separados em cada aparelho.'),
+      h('div', { class: 'row' }, h('div', {}, h('b', {}, 'Estado'), h('div', { class: 'muted' }, g.drive.status + (g.drive.lastSync ? ` · último contato ${new Date(g.drive.lastSync).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''))),
+        g.drive.ativo ? h('span', { style: 'display:flex;gap:4px' }, h('button', { class: 'btn sm', onclick: () => g.syncDrive() }, 'Sincronizar agora'), h('button', { class: 'btn red sm', onclick: () => g.drive.desligar() }, 'Desligar'))
+          : h('button', { class: 'btn sm', disabled: !g.drive.configurado, onclick: () => g.drive.conectar() }, 'Conectar ao Drive')),
+      h('div', { class: 'row' }, h('div', {}, h('b', {}, 'ID de cliente do Google'), h('div', { class: 'muted' }, g.drive.clientId ? g.drive.clientId.slice(0, 18) + '… (configurado)' : 'Ainda não informado. Crie no Google Cloud (passo a passo no README do projeto) e cole aqui; só precisa fazer uma vez em cada aparelho.')),
+        h('button', { class: 'btn sec sm', onclick: () => this.askText('Cole o ID de cliente OAuth (termina com .apps.googleusercontent.com)', g.drive.clientId, async t => { await g.drive.setClientId(t); this.toast('ID salvo. Toque em Conectar ao Drive.', 'bom'); this.renderModal(); }) }, g.drive.clientId ? 'Trocar' : 'Colar ID')),
       h('h3', { style: 'margin-top:12px' }, 'Novo jogo'), h('div', { class: 'muted' }, 'O zoológico atual é guardado numa cópia de segurança antes.'),
       h('div', { class: 'items', style: 'margin-top:6px' },
         h('button', { class: 'btn red', onclick: () => this.askConfirm('Começar um novo zoológico (modo Normal)? O atual será substituído.', () => g.newGame({ tranquilo: false })) }, 'Novo jogo · Normal'),
@@ -679,6 +689,7 @@ export class UI {
     for (const e of L.slice(this.logSeen)) { if (e.kind === 'perigo') sound.alarm(); else if (/^Meta conclu|^Nasceu/.test(e.msg)) sound.good(); }
     this.logSeen = L.length;
     // vozes dos animais perto da câmera e ambiente
+    sound.crowd(dt, this.s.stats.visitorsIn || 0, this.g.live || !this.g.controls ? 8 : this.g.controls.cam.dist, hourOf(this.s.clock.min));
     if (this.g.live || !this.g.controls) return;
     const c = this.g.controls, cam = this.g.world.camera; sound.ambience(dt, hourOf(this.s.clock.min), c.cam.dist);
     this.voiceT -= dt; if (this.voiceT > 0) return; this.voiceT = 4 + Math.random() * 6;

@@ -227,8 +227,14 @@ export class Grass {
 }
 
 // ---------- pelo em camadas (só para modelos realistas, de perto) ----------
+// Cores mais naturais nos animais do Ultra: menos saturação e contraste, sombras levantadas
+export const GRADE = 'float lumG = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)); diffuseColor.rgb = mix(vec3(lumG), diffuseColor.rgb, 0.84) * 0.88 + 0.04;';
+export function gradeMaterial(m) {
+  m.onBeforeCompile = s2 => { s2.fragmentShader = s2.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + GRADE); };
+  m.customProgramCacheKey = () => 'grade'; return m;
+}
 export const FUR = { leao: { len: 0.022, den: 260 }, macaco: { len: 0.016, den: 320 }, gorila: { len: 0.026, den: 240 }, hipopotamo: null };
-export const SKIN = { elefante: 0.55, rinoceronte: 0.5, hipopotamo: 0.35, tartaruga: 0.3 };
+export const SKIN = { elefante: 0.3, rinoceronte: 0.28, hipopotamo: 0.35, tartaruga: 0.3 };
 export function addFur(group, sp) {
   const F = FUR[sp]; const base = group.children[0]; if (!F || !base?.isSkinnedMesh) return;
   const L = 5, src = base.geometry, n = src.attributes.position.count, g = new THREE.BufferGeometry();
@@ -251,7 +257,7 @@ export function addFur(group, sp) {
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
         vec3 q = vOP * uDen; vec3 c = floor(q); float r = h31(c); vec3 f = fract(q) - 0.5;
         if (length(f.xz) > 0.55 * (1.0 - vShell * 0.85) || r < vShell * 0.75) discard;`)
-      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.55, 1.12, vShell) * (0.9 + 0.2 * h31(c + 3.0));');
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.62, 1.08, vShell) * (0.9 + 0.2 * h31(c + 3.0));\n' + GRADE);
   };
   const fur = new THREE.SkinnedMesh(g, mat); fur.castShadow = false; fur.receiveShadow = true; fur.frustumCulled = false;
   fur.bind(base.skeleton, base.bindMatrix); fur.userData.fur = true; group.add(fur);
@@ -268,11 +274,11 @@ export function addSkinDetail(group, sp) {
       float n3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
         return mix(mix(mix(h31(i), h31(i+vec3(1,0,0)), f.x), mix(h31(i+vec3(0,1,0)), h31(i+vec3(1,1,0)), f.x), f.y),
                    mix(mix(h31(i+vec3(0,0,1)), h31(i+vec3(1,0,1)), f.x), mix(h31(i+vec3(0,1,1)), h31(i+vec3(1,1,1)), f.x), f.y), f.z); }
-      float wr(vec3 p){ return abs(n3(p * 38.0) - 0.5) * 1.4 + n3(p * 110.0) * 0.35; }`)
+      float wr(vec3 p){ return abs(n3(p * 9.0) - 0.5) * 1.4 + n3(p * 18.0) * 0.15; }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        { float e = 0.004, h0 = wr(vOP); vec3 gr = vec3(wr(vOP + vec3(e,0,0)) - h0, wr(vOP + vec3(0,e,0)) - h0, wr(vOP + vec3(0,0,e)) - h0) / e;
-          vec3 gv = normalize(vNM * gr + 1e-5); normal = normalize(normal - gv * uAmt * 0.12 * length(gr)); }`)
-      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= 0.9 + 0.12 * n3(vOP * 60.0);');
+        { float e = 0.012, h0 = wr(vOP); vec3 gr = vec3(wr(vOP + vec3(e,0,0)) - h0, wr(vOP + vec3(0,e,0)) - h0, wr(vOP + vec3(0,0,e)) - h0) / e;
+          vec3 gv = normalize(vNM * gr + 1e-5); float fd = 1.0 - smoothstep(4.0, 16.0, length(vViewPosition)); normal = normalize(normal - gv * uAmt * 0.12 * fd * length(gr)); }`)
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= 0.93 + 0.08 * n3(vOP * 8.0) * (1.0 - smoothstep(4.0, 16.0, length(vViewPosition)));\n' + GRADE);
   };
 }
 

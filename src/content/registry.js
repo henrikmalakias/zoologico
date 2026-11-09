@@ -1,6 +1,6 @@
 import { BASE_PACK } from './base.js';
 
-export const APP_VERSION = '1.7.0';
+export const APP_VERSION = '1.7.1';
 export const AVAILABLE_PACKS = { base: BASE_PACK };
 
 // Catálogo de expansões. "em_breve" = ainda não publicada.
@@ -19,6 +19,14 @@ export const DLC_CATALOG = [
 ];
 
 export const CHANGELOG = [
+  { versao: '1.7.1', data: '09/11/2026', titulo: 'Versão 1.7.1: som, animais mais naturais e sincronia com o Drive', itens: [
+    'Vozes novas: leão, rinoceronte e gorila (e as demais) refeitas com timbre de garganta e formantes, sem o som de "ruído grave". Cada voz é gerada uma vez e reaproveitada',
+    'Burburinho do público: vozes indistintas que aumentam com o número de visitantes e com a câmera perto (também no AO VIVO); só durante a visitação. Entra em Configurações > Sons do ambiente',
+    'Ultra: animais com menos contraste, cores mais naturais e sombra mais suave; modelo detalhado (pele e pelo) só perto da câmera e simples ao longe',
+    'Ultra: pele do rinoceronte e do elefante sem cintilação (rugas suavizadas e que somem com a distância)',
+    'Sincronia automática com o Google Drive (Menu > Salvar): abre o zoológico mais recente, envia alterações a cada 3 minutos e ao sair, e pergunta qual manter se os dois aparelhos mudaram. Precisa do ID de cliente do Google (uma vez)',
+    'Importar arquivo corrigido para o iPad (seletor sem filtro de tipo)',
+  ] },
   { versao: '1.7.0', data: '09/11/2026', titulo: 'Versão 1.7: habitats do seu jeito', itens: [
     'Habitat com formato livre: arraste o retângulo e ele contorna sozinho instalações, caminhos e outros habitats (dá para cercar o playground pelos lados e pelo fundo). A cerca segue o contorno',
     'Construir > Habitat agora tem Ampliar (acrescenta blocos encostados), Recortar (tira um pedaço) e Mover objetos (plantas, comedouro e bebedouro)',
