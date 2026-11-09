@@ -1,6 +1,6 @@
 import { BASE_PACK } from './base.js';
 
-export const APP_VERSION = '1.6.4';
+export const APP_VERSION = '1.6.5';
 export const AVAILABLE_PACKS = { base: BASE_PACK };
 
 // Catálogo de expansões. "em_breve" = ainda não publicada.
@@ -19,6 +19,10 @@ export const DLC_CATALOG = [
 ];
 
 export const CHANGELOG = [
+  { versao: '1.6.5', data: '09/11/2026', titulo: 'Versão 1.6.5: os alertas são seus', itens: [
+    'Avançar o relógio com o jogo aberto agora para no primeiro alerta novo (doença, fome, cerca, portão, fuga...) e o subgerente não age: você resolve o caos. O subgerente continua agindo só com o app fechado ou o celular bloqueado',
+    'A pausa em alerta novo já valia nas velocidades normal, 2x e 3x',
+  ] },
   { versao: '1.6.4', data: '09/11/2026', titulo: 'Versão 1.6.4: menos calor e mais FPS', itens: [
     'Postes, lixeiras, bancos, plantas, cercas e construções agora são desenhados em lotes: metade das chamadas de desenho (de ~750 para ~350 no exemplo de teste), então o celular trabalha menos e esquenta menos',
     'Nova opção Economia de calor e bateria (ligada): limita a 30 quadros por segundo e usa resolução um pouco menor nos gráficos Alto e Ultra. Desligue em Menu > Configurações para 60 FPS',

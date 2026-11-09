@@ -57,7 +57,7 @@ export function step(s, gameMin, ctx) {
   updateStaff(s, gameMin, ctx);
   if (isOpen(s)) { s.acc.arr += (arrivalRate(s) * gameMin) / 60; while (s.acc.arr >= 1) { s.acc.arr--; arrive(s, ctx); } }
   updateVisitors(s, gameMin, ctx);
-  if (s.acc.q >= 15) { const q = s.acc.q; s.acc.q = 0; s._qt = (s._qt || 0) + 1; refreshAlerts(s); if (ctx.abstract || !s.settings.subSoFechado) managerTick(s, q); }
+  if (s.acc.q >= 15) { const q = s.acc.q; s.acc.q = 0; s._qt = (s._qt || 0) + 1; refreshAlerts(s); if ((ctx.abstract && !ctx.noManager) || !s.settings.subSoFechado) managerTick(s, q); }
   while (s.acc.hour >= 60) { s.acc.hour -= 60; hourTick(s); }
   const d = Math.floor(s.clock.min / 1440);
   if (d !== s.clock.day) { s.clock.day = d; dayTick(s); }
@@ -203,9 +203,9 @@ export function checkMetas(s) {
 }
 
 // ---------- simulação abstrata: app fechado e avanço de relógio ----------
-export function simulateAbstract(s, gameMinutes, { stopOnCritical = false, now = Date.now() } = {}) {
+export function simulateAbstract(s, gameMinutes, { stopOnCritical = false, now = Date.now(), noManager = false, stopOnAlert = false } = {}) {
   const before = { money: s.money, animals: s.animals.length, logLen: s.log.length, min: s.clock.min, cand: s.candidates.length };
-  const ctx = { abstract: true, realDt: 0, moveMul: 0, now, critical: null };
+  const ctx = { abstract: true, realDt: 0, moveMul: 0, now, critical: null, noManager, stopOnAlert };
   let left = gameMinutes;
   while (left > 0.0001) { const dt = Math.min(10, left); step(s, dt, ctx); left -= dt; if (stopOnCritical && ctx.critical) break; }
   s._ctx = null;
@@ -227,5 +227,7 @@ export { seedCrowd };
 export function advanceTo(s, hour = 7, now = Date.now()) {
   const h = hourOf(s.clock.min);
   let mins = ((hour - h + 24) % 24) * 60; if (mins < 30) mins += 1440;
-  return simulateAbstract(s, mins, { stopOnCritical: true, now });
+  // com o jogo aberto o jogador é o responsável pelos alertas: o subgerente não age e o avanço para no primeiro alerta novo
+  const mine = s.settings.subSoFechado !== false;
+  return simulateAbstract(s, mins, { stopOnCritical: true, now, noManager: mine, stopOnAlert: mine });
 }

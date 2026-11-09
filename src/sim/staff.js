@@ -284,6 +284,7 @@ export function refreshAlerts(s) {
   const have = new Set(s.alerts.map(a => key(a.type, a.target)));
   for (const [type, target] of want) if (!have.has(key(type, target))) {
     s.alerts.push({ id: uid(s), type, target, created: s.clock.min, assigned: null, wait: 0 });
+    if (s._ctx?.stopOnAlert && !s._ctx.critical) s._ctx.critical = `${ALERT_INFO[type].nome}: ${alertTargetName(s, { type, target })}`;
     const nm = alertTargetName(s, { type, target });
     log(s, `${ALERT_INFO[type].nome}: ${nm}`, type === 'cerca' || type === 'portao' || type === 'fuga' || type === 'brecha' ? 'perigo' : 'ruim');
   }
