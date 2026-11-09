@@ -55,7 +55,8 @@ def sky(asset, name):
     hdr = get(f['hdri']['1k']['hdr']['url'], f'{TMP}/{asset}_1k.hdr')
     im = cv2.imread(hdr, cv2.IMREAD_UNCHANGED)[..., ::-1].astype(np.float32)  # BGR -> RGB
     small = cv2.resize(im, (256, 128), interpolation=cv2.INTER_AREA)
-    write_hdr(f'{OUT}/ceu/{name}_hdr.bin', small)
+    write_hdr(f'{TMP}/{name}.hdr', small)  # vai em base64 (.txt) para qualquer hospedagem aceitar
+    import base64; open(f'{OUT}/ceu/{name}_hdr.txt', 'w').write(base64.b64encode(open(f'{TMP}/{name}.hdr', 'rb').read()).decode())
     # direção do sol: pixel mais brilhante
     y, x = np.unravel_index(np.argmax(im.sum(axis=2)), im.shape[:2])
     sol = {'u': float(x / im.shape[1]), 'v': float(y / im.shape[0]), 'pico': float(im.sum(axis=2).max())}

@@ -118,7 +118,11 @@ export class UltraSky {
   need(k) {
     if (this.tex[k] || this.loading.has(k)) return; this.loading.add(k);
     new THREE.TextureLoader().load(`${BASE}ceu/${k}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; this.tex[k] = t; this.loading.delete(k); this.lastEnv = -99; });
-    this.rgbe.load(`${BASE}ceu/${k}_hdr.bin`, t => { t.wrapS = THREE.RepeatWrapping; t.minFilter = t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; this.hdr[k] = t; this.lastEnv = -99; });
+    // céu HDR guardado em base64 (.txt) para funcionar em qualquer hospedagem
+    fetch(`${BASE}ceu/${k}_hdr.txt`).then(r => r.text()).then(b64 => {
+      const bin = Uint8Array.from(atob(b64.trim()), c => c.charCodeAt(0)), url = URL.createObjectURL(new Blob([bin]));
+      this.rgbe.load(url, t => { URL.revokeObjectURL(url); t.wrapS = THREE.RepeatWrapping; t.minFilter = t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; this.hdr[k] = t; this.lastEnv = -99; });
+    }).catch(e => console.warn('céu hdr', k, e));
   }
   // devolve a direção do sol e as cores para a hora h
   update(h, sun, hemi, fog, camPos) {
