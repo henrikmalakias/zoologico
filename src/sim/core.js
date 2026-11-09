@@ -15,7 +15,7 @@ export function timeFactor(s) { const T = content(s).tempo, h = hourOf(s.clock.m
 export const H2 = 2 * 3600e3, H72 = 72 * 3600e3;
 export const VAGAS = [1, 1, 2, 3];
 
-export const DEFAULT_SETTINGS = () => ({ quality: 'baixo', fugas: true, tranquilo: false, autoQualidade: true, mostrarFps: false, telaLigada: true, som: true, volume: 0.7, ambiente: true, tutorial: { passo: 0, feito: false } });
+export const DEFAULT_SETTINGS = () => ({ quality: 'baixo', fugas: true, tranquilo: false, autoQualidade: true, mostrarFps: false, telaLigada: true, subSoFechado: true, pausaAlerta: true, som: true, volume: 0.7, ambiente: true, tutorial: { passo: 0, feito: false } });
 export function newGame(now = Date.now(), opts = {}) {
   const s = {
     schemaVersion: SCHEMA, gameVersion: APP_VERSION, packs: { base: '1.0.0' }, rng: (now % 2147483647) | 0, nextId: 1,
@@ -57,7 +57,7 @@ export function step(s, gameMin, ctx) {
   updateStaff(s, gameMin, ctx);
   if (isOpen(s)) { s.acc.arr += (arrivalRate(s) * gameMin) / 60; while (s.acc.arr >= 1) { s.acc.arr--; arrive(s, ctx); } }
   updateVisitors(s, gameMin, ctx);
-  if (s.acc.q >= 15) { const q = s.acc.q; s.acc.q = 0; s._qt = (s._qt || 0) + 1; refreshAlerts(s); managerTick(s, q); }
+  if (s.acc.q >= 15) { const q = s.acc.q; s.acc.q = 0; s._qt = (s._qt || 0) + 1; refreshAlerts(s); if (ctx.abstract || !s.settings.subSoFechado) managerTick(s, q); }
   while (s.acc.hour >= 60) { s.acc.hour -= 60; hourTick(s); }
   const d = Math.floor(s.clock.min / 1440);
   if (d !== s.clock.day) { s.clock.day = d; dayTick(s); }

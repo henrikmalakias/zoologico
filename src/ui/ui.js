@@ -536,6 +536,8 @@ export class UI {
       h('div', { class: 'row' }, h('div', {}, h('b', {}, 'Gráficos'), h('div', { class: 'muted' }, 'Baixo: leve. Alto: sombras e animais realistas. Ultra: céu de verdade que muda com a hora, terreno com textura de foto, capim ao vento, água com ondas e pelo nos animais (pesa mais; baixa uns 2,5 MB na primeira vez).')),
         h('span', { style: 'display:flex;gap:4px' }, ...['baixo', 'alto', 'ultra'].map(q => h('button', { class: 'btn sm ' + (s.settings.quality === q ? '' : 'sec'), onclick: () => { g.setQuality(q); this.renderModal(); } }, { baixo: 'Baixo', alto: 'Alto', ultra: 'Ultra' }[q])))),
       tg('autoQualidade', 'Ajuste automático', 'Se o jogo ficar lento, reduz a resolução e passa para o gráfico Baixo.'),
+      tg('subSoFechado', 'Subgerente só com o jogo fechado', 'Ligado: com o jogo aberto os alertas ficam para você resolver; o subgerente só age enquanto o app está fechado ou o celular bloqueado (e ao avançar o relógio). Desligado: ele age também com o jogo aberto.'),
+      tg('pausaAlerta', 'Pausar quando surgir alerta', 'Pausa o jogo quando aparece um alerta novo (doença, fome, cerca, portão, fuga), para você ler e decidir. Não pausa no modo AO VIVO.'),
       tg('telaLigada', 'Manter a tela ligada', 'Evita que a tela apague sozinha com o jogo aberto. Gasta um pouco mais de bateria.', () => g.wakeSync()),
       tg('mostrarFps', 'Mostrar FPS', 'Mostra quantos quadros por segundo o aparelho está desenhando.'),
       h('div', { class: 'row' }, h('div', {}, h('b', {}, '🌿 Modo Tranquilo'), h('div', { class: 'muted' }, 'Sem fugas e nenhum animal morre por falta de cuidados. Bom para construir com calma.')),

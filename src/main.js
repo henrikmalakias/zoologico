@@ -8,7 +8,7 @@ import { Controls } from './ui/controls.js';
 import { UI } from './ui/ui.js';
 import * as B from './sim/build.js';
 import { hire } from './sim/core.js';
-import { dispatch, refreshAlerts, startTask, orderTransfer } from './sim/staff.js';
+import { dispatch, refreshAlerts, startTask, orderTransfer, ALERT_INFO, alertTargetName } from './sim/staff.js';
 import { library } from './render/world.js';
 import { startEscape } from './sim/animals.js';
 import { content } from './content/registry.js';
@@ -51,6 +51,13 @@ class Game {
       const ctx = { abstract: false, realDt: dt, moveMul: this.live ? 1 : Math.min(3, Math.max(1, factor / 24)), now };
       step(s, (dt * factor) / 60, ctx);
     }
+    // alerta novo com o jogo aberto: pausa para o jogador ler (não no AO VIVO)
+    const ids = new Set(s.alerts.map(a => a.id)), fresh = this._alertIds ? s.alerts.filter(a => !this._alertIds.has(a.id)) : [];
+    this._alertIds = ids;
+    if (fresh.length && factor > 0 && !this.live && !document.hidden && s.settings.pausaAlerta) {
+      s.clock.speed = 0;
+      this.ui.toast(`⏸ Jogo pausado: ${ALERT_INFO[fresh[0].type].nome} — ${alertTargetName(s, fresh[0])}. Toque no alerta no mapa para agir.`, 'perigo');
+    }
     s.clock.lastRealTs = now;
     this.slow += dt;
     if (this.slow > 1) { this.slow = 0; hiringTick(s, now); this.ui.slowTick(); if (s.fin?.novo && !this.ui.modal) { s.fin.novo = null; this.ui.showMonth(s.fin.meses[s.fin.meses.length - 1]); } }
@@ -78,7 +85,7 @@ class Game {
   undoLast() {
     const u = this.undoInfo; if (!u || Date.now() - u.at > 60000) { this.undoInfo = null; return; }
     const s = deserialize(u.data); s._events = []; s.clock.lastRealTs = Date.now(); s.clock.speed = this.state.clock.speed;
-    s.settings = { ...this.state.settings }; seedCrowd(s); this.state = s; this.undoInfo = null;
+    s.settings = { ...this.state.settings }; seedCrowd(s); this.state = s; this._alertIds = null; this.undoInfo = null;
     this.world.cache.hver = -1; this.ui.closeSheet(); this.ui.hideConfirm(); if (!this.ui.el.drawer.classList.contains('hidden')) this.ui.renderDrawer();
     sound.undo(); this.ui.toast(`Desfeito: ${u.label}.`, 'bom');
   }
@@ -111,10 +118,10 @@ class Game {
   async copySave() { try { await navigator.clipboard.writeText(JSON.stringify(serialize(this.state))); this.ui.toast('Save copiado! Cole num bloco de notas para guardar.', 'bom'); } catch (e) { this.ui.toast('Não foi possível copiar aqui.', 'ruim'); } }
   pasteSave(t) { try { this.replaceState(deserialize(t)); this.ui.toast('Save carregado!', 'bom'); } catch (e) { this.ui.toast('Save inválido: ' + e.message, 'ruim'); } }
   async importSave() { try { const s = await importFile(); this.replaceState(s); this.ui.toast('Save importado!', 'bom'); } catch (e) { this.ui.toast(e.message, 'ruim'); } }
-  async newGame(opts = {}) { await backup(this.state, 'antes-novo-jogo'); const q = this.state.settings; const s = newGame(Date.now(), opts); Object.assign(s.settings, { quality: q.quality, autoQualidade: q.autoQualidade, mostrarFps: q.mostrarFps, telaLigada: q.telaLigada, som: q.som, volume: q.volume, ambiente: q.ambiente }); this.replaceState(s); this.undoInfo = null; this.ui.closeModal(); this.ui.tut.restart(); this.ui.welcome(); }
+  async newGame(opts = {}) { await backup(this.state, 'antes-novo-jogo'); const q = this.state.settings; const s = newGame(Date.now(), opts); Object.assign(s.settings, { quality: q.quality, autoQualidade: q.autoQualidade, mostrarFps: q.mostrarFps, telaLigada: q.telaLigada, subSoFechado: q.subSoFechado, pausaAlerta: q.pausaAlerta, som: q.som, volume: q.volume, ambiente: q.ambiente }); this.replaceState(s); this.undoInfo = null; this.ui.closeModal(); this.ui.tut.restart(); this.ui.welcome(); }
   replaceState(s) {
     sound.configure(s.settings);
-    s._events = []; s.clock.lastRealTs = Date.now(); this.state = s;
+    s._events = []; s.clock.lastRealTs = Date.now(); this.state = s; this._alertIds = null;
     this.world.setQuality(s.settings.quality === this.world.q ? (s.settings.quality === 'baixo' ? 'alto' : 'baixo') : s.settings.quality);
     this.world.setQuality(s.settings.quality, s); this.controls.world = this.world; this.world.resize(); this.save();
   }

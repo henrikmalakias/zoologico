@@ -1,6 +1,6 @@
 import { BASE_PACK } from './base.js';
 
-export const APP_VERSION = '1.6.2';
+export const APP_VERSION = '1.6.3';
 export const AVAILABLE_PACKS = { base: BASE_PACK };
 
 // Catálogo de expansões. "em_breve" = ainda não publicada.
@@ -19,6 +19,10 @@ export const DLC_CATALOG = [
 ];
 
 export const CHANGELOG = [
+  { versao: '1.6.3', data: '09/11/2026', titulo: 'Versão 1.6.3: alertas para você, subgerente com o jogo fechado', itens: [
+    'Com o jogo aberto, os alertas ficam para você resolver; o subgerente só age enquanto o app está fechado ou o celular bloqueado (e ao avançar o relógio). Dá para mudar em Menu > Configurações > Subgerente só com o jogo fechado',
+    'Quando surge um alerta novo, o jogo pausa sozinho para você ler e decidir (não pausa no AO VIVO). Opção: Menu > Configurações > Pausar quando surgir alerta',
+  ] },
   { versao: '1.6.2', data: '09/11/2026', titulo: 'Versão 1.6.2: tela sempre ligada', itens: [
     'A tela do celular não apaga mais sozinha com o jogo aberto (dá para desligar em Menu > Configurações > Manter a tela ligada)',
   ] },
