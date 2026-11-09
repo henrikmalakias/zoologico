@@ -5,7 +5,7 @@ import { clamp, rnd, pick, uid, log, hourOf } from './util.js';
 import { MAP, idx, rebuildOcc, tileToWorld, AREAS, isPathT } from './grid.js';
 import { updateAnimals, hourlyAnimals, dailyAnimals, habInfo } from './animals.js';
 import { updateStaff, refreshAlerts, managerTick, spend, earn, recalcClean } from './staff.js';
-import { updateVisitors, arrivalRate, arrive, isOpen, litterCount } from './visitors.js';
+import { updateVisitors, arrivalRate, arrive, isOpen, litterCount, seedCrowd } from './visitors.js';
 
 export const SCHEMA = 6;
 export const SPEEDS = [0, 1, 2, 3]; // multiplicador da velocidade normal
@@ -217,11 +217,13 @@ export function catchUp(s, now = Date.now()) {
   const raw = now - (s.clock.lastRealTs || now);
   const elapsed = Math.max(0, Math.min(raw, H72));
   s.clock.lastRealTs = now;
-  if (elapsed < 60e3) { hiringTick(s, now); return null; }
+  if (elapsed < 60e3) { hiringTick(s, now); seedCrowd(s); return null; }
   const rep = simulateAbstract(s, elapsed / 60e3, { now });
+  seedCrowd(s);
   rep.limitado = raw > H72; rep.realMin = elapsed / 60e3;
   return rep;
 }
+export { seedCrowd };
 export function advanceTo(s, hour = 7, now = Date.now()) {
   const h = hourOf(s.clock.min);
   let mins = ((hour - h + 24) % 24) * 60; if (mins < 30) mins += 1440;

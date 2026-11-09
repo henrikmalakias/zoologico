@@ -29,6 +29,27 @@ export function arrive(s, ctx) {
       sat: 0.6, stay: 150 + rnd(s) * 180, col: Math.floor(rnd(s) * 8), off: { x: (rnd(s) - 0.5) * 1.2, z: (rnd(s) - 0.5) * 1.2 }, loja: false, panic: false, rot: 0 });
   } else { virtualVisit(s); if (!ctx.abstract) (s.vstock ||= []).push(s.clock.min + 150 + rnd(s) * 180); }
 }
+// ao abrir o jogo no horário de visitação, o parque já começa com gente dentro (em vez de zerado):
+// sorteia quem teria chegado nas últimas horas e ainda estaria passeando; os que passam do limite viram "fantasmas" (só contam)
+export function seedCrowd(s) {
+  if (!isOpen(s) || s.visitors.length + s.vstock.length > 0 || !s.facilities.some(f => f.type === 'entrada')) return 0;
+  const T = Math.min(hourOf(s.clock.min) - 8, 5.5); if (T < 0.08) return 0;
+  const n = Math.round((arrivalRate(s) * T) * 0.97);
+  const tiles = []; for (let i = 0; i < MAP * MAP; i++) if (isPathT(s.terrain[i])) tiles.push(i);
+  const cap = visitorCap(s); let made = 0;
+  for (let k = 0; k < n; k++) {
+    const age = rnd(s) * T, stay = 150 + rnd(s) * 180, left = stay - age * 60; // tempo de permanência sorteado − tempo desde a chegada
+    if (left <= 5) continue;
+    made++;
+    if (s.visitors.length < cap && tiles.length) {
+      const i = pick(s, tiles), p = tileToWorld(i % MAP, Math.floor(i / MAP));
+      s.visitors.push({ id: uid(s), x: p.x, z: p.z, route: [], goal: null, useT: rnd(s) * 3, hunger: clamp(rnd(s) * 0.4 + 0.15 * age), bath: clamp(rnd(s) * 0.4 + 0.18 * age), energy: clamp(0.8 + rnd(s) * 0.2 - 0.1 * age),
+        sat: 0.6, stay: left, col: Math.floor(rnd(s) * 8), off: { x: (rnd(s) - 0.5) * 1.2, z: (rnd(s) - 0.5) * 1.2 }, loja: false, panic: false, rot: rnd(s) * 6.28 });
+    } else s.vstock.push(s.clock.min + left);
+  }
+  s.stats.visitorsIn = s.visitors.length + s.vstock.length;
+  return made;
+}
 const binCover = s => { const bins = s.furn.reduce((n, f) => n + (f.type === 'lixeira'), 0); return clamp((bins / Math.max(1, (s._pathN || 1) / 12)) * 0.7, 0, 0.85); };
 const has = (s, type) => s.furn.some(f => f.type === type);
 const F2 = (s, t) => s.facilities.filter(f => f.type === t);

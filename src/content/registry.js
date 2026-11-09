@@ -1,6 +1,6 @@
 import { BASE_PACK } from './base.js';
 
-export const APP_VERSION = '1.6.0';
+export const APP_VERSION = '1.6.1';
 export const AVAILABLE_PACKS = { base: BASE_PACK };
 
 // Catálogo de expansões. "em_breve" = ainda não publicada.
@@ -19,6 +19,10 @@ export const DLC_CATALOG = [
 ];
 
 export const CHANGELOG = [
+  { versao: '1.6.1', data: '09/11/2026', titulo: 'Versão 1.6.1: parque já cheio ao reabrir', itens: [
+    'Ao fechar e abrir o jogo de dia (8h às 18h), o parque já começa com visitantes passeando em vez de zerado; os que passam do limite aparecem só no contador 👥, sem pagar ingresso duas vezes',
+    'Aplicativo marcado como jogo (categoria) no manifesto, para ajudar o Game Hub / Game Booster do celular a reconhecê-lo',
+  ] },
   { versao: '1.6.0', data: '09/11/2026', titulo: 'Versão 1.6: caminhos, mobiliário e animais sem atravessar nada', itens: [
     'Animais não se sobrepõem mais e não atravessam plantas, comedouro e bebedouro: eles contornam os obstáculos',
     'Máximo de 100 visitantes desenhados: os que passam disso continuam contando no 👥 e pagando, só não aparecem na tela (mais fluidez no celular)',

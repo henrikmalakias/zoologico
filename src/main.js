@@ -1,6 +1,6 @@
 import './ui/style.css';
 import { APP_VERSION, AVAILABLE_PACKS } from './content/registry.js';
-import { newGame, step, catchUp, advanceTo, hiringTick, SPEEDS, timeFactor } from './sim/core.js';
+import { newGame, step, catchUp, advanceTo, hiringTick, SPEEDS, timeFactor, seedCrowd } from './sim/core.js';
 import { tileToWorld, accessTile } from './sim/grid.js';
 import { saveGame, loadGame, backup, exportFile, importFile, getPref, setPref, serialize, deserialize } from './save/save.js';
 import { World } from './render/world.js';
@@ -77,7 +77,7 @@ class Game {
   undoLast() {
     const u = this.undoInfo; if (!u || Date.now() - u.at > 60000) { this.undoInfo = null; return; }
     const s = deserialize(u.data); s._events = []; s.clock.lastRealTs = Date.now(); s.clock.speed = this.state.clock.speed;
-    s.settings = { ...this.state.settings }; this.state = s; this.undoInfo = null;
+    s.settings = { ...this.state.settings }; seedCrowd(s); this.state = s; this.undoInfo = null;
     this.world.cache.hver = -1; this.ui.closeSheet(); this.ui.hideConfirm(); if (!this.ui.el.drawer.classList.contains('hidden')) this.ui.renderDrawer();
     sound.undo(); this.ui.toast(`Desfeito: ${u.label}.`, 'bom');
   }
