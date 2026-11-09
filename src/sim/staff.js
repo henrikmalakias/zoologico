@@ -1,4 +1,5 @@
 import { content } from '../content/registry.js';
+import { centerCell, perimeter, routeInside } from './habshape.js';
 import { clamp, rnd, uid, log, dist, hourOf } from './util.js';
 import { MAP, tileToWorld, worldToTile, astar, staffPassable, accessTile, idx, isPathT } from './grid.js';
 import { habById, breachPoint } from './animals.js';
@@ -32,7 +33,7 @@ function destFor(s, type, target) {
     let hab = type === 'treat' ? s.animals.find(a => a.id === target) : habById(s, target);
     if (type === 'treat') { if (!hab) return null; if (hab.escaped) return { hab: 0, x: hab.x, z: hab.z }; hab = habById(s, hab.hab); }
     if (!hab) return null;
-    const t = type === 'feed' ? hab.feed : type === 'water' ? hab.water : type === 'clean' ? [hab.x + (hab.w >> 1), hab.y + (hab.h >> 1)] : hab.gateIn;
+    const t = type === 'feed' ? hab.feed : type === 'water' ? hab.water : type === 'clean' ? centerCell(hab) : hab.gateIn;
     const p = tileToWorld(t[0], t[1]); return { hab: hab.id, x: p.x + 0.6, z: p.z + 0.6 };
   }
   if (['repair', 'close', 'patrol'].includes(type)) { const h = habById(s, target); if (!h) return null; const p = tileToWorld(h.gateOut[0], h.gateOut[1]); return { hab: 0, x: p.x, z: p.z }; }
@@ -62,12 +63,12 @@ export function startTask(s, st, type, target, alertId = null) {
 }
 function buildRoute(s, st, dest) {
   const pts = []; let cur = worldToTile(st.x, st.z);
-  if (st.inHab) { const h = habById(s, st.inHab); if (h) { pts.push(tileToWorld(h.gateIn[0], h.gateIn[1]), tileToWorld(h.gateOut[0], h.gateOut[1])); cur = { tx: h.gateOut[0], ty: h.gateOut[1] }; } st.inHab = 0; }
+  if (st.inHab) { const h = habById(s, st.inHab); if (h) { const gi = tileToWorld(h.gateIn[0], h.gateIn[1]); pts.push(...(h.fence === 'fosso' ? [gi] : routeInside(h, st, gi, 0.2)), tileToWorld(h.gateOut[0], h.gateOut[1])); cur = { tx: h.gateOut[0], ty: h.gateOut[1] }; } st.inHab = 0; }
   const H = dest.hab ? habById(s, dest.hab) : null;
   const goal = H ? { tx: H.gateOut[0], ty: H.gateOut[1] } : worldToTile(dest.x, dest.z);
   const path = astar(s, cur.tx, cur.ty, goal.tx, goal.ty, (x, y) => staffPassable(s, x, y), (x, y) => (isPathT(s.terrain[idx(x, y)]) ? 1 : 1.4));
   if (path) for (const [x, y] of path) pts.push(tileToWorld(x, y));
-  if (H) pts.push(tileToWorld(H.gateIn[0], H.gateIn[1]));
+  if (H) { const gi = tileToWorld(H.gateIn[0], H.gateIn[1]); pts.push(gi); if (H.fence !== 'fosso') { pts.push(...routeInside(H, gi, dest, 0.2)); return pts; } }
   pts.push({ x: dest.x, z: dest.z });
   return pts;
 }
@@ -155,7 +156,7 @@ function completeTask(s, st) {
     case 'treat': { const a = s.animals.find(a => a.id === t.target); if (a) { a.sick = false; a.health = clamp(a.health + 0.35); spend(s, 'comida', 150); log(s, `${a.name} foi tratado(a) por ${st.name}.`, 'bom'); } break; }
     case 'wc': { const f = s.facilities.find(f => f.id === t.target); if (f) f.dirty = 0; break; }
     case 'litter': delete s.litter[t.target]; break;
-    case 'repair': if (h) { h.fenceHp = 1; h.breaches = []; spend(s, 'manutencao', C.fences[h.fence].custo * 2 * (h.w + h.h) * 0.15); if (t.alertId) log(s, `${st.name} consertou a cerca do ${h.name}.`, 'bom'); } break;
+    case 'repair': if (h) { h.fenceHp = 1; h.breaches = []; spend(s, 'manutencao', C.fences[h.fence].custo * perimeter(h) * 0.15); if (t.alertId) log(s, `${st.name} consertou a cerca do ${h.name}.`, 'bom'); } break;
     case 'close': if (h) { h.gateOpen = false; log(s, `${st.name} fechou o portão do ${h.name}.`, 'bom'); } break;
     case 'patrol': if (h && h.fenceHp < 0.7) startTask(s, st, 'repair', h.id); break;
     case 'transfer': { const a = s.animals.find(a => a.id === t.target); const hh = habById(s, t.destHab);
@@ -298,7 +299,7 @@ export function alertPos(s, a) {
   const h = habById(s, a.target); if (!h) return null;
   if (a.type === 'brecha' && h.breaches?.length) { const p = breachPoint(h, h.breaches[0]); return p.outer; }
   if (a.type === 'cerca' || a.type === 'portao' || a.type === 'brecha') return tileToWorld(h.gateOut[0], h.gateOut[1]);
-  return tileToWorld(h.x + (h.w >> 1), h.y + (h.h >> 1));
+  const c = centerCell(h); return tileToWorld(c[0], c[1]);
 }
 export function eligibleStaff(s, a) {
   const roles = ALERT_ROLES[a.type], p = alertPos(s, a) || { x: 0, z: 0 };

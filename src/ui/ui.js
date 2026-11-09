@@ -5,7 +5,7 @@ import { Tutorial } from './tutorial.js';
 import { money, fmtClock, clamp, hourOf } from '../sim/util.js';
 import { worldToTile, tileToWorld, idx, inMap, AREAS, TILE } from '../sim/grid.js';
 import { stars, hire, fireById, expandArea, METAS, VAGAS, SPEEDS, H2, MES, fixedDaily } from '../sim/core.js';
-import { checkHabitat, placeHabitat, paintTerrain, placePlant, checkFacility, placeFacility, buyAnimal, sellAnimal, demolish, setTicket, setSalary, renameHabitat, habitatCost, sculpt, SCULPT_COST } from '../sim/build.js';
+import { checkExpand, expandHabitat, checkShrink, shrinkHabitat, movableAt, moveObject, checkHabitat, placeHabitat, paintTerrain, placePlant, checkFacility, placeFacility, buyAnimal, sellAnimal, demolish, setTicket, setSalary, renameHabitat, habitatCost, sculpt, SCULPT_COST } from '../sim/build.js';
 import { heightAt } from '../sim/grid.js';
 import { distributeFurniture, levelSpacing } from '../sim/furn.js';
 import { suitability, habById, habInfo } from '../sim/animals.js';
@@ -79,9 +79,30 @@ export class UI {
       hb('▲', 'cima', 'Inclinar para cima (visão de cima)', c => c.tilt(0.04)), hb('▼', 'baixo', 'Inclinar para baixo (visão de lado)', c => c.tilt(-0.04)),
       hb('＋', 'mais', 'Aproximar', c => c.zoom(0.94)), hb('－', 'menos', 'Afastar', c => c.zoom(1.06)));
     this.el.undo = h('button', { class: 'undo hidden', onclick: () => this.g.undoLast() }, '↶ Desfazer');
+    // próximo alerta: leva a câmera até o alerta seguinte e abre as opções
+    this.el.nextAlert = h('button', { class: 'nextalert hidden', title: 'Próximo alerta', onclick: () => this.nextAlert() });
+    // faixa de atualização: fica na tela até a pessoa escolher
+    this.el.updBar = h('div', { class: 'updbar hidden' });
     this.el.liveBar = h('div', { class: 'livebar hidden' }, h('button', { class: 'btn red', onclick: () => this.g.toggleLive() }, 'Sair do AO VIVO'));
-    R.append(this.el.alerts, this.el.camPad, this.el.undo, this.el.bar, this.el.drawer, this.el.sheet, this.el.confirm, this.el.toasts, this.el.joy, this.el.cross, this.el.liveBar);
+    R.append(this.el.alerts, this.el.camPad, this.el.undo, this.el.nextAlert, this.el.updBar, this.el.bar, this.el.drawer, this.el.sheet, this.el.confirm, this.el.toasts, this.el.joy, this.el.cross, this.el.liveBar);
     this.setupJoystick();
+  }
+  nextAlert() {
+    const s = this.s, list = [...s.alerts].sort((a, b) => (ALERT_INFO[b.type].sev - ALERT_INFO[a.type].sev) || (a.created - b.created)); if (!list.length) return;
+    this.alertIdx = ((this.alertIdx ?? -1) + 1) % list.length; const a = list[this.alertIdx], p = alertPos(s, a);
+    if (p && !this.g.live) this.g.controls.centerOn(p.x, p.z, Math.min(this.g.controls.cam.dist, 30));
+    this.openAlert(a.id);
+  }
+  updateNextAlert() {
+    const n = this.s.alerts.length, b = this.el.nextAlert; b.classList.toggle('hidden', !n || this.g.live || !this.el.drawer.classList.contains('hidden'));
+    if (n) { const open = this.s.alerts.filter(a => !a.assigned).length, txt = `⚠ ${open ? `${open} alerta${open > 1 ? 's' : ''}` : 'a caminho'} ›`; if (b._t !== txt) { b.textContent = txt; b._t = txt; } b.classList.toggle('calm', !open); }
+  }
+  showUpdateBar(v) {
+    if (this.updHidden) return;
+    const b = this.el.updBar; b.classList.remove('hidden');
+    b.replaceChildren(h('span', {}, `🆕 Versão ${v.versao} disponível${v.novidades?.[0] ? ': ' + v.novidades[0] : ''}`),
+      h('button', { class: 'btn sm', onclick: () => this.g.applyUpdate() }, 'Atualizar agora'),
+      h('button', { class: 'btn sec sm', onclick: () => { this.updHidden = true; b.classList.add('hidden'); this.toast('Tudo bem. A atualização fica em Menu > Novidades.', 'info'); } }, 'Depois'));
   }
   setupJoystick() {
     const j = this.el.joy, knob = j.firstChild; let id = null;
@@ -165,9 +186,11 @@ export class UI {
     const set = (k, v) => () => { o[k] = v; this.renderDrawer(); };
     let body = [], hint = '';
     if (this.cat === 'habitat') {
-      body = [h('div', { class: 'items' }, ...Object.entries(C.biomes).map(([k, b]) => item(o.biome === k, b.nome, 'Bioma', set('biome', k))),
+      const mode = o.habMode || 'novo';
+      const modes = h('div', { class: 'items' }, ...[['novo', '➕ Novo'], ['ampliar', '↔ Ampliar'], ['recortar', '✂ Recortar'], ['mover', '✋ Mover objetos']].map(([k, n]) => item(mode === k, n, null, () => { o.habMode = k; this.moveSel = null; this.g.world.hidePreview(); this.renderDrawer(); })));
+      body = mode !== 'novo' ? [modes] : [modes, h('div', { class: 'items' }, ...Object.entries(C.biomes).map(([k, b]) => item(o.biome === k, b.nome, 'Bioma', set('biome', k))),
         ...Object.entries(C.fences).map(([k, f]) => item(o.fence === k, f.nome, `R$ ${f.custo}/bloco · alt ${f.altura} m · res ${f.resistencia}`, set('fence', k))))];
-      hint = o.fence === 'fosso' ? 'Ilha pronta: arraste para desenhar (mín. 8 x 8). Um fosso de água funda de 2 blocos vira a barreira, com ponte e portão. Ótima para macacos e leões; elefantes nadam, então ainda podem fugir.' : o.fence === 'tela' ? 'Viveiro: cerca com rede por cima. Ideal para macacos, que escalam. Fraco contra animais fortes.' : 'Arraste no mapa para desenhar o habitat (mín. 4 x 4). Use dois dedos para mover a câmera.';
+      hint = mode === 'ampliar' ? 'Arraste um retângulo encostado no habitat: os blocos livres ligados a ele entram (verde). Instalações, caminhos e a folga de 1 bloco de outros habitats ficam de fora. A cerca é refeita no novo contorno.' : mode === 'recortar' ? 'Arraste sobre a parte do habitat que quer tirar (laranja). Portão, comedouro e bebedouro ficam; o habitat não pode ficar dividido. Sem reembolso.' : mode === 'mover' ? (this.moveSel ? `Toque no novo lugar do(a) ${this.moveSel.nome.toLowerCase()} dentro do mesmo habitat.` : 'Toque em uma planta, no comedouro ou no bebedouro de um habitat e depois no novo lugar.') : o.fence === 'fosso' ? 'Ilha pronta: arraste para desenhar (mín. 8 x 8, retângulo inteiro livre). Um fosso de água funda de 2 blocos vira a barreira, com ponte e portão. Ótima para macacos e leões; elefantes nadam, então ainda podem fugir.' : 'Arraste para desenhar (mín. 4 x 4). O habitat contorna sozinho o que já está construído (instalações, caminhos e a folga de 1 bloco de outros habitats) e a cerca segue o formato.' + (o.fence === 'tela' ? ' Viveiro: rede por cima, ideal para macacos, que escalam; fraco contra animais fortes.' : '');
     } else if (this.cat === 'caminho') {
       const PRE = { p: { poste: 3, lixeira: 3, banco: 3 }, q: { poste: 0, lixeira: 0, banco: 0 }, c: { poste: 5, lixeira: 5, banco: 5 }, k: { poste: 5, lixeira: 5, banco: 5 } };
       const types = Object.entries(C.terrains).filter(([, t]) => t.caminho);
@@ -194,7 +217,7 @@ export class UI {
         h('button', { onclick: () => this.toggleBuild(false) }, '✔ Concluir')),
       ...body, h('div', { class: 'hint' }, hint));
   }
-  toolWantsDrag() { return ['habitat', 'caminho', 'terreno', 'planta', 'relevo'].includes(this.tool); }
+  toolWantsDrag() { return ['caminho', 'terreno', 'planta', 'relevo'].includes(this.tool) || (this.tool === 'habitat' && (this.opts.habMode || 'novo') !== 'mover'); }
   tileAt(cx, cy) { const p = this.g.world.groundAt(cx, cy); if (!p) return null; const t = worldToTile(p.x, p.z); return inMap(t.tx, t.ty) ? t : null; }
   finishPath() {
     const tiles = this.strokeTiles || []; this.strokeTiles = [];
@@ -206,7 +229,14 @@ export class UI {
   toolDragStart(cx, cy) { this.strokeTiles = []; this.hideConfirm(); if (this.tool !== 'habitat') this.g.snapshot(TOOL_NOME[this.tool]); this.dragA = this.tileAt(cx, cy); this.painted = new Set(); this.toolDrag(cx, cy); }
   toolDrag(cx, cy) {
     const t = this.tileAt(cx, cy); if (!t || !this.dragA) return; const s = this.s;
-    if (this.tool === 'habitat') { const c = checkHabitat(s, this.dragA.tx, this.dragA.ty, t.tx, t.ty, this.opts.fence); this.dragB = t; const r = c.rect; this.g.world.showPreview(r.x, r.y, r.w, r.h, c.ok, 0.6); this.dragMsg = c; return; }
+    if (this.tool === 'habitat') {
+      const mode = this.opts.habMode || 'novo', A = this.dragA; this.dragB = t;
+      const c = mode === 'ampliar' ? checkExpand(s, A.tx, A.ty, t.tx, t.ty) : mode === 'recortar' ? checkShrink(s, A.tx, A.ty, t.tx, t.ty) : checkHabitat(s, A.tx, A.ty, t.tx, t.ty, this.opts.fence);
+      this.g.world.hidePreview();
+      if (c.cells?.length) this.g.world.showCells(c.cells, !c.ok ? '#e53935' : mode === 'recortar' ? '#ff9800' : '#4caf50', 0.6);
+      else { const r = c.rect; this.g.world.showPreview(r.x, r.y, r.w, r.h, false, 0.3); }
+      this.dragMsg = c; return;
+    }
     const k = t.tx + ',' + t.ty; if (this.painted.has(k)) return; this.painted.add(k);
     let r;
     if (this.tool === 'caminho') { r = paintTerrain(s, t.tx, t.ty, this.opts.pathType || 'p'); if (r.ok) (this.strokeTiles ||= []).push([t.tx, t.ty]); }
@@ -221,8 +251,17 @@ export class UI {
     if (this.tool === 'habitat' && this.dragMsg) {
       const c = this.dragMsg, A = this.dragA, B = this.dragB; this.dragMsg = null;
       if (!c.ok) { this.toast(c.msg, 'ruim'); this.g.world.hidePreview(); return; }
-      const C = content(this.s);
-      this.askConfirm(`${C.biomes[this.opts.biome].nome} ${c.rect.w}x${c.rect.h} · ${C.fences[this.opts.fence].nome} · ${c.msg}`, () => {
+      const C = content(this.s), mode = this.opts.habMode || 'novo';
+      if (mode !== 'novo') {
+        this.askConfirm(c.msg, () => {
+          this.g.snapshot(mode === 'ampliar' ? 'ampliação' : 'recorte');
+          const r = mode === 'ampliar' ? expandHabitat(this.s, A.tx, A.ty, B.tx, B.ty) : shrinkHabitat(this.s, A.tx, A.ty, B.tx, B.ty);
+          if (!r.ok) this.toast(r.msg, 'ruim'); else { if (mode === 'ampliar') sound.cash(); this.toast(mode === 'ampliar' ? 'Habitat ampliado! A cerca foi refeita no novo contorno.' : 'Habitat recortado.', 'bom'); }
+          this.g.world.hidePreview();
+        }, () => this.g.world.hidePreview());
+        return;
+      }
+      this.askConfirm(`${C.biomes[this.opts.biome].nome} · ${c.cells.length} blocos · ${C.fences[this.opts.fence].nome} · ${c.msg}`, () => {
         this.g.snapshot('habitat');
         const r = placeHabitat(this.s, A.tx, A.ty, B.tx, B.ty, this.opts.biome, this.opts.fence);
         if (!r.ok) this.toast(r.msg, 'ruim'); else { sound.cash(); this.cat = 'planta'; this.tool = 'planta'; this.opts.plant = C.biomes[this.opts.biome].plantas[0]; this.renderDrawer(); this.toast('Habitat pronto! Agora coloque plantas do bioma e depois compre animais.', 'bom'); }
@@ -239,6 +278,16 @@ export class UI {
     if (this.tool) {
       const t = this.tileAt(cx, cy); if (!t) return;
       if (['caminho', 'terreno', 'planta', 'relevo'].includes(this.tool)) { this.g.snapshot(TOOL_NOME[this.tool]); this.dragA = t; this.painted = new Set(); this.strokeTiles = []; this.toolDrag(cx, cy); this.finishPath(); setTimeout(() => this.g.world.hidePreview(), 300); return; }
+      if (this.tool === 'habitat' && this.opts.habMode === 'mover') {
+        if (!this.moveSel) {
+          const m = movableAt(s, t.tx, t.ty);
+          if (!m) { this.toast('Toque em uma planta, no comedouro ou no bebedouro.', 'ruim'); return; }
+          this.moveSel = m; this.g.world.showPreview(t.tx, t.ty, 1, 1, true, 1.2); this.renderDrawer(); return;
+        }
+        this.g.snapshot('mudança de lugar'); const r = moveObject(s, this.moveSel, t.tx, t.ty);
+        this.toast(r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) { this.moveSel = null; this.g.world.hidePreview(); this.renderDrawer(); }
+        return;
+      }
       if (this.tool === 'habitat') { this.toast('Arraste para desenhar o habitat.', 'ruim'); return; }
       if (this.tool === 'inst') {
         const D = C.facilities[this.opts.fac], c = checkFacility(s, this.opts.fac, t.tx, t.ty);
@@ -375,7 +424,7 @@ export class UI {
       const c = tileToWorld(hb.x + hb.w / 2 - 0.5, hb.y + hb.h / 2 - 0.5); this.g.world.showSelection(c.x, c.z, Math.max(hb.w, hb.h) * 0.75);
       const an = s.animals.filter(a => a.hab === hb.id), sps = [...new Set(an.map(a => a.sp))];
       const LBL = { bioma: 'Bioma certo', espaco: 'Espaço', terreno: 'Terreno do bioma', plantas: 'Plantas', agua: 'Água (e água funda)', cerca: 'Barreira adequada', grupo: 'Tamanho do grupo', convivencia: 'Convivência' };
-      body = [h('h3', {}, hb.name), h('div', { class: 'muted' }, `${C.biomes[hb.biome].nome} · ${hb.w}x${hb.h} blocos · ${F.nome} · ${F.fosso ? 'ponte' : 'portão'} ${hb.gateOpen ? 'ABERTO' : 'fechado'}`),
+      body = [h('h3', {}, hb.name), h('div', { class: 'muted' }, `${C.biomes[hb.biome].nome} · ${hb.cells.length} blocos · ${F.nome} · ${F.fosso ? 'ponte' : 'portão'} ${hb.gateOpen ? 'ABERTO' : 'fechado'}`),
         hb.breaches?.length ? h('div', { class: 'card', style: 'border-left:4px solid #e53935' }, `🧱 Cerca rompida em ${hb.breaches.length} ponto(s). Envie um segurança!`) : null,
         h('div', { class: 'kv' }, ...[['Comida', hb.food], ['Água', hb.waterLvl], ['Limpeza', hb.clean], ['Cerca', hb.fenceHp]].flatMap(([n, v]) => [n, meter(v), pct(v)])),
         ...(() => { const sg = this.habSuggestions(hb); return sg.length ? [h('h3', { style: 'margin-top:6px' }, '💡 Sugestões'), ...sg.map(([t, lab, fn, bad]) => h('div', { class: 'row' }, h('span', { style: bad ? 'color:#ffb4a8' : '' }, t), h('button', { class: 'btn sm', onclick: fn }, lab)))] : [h('div', { class: 'muted', style: 'margin:6px 0' }, '✅ Nenhuma melhoria pendente neste habitat.')]; })(),
@@ -623,6 +672,7 @@ export class UI {
     for (const [id, el] of this.workEls) if (!seen.has(id)) { el.remove(); this.workEls.delete(id); }
   }
   tick(dt = 0.016) {
+    this.updateNextAlert();
     this.updateHud(); this.updateAlerts(); this.updateWorkBars(); this.tut.tick();
     // sons ligados aos acontecimentos
     const L = this.s.log; if (this.logSeen > L.length) this.logSeen = L.length;

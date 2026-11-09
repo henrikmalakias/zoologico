@@ -97,3 +97,8 @@ textarea,input{user-select:text;-webkit-user-select:text;color:#111}
 .slrow{display:grid;grid-template-columns:96px 1fr 128px;align-items:center;gap:6px;font-size:12px}
 .slrow input[type=range]{width:100%;min-width:0;accent-color:#7be0a5}
 .sl-val{opacity:.85;font-size:11px;text-align:right}
+.nextalert{position:absolute;left:calc(env(safe-area-inset-left) + 8px);top:42%;z-index:8;background:#d6453d;color:#fff;border-radius:12px;padding:7px 11px;font-weight:800;font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.35);animation:pulse 1.4s infinite}
+.nextalert.calm{background:#5b6b74;animation:none}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+.updbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 76px);z-index:16;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;background:rgba(18,40,30,.94);border:1px solid #7be0a5;border-radius:14px;padding:8px 10px;width:min(560px,94vw);box-shadow:0 4px 16px rgba(0,0,0,.4);font-size:13px}
+.updbar span{flex:1;min-width:160px}

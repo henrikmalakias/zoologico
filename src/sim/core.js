@@ -7,7 +7,7 @@ import { updateAnimals, hourlyAnimals, dailyAnimals, habInfo } from './animals.j
 import { updateStaff, refreshAlerts, managerTick, spend, earn, recalcClean } from './staff.js';
 import { updateVisitors, arrivalRate, arrive, isOpen, litterCount, seedCrowd } from './visitors.js';
 
-export const SCHEMA = 6;
+export const SCHEMA = 7;
 export const SPEEDS = [0, 1, 2, 3]; // multiplicador da velocidade normal
 export const MES = 30;
 // segundos de jogo por segundo real na velocidade normal (depende da hora: dia devagar, noite rápida)

@@ -1,7 +1,8 @@
 import { content } from '../content/registry.js';
 import { clamp, rnd, pick, uid, log, hourOf } from './util.js';
-import { TILE, HALF, MAP, tileToWorld, worldToTile, innerBounds, waterDepth, idx, inMap } from './grid.js';
+import { TILE, HALF, MAP, tileToWorld, worldToTile, waterDepth, idx, inMap } from './grid.js';
 import { NOMES_ANIMAIS } from '../content/base.js';
+import { cellSet, walkSet, insideAt, clampInside, randomPoint, routeInside, edges, findEdge, gateEdge, ensureCells } from './habshape.js';
 import { addDirt, recalcClean } from './staff.js';
 
 export const SPEED = { leao: 1.6, zebra: 1.5, elefante: 1.1, girafa: 1.3, macaco: 1.4, hipopotamo: 1.0, rinoceronte: 1.2, flamingo: 0.9, gorila: 1.0, tartaruga: 0.25 };
@@ -13,8 +14,9 @@ const radiusOf = (s, a) => { const S = content(s).species[a.sp]; const f = S && 
 export function habObstacles(s, h) {
   if (h._obs && h._obsV === s._ver) return h._obs;
   const C = content(s), out = [];
+  const set = cellSet(h);
   for (const o of s.objects) {
-    if (o.tx < h.x || o.tx >= h.x + h.w || o.ty < h.y || o.ty >= h.y + h.h) continue;
+    if (!set.has(idx(o.tx, o.ty))) continue;
     const P = C.plants[o.type]; if (!P) continue;
     const p = tileToWorld(o.tx, o.ty); out.push({ x: p.x, z: p.z, r: (P.alta ? 0.55 : 0.4) * (o.sc || 1) });
   }
@@ -24,12 +26,12 @@ export function habObstacles(s, h) {
 }
 // ponto livre ao redor de um obstáculo (comedouro/bebedouro) onde o animal cabe
 function ringPoint(s, a, h, ob, margin = 0.08) {
-  const R = radiusOf(s, a) * 0.7, rr = ob.r + R + margin, b = innerBounds(h, 0.4);
+  const R = radiusOf(s, a) * 0.7, rr = ob.r + R + margin;
   const base = Math.atan2(a.z - ob.z, a.x - ob.x);
   for (let k = 0; k < 8; k++) {
     const ang = base + (k === 0 ? (rnd(s) - 0.5) * 1.2 : (rnd(s) - 0.5) * 6.28);
     const x = ob.x + Math.cos(ang) * rr, z = ob.z + Math.sin(ang) * rr;
-    if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) return { x, z };
+    if (insideAt(h, x, z, 0.4)) return { x, z };
   }
   return { x: ob.x, z: ob.z + rr };
 }
@@ -46,9 +48,9 @@ function collide(s, a, h, dt, ctx) {
     const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz), min = R + radiusOf(s, b) * 0.7;
     if (d < min) { const k = ((min - d) / (d || 1)) * (b.asleep || b.sedated ? 1 : 0.5); px += (d ? dx : (a.id % 2 ? 1 : -1)) * k; pz += (d ? dz : 0) * k; }
   }
-  const m = Math.hypot(px, pz); if (!m) return 0;
-  const f = Math.min(1, push / m); a.x += px * f; a.z += pz * f;
-  const bb = innerBounds(h, 0.25); a.x = clamp(a.x, bb.x0, bb.x1); a.z = clamp(a.z, bb.z0, bb.z1);
+  const m = Math.hypot(px, pz);
+  if (m) { const f = Math.min(1, push / m); a.x += px * f; a.z += pz * f; }
+  if (!insideAt(h, a.x, a.z, 0.2)) { const q = clampInside(h, a, 0.25); a.x = q.x; a.z = q.z; }
   return m;
 }
 
@@ -56,18 +58,19 @@ function collide(s, a, h, dt, ctx) {
 export function habInfo(s, h) {
   if (h._info && h._info.v === s._ver && h._info.t === s._qt) return h._info;
   const C = content(s), terr = {}; let water = 0, deep = 0;
-  for (let y = h.y; y < h.y + h.h; y++) for (let x = h.x; x < h.x + h.w; x++) {
-    const t = s.terrain[y * 72 + x]; terr[t] = (terr[t] || 0) + 1; if (t === 'w') { water++; if (s.height && waterDepth(s, x, y) > 1.0) deep++; }
+  const cells = ensureCells(h), set = cellSet(h);
+  for (const i of cells) {
+    const x = i % MAP, y = (i / MAP) | 0, t = s.terrain[i]; terr[t] = (terr[t] || 0) + 1; if (t === 'w') { water++; if (s.height && waterDepth(s, x, y) > 1.0) deep++; }
   }
   const plants = {}, tall = {};
   for (const o of s.objects) {
-    if (o.tx < h.x || o.tx >= h.x + h.w || o.ty < h.y || o.ty >= h.y + h.h) continue;
+    if (!set.has(idx(o.tx, o.ty))) continue;
     const P = C.plants[o.type]; if (!P) continue;
     plants[P.bioma] = (plants[P.bioma] || 0) + 1; if (P.alta) tall[P.bioma] = (tall[P.bioma] || 0) + 1;
   }
   const count = {};
   for (const a of s.animals) if (a.hab === h.id && C.species[a.sp]) count[a.sp] = (count[a.sp] || 0) + 1;
-  h._info = { v: s._ver, t: s._qt, tiles: h.w * h.h, land: h.w * h.h - water, terr, water, deep, plants, tall, count };
+  h._info = { v: s._ver, t: s._qt, tiles: cells.length, land: cells.length - water, terr, water, deep, plants, tall, count };
   return h._info;
 }
 
@@ -105,10 +108,10 @@ export function newAnimal(s, sp, h, adult = true) {
     st: 'idle', stT: 1, tgt: null, asleep: false };
 }
 export function randomInside(s, h, margin = 0.6, sp) {
-  const b = innerBounds(h, margin), swim = sp && content(s).species[sp]?.tracos.nada, R = (RADIUS[sp] || 0.7) * 0.7 + 0.15, obs = habObstacles(s, h);
+  const swim = sp && content(s).species[sp]?.tracos.nada, R = (RADIUS[sp] || 0.7) * 0.7 + 0.15, obs = habObstacles(s, h), r = () => rnd(s);
   let p;
   for (let k = 0; k < 14; k++) {
-    p = { x: b.x0 + rnd(s) * (b.x1 - b.x0), z: b.z0 + rnd(s) * (b.z1 - b.z0) };
+    p = randomPoint(h, margin, r);
     const t = worldToTile(p.x, p.z);
     if (obs.some(o => Math.hypot(p.x - o.x, p.z - o.z) < o.r + R)) continue;
     if (swim || !s.height || !inMap(t.tx, t.ty) || waterDepth(s, t.tx, t.ty) < 0.9) break;
@@ -116,7 +119,7 @@ export function randomInside(s, h, margin = 0.6, sp) {
   return p;
 }
 function deepSpot(s, h) {
-  const out = []; for (let y = h.y; y < h.y + h.h; y++) for (let x = h.x; x < h.x + h.w; x++) if (waterDepth(s, x, y) > 1.0) out.push([x, y]);
+  const out = []; for (const i of walkSet(h)) { const x = i % MAP, y = (i / MAP) | 0; if (waterDepth(s, x, y) > 1.0) out.push([x, y]); }
   if (!out.length) return null; const [x, y] = pick(s, out); const p = tileToWorld(x, y); return p;
 }
 const jitter = (s, p, r = 0.8) => ({ x: p.x + (rnd(s) - 0.5) * r * 2, z: p.z + (rnd(s) - 0.5) * r * 2 });
@@ -160,6 +163,8 @@ function abstractBehavior(s, a, h) {
   if (a.thirst > 0.4 && h.waterLvl > 0.02) { a.thirst = 0.1; h.waterLvl = clamp(h.waterLvl - 0.05); }
 }
 
+// destino dentro do habitat: se a linha reta sair do formato (L, U...), vai por pontos intermediários
+function go(h, a, p) { if (!p) { a.tgt = null; a.wp = null; return; } const r = routeInside(h, a, p); a.tgt = r.shift(); a.wp = r.length ? r : null; }
 function moveTo(a, dt, speed) {
   const dx = a.tgt.x - a.x, dz = a.tgt.z - a.z, d = Math.hypot(dx, dz);
   if (d < 0.15) return true;
@@ -180,7 +185,7 @@ function visualBehavior(s, a, h, S, ctx) {
   if (a.tgt && !a.sedated) {
     const moved = Math.hypot(a.x - px, a.z - pz);
     if (moved < (SPEED[a.sp] || 1.3) * dt * 0.12) a.stk = (a.stk || 0) + dt; else a.stk = Math.max(0, (a.stk || 0) - dt);
-    if (a.stk > 2) { a.stk = 0; a.tgt = null; a.st = 'idle'; a.stT = 1 + rnd(s) * 2; }
+    if (a.stk > 2) { a.stk = 0; a.tgt = null; a.wp = null; a.st = 'idle'; a.stT = 1 + rnd(s) * 2; }
   } else a.stk = 0;
 }
 function behave(s, a, h, S, ctx) {
@@ -200,7 +205,8 @@ function behave(s, a, h, S, ctx) {
   a.asleep = false;
   if (a.tgt) {
     if (moveTo(a, dt, a.st === 'eat_go' || a.st === 'drink_go' ? sp : sp * 0.7)) {
-      a.tgt = null;
+      if (a.wp?.length) { a.tgt = a.wp.shift(); return; }
+      a.tgt = null; a.wp = null;
       if (a.st === 'eat_go') { a.st = 'eat'; a.stT = 5; }
       else if (a.st === 'drink_go') { a.st = 'drink'; a.stT = 3; }
       else if (a.st === 'bath_go') { a.st = 'bath'; a.stT = 8 + rnd(s) * 8; a.stress = clamp(a.stress - 0.05); a.thirst = clamp(a.thirst - 0.3); }
@@ -225,13 +231,13 @@ function behave(s, a, h, S, ctx) {
   opts.sort((x, y) => y[1] - x[1]);
   const c = opts[0][0];
   if (c === 'sleep') { a.st = 'sleep'; a.asleep = true; }
-  else if (c === 'eat') { a.st = 'eat_go'; a.tgt = ringPoint(s, a, h, habObstacles(s, h).find(o => o.feed)); }
-  else if (c === 'drink') { a.st = 'drink_go'; a.tgt = ringPoint(s, a, h, habObstacles(s, h).find(o => o.water)); }
-  else if (c === 'wander') { a.st = 'walk'; a.tgt = randomInside(s, h, 0.6, a.sp); }
-  else if (c === 'bath') { a.st = 'bath_go'; a.tgt = deepSpot(s, h); if (!a.tgt) { a.st = 'idle'; a.stT = 2; } }
+  else if (c === 'eat') { a.st = 'eat_go'; go(h, a, ringPoint(s, a, h, habObstacles(s, h).find(o => o.feed))); }
+  else if (c === 'drink') { a.st = 'drink_go'; go(h, a, ringPoint(s, a, h, habObstacles(s, h).find(o => o.water))); }
+  else if (c === 'wander') { a.st = 'walk'; go(h, a, randomInside(s, h, 0.6, a.sp)); }
+  else if (c === 'bath') { a.st = 'bath_go'; go(h, a, deepSpot(s, h)); if (!a.tgt) { a.st = 'idle'; a.stT = 2; } }
   else if (c === 'social') {
     const mates = s.animals.filter(b => b !== a && b.hab === a.hab && !b.escaped);
-    if (mates.length) { const m = pick(s, mates), b = innerBounds(h); a.st = 'walk'; a.tgt = { x: clamp(m.x + (r() - 0.5) * 3, b.x0, b.x1), z: clamp(m.z + (r() - 0.5) * 3, b.z0, b.z1) }; }
+    if (mates.length) { const m = pick(s, mates); a.st = 'walk'; go(h, a, clampInside(h, { x: m.x + (r() - 0.5) * 3, z: m.z + (r() - 0.5) * 3 }, 0.6)); }
     else { a.st = 'idle'; a.stT = 3; }
   } else { a.st = 'idle'; a.stT = 2 + r() * 5; }
 }
@@ -264,17 +270,14 @@ export function hourlyAnimals(s) {
 
 // ---------- fuga animada ----------
 function edgePoint(s, h, a, gateOk) {
-  const F = content(s).fences[h.fence], b = innerBounds(h, 0), o = innerBounds({ ...h, fence: 'x' }, 0);
-  const d = { O: a.x - b.x0, L: b.x1 - a.x, N: a.z - b.z0, S: b.z1 - a.z };
-  let side = Object.keys(d).sort((x, y) => d[x] - d[y])[0];
-  const horiz = side === 'N' || side === 'S';
-  let along = horiz ? clamp(a.x, b.x0 + 1, b.x1 - 1) : clamp(a.z, b.z0 + 1, b.z1 - 1);
-  const k = Math.floor((along - (horiz ? o.x0 : o.z0)) / TILE);
-  if (!gateOk && side === h.side) { const gk = horiz ? h.gateIn[0] - h.x : h.gateIn[1] - h.y; if (k === gk) along += TILE * 1.2; }
-  const nrm = { N: [0, -1], S: [0, 1], O: [-1, 0], L: [1, 0] }[side];
-  const ib = horiz ? { x: along, z: side === 'N' ? b.z0 : b.z1 } : { x: side === 'O' ? b.x0 : b.x1, z: along };
-  const ob = horiz ? { x: along, z: side === 'N' ? o.z0 : o.z1 } : { x: side === 'O' ? o.x0 : o.x1, z: along };
-  return { side, k: Math.floor(((horiz ? along : along) - (horiz ? o.x0 : o.z0)) / TILE), inner: { x: ib.x - nrm[0] * 0.8, z: ib.z - nrm[1] * 0.8 }, edge: ob, outer: { x: ob.x + nrm[0] * 1.8, z: ob.z + nrm[1] * 1.8 } };
+  // trecho de cerca mais perto do animal (no formato livre, qualquer lado de bloco na borda)
+  const ge = gateEdge(h); let best = null, bd = 1e9;
+  for (const e of edges(h)) { if (!gateOk && e === ge) continue; const d = (e.mx - a.x) ** 2 + (e.mz - a.z) ** 2; if (d < bd) { bd = d; best = e; } }
+  return edgeInfo(h, best || edges(h)[0]);
+}
+function edgeInfo(h, e) {
+  const ins = h.fence === 'fosso' ? 2 * TILE : 0;
+  return { side: e.d, k: e.c, inner: { x: e.mx - e.nx * (0.8 + ins), z: e.mz - e.nz * (0.8 + ins) }, edge: { x: e.mx, z: e.mz }, outer: { x: e.mx + e.nx * 1.8, z: e.mz + e.nz * 1.8 } };
 }
 export function addBreach(s, h, side, k) {
   h.breaches = h.breaches || [];
@@ -300,10 +303,8 @@ export function startEscape(s, a, h, S, F) {
   if (s._ctx?.abstract) finishEscapeNow(s, a, h);
 }
 export function breachPoint(h, br) {
-  const o = innerBounds({ ...h, fence: 'x' }, 0), horiz = br.side === 'N' || br.side === 'S';
-  const along = (horiz ? o.x0 : o.z0) + (br.k + 0.5) * TILE, nrm = { N: [0, -1], S: [0, 1], O: [-1, 0], L: [1, 0] }[br.side];
-  const ob = horiz ? { x: along, z: br.side === 'N' ? o.z0 : o.z1 } : { x: br.side === 'O' ? o.x0 : o.x1, z: along };
-  return { side: br.side, k: br.k, inner: { x: ob.x - nrm[0] * 1.2, z: ob.z - nrm[1] * 1.2 }, outer: { x: ob.x + nrm[0] * 1.8, z: ob.z + nrm[1] * 1.8 } };
+  const e = findEdge(h, br.side, br.k) || edges(h)[0], i = edgeInfo(h, e);
+  return { side: e.d, k: e.c, inner: { x: e.mx - e.nx * 1.2, z: e.mz - e.nz * 1.2 }, outer: i.outer };
 }
 function finishEscapeNow(s, a, h) {
   const E = a.escaping; if (!E) return;

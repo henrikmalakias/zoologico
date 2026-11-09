@@ -1,4 +1,5 @@
 import { content } from '../content/registry.js';
+import { ensureCells, edges, cellSet } from './habshape.js';
 export const TILE = 2;
 export const MAP = 72;
 export const HALF = (MAP * TILE) / 2;
@@ -18,7 +19,7 @@ export function inArea(s, x, y) { const a = AREAS[s.areaLevel]; return x >= a.x0
 export function rebuildOcc(s) {
   const n = MAP * MAP;
   const hab = new Int32Array(n), fac = new Int32Array(n), obj = new Int32Array(n);
-  for (const h of s.habitats) for (let y = h.y; y < h.y + h.h; y++) for (let x = h.x; x < h.x + h.w; x++) hab[idx(x, y)] = h.id;
+  for (const h of s.habitats) for (const i of ensureCells(h)) hab[i] = h.id;
   const C = content(s);
   for (const f of s.facilities) { const d = C.facilities[f.type] || { w: f.w || 1, h: f.h || 1 };
     for (let y = f.ty; y < f.ty + d.h; y++) for (let x = f.tx; x < f.tx + d.w; x++) if (inMap(x, y)) fac[idx(x, y)] = f.id; }
@@ -103,12 +104,14 @@ export function accessTile(s, f) {
 }
 // Blocos de caminho de onde se vê um habitat
 export function viewTiles(s, h) {
-  const out = [];
-  for (let y = h.y - 2; y <= h.y + h.h + 1; y++) for (let x = h.x - 2; x <= h.x + h.w + 1; x++) {
-    if (x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h) continue;
+  if (h._vt && h._vtV === s._ver) return h._vt;
+  const out = [], seen = new Set(), set = cellSet(h);
+  for (const e of edges(h)) for (const k of [1, 2]) {
+    const x = e.out[0] + e.nx * (k - 1), y = e.out[1] + e.nz * (k - 1); if (!inMap(x, y)) continue;
+    const i = idx(x, y); if (seen.has(i) || set.has(i)) continue; seen.add(i);
     if (isPath(s, x, y)) out.push([x, y]);
   }
-  return out;
+  h._vt = out; h._vtV = s._ver; return out;
 }
 
 // ---------- relevo: alturas nos cantos dos blocos ----------

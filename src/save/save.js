@@ -4,6 +4,14 @@ import { content } from '../content/registry.js';
 
 // Migrações: cada função leva o save da versão N para N+1.
 export const MIGRATIONS = {
+  // v6 -> v7 (versão 1.7): habitats com formato livre (lista de blocos); brechas passam a apontar para o bloco da borda
+  6: s => {
+    for (const h of s.habitats || []) {
+      h.cells = []; for (let y = h.y; y < h.y + h.h; y++) for (let x = h.x; x < h.x + h.w; x++) h.cells.push(y * 72 + x);
+      h.breaches = (h.breaches || []).map(b => { const c = b.side === 'S' ? [h.x + b.k, h.y + h.h - 1] : b.side === 'N' ? [h.x + b.k, h.y] : b.side === 'L' ? [h.x + h.w - 1, h.y + b.k] : [h.x, h.y + b.k]; return { side: b.side, k: c[1] * 72 + c[0] }; });
+    }
+    s.schemaVersion = 7; return s;
+  },
   // v5 -> v6 (versão 1.6): mobiliário de caminho, visitantes virtuais e instalações viradas para o caminho
   5: s => { s.furn = s.furn || []; s.vstock = []; s.schemaVersion = 6; return s; },
   4: s => { const d = { quality: 'baixo', fugas: true, tranquilo: false, autoQualidade: true, mostrarFps: false, som: true, volume: 0.7, ambiente: true }; s.settings = { ...d, ...(s.settings || {}), tutorial: { passo: 99, feito: true } }; s.schemaVersion = 5; return s; },
@@ -21,7 +29,7 @@ export const MIGRATIONS = {
 };
 
 export function serialize(s) {
-  const json = JSON.stringify(s, (k, v) => (k.startsWith('_') || k === 'route' || k === 'visitors' || k === 'tgt' ? undefined : v));
+  const json = JSON.stringify(s, (k, v) => (k.startsWith('_') || k === 'route' || k === 'visitors' || k === 'tgt' || k === 'wp' ? undefined : v));
   // alturas com 2 casas para encolher o save
   const o = JSON.parse(json); o.terrain = s.terrain.join(''); if (s.height) o.height = s.height.map(v => Math.round(v * 100) / 100); o.savedAt = Date.now();
   return o;
@@ -38,7 +46,7 @@ export function deserialize(o) {
   s.terrain = typeof s.terrain === 'string' ? s.terrain.split('') : s.terrain;
   s.visitors = [];
   for (const st of s.staff) if (st.task) st.task.route = null;
-  for (const a of s.animals) a.tgt = null;
+  for (const a of s.animals) { a.tgt = null; a.wp = null; }
   s.furn = s.furn || []; s.vstock = [];
   rebuildOcc(s);
   const C = content(s);

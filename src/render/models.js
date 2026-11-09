@@ -360,10 +360,10 @@ export function buildTool(kit, tipo) {
 export function buildCones(kit) { const g = new THREE.Group(); for (const [x, z] of [[-0.9, 0.6], [0.9, 0.6], [0, 1.1]]) { const c = kit.mesh(kit.cone(0.16, 0.5), kit.mat('#ff6d00')); c.position.set(x, 0.25, z); g.add(c); const s = kit.mesh(kit.cyl(0.1, 0.12, 0.08), kit.mat('#ffffff'), false); s.position.set(x, 0.28, z); g.add(s); } const tb = kit.mesh(kit.box(0.5, 0.25, 0.25), kit.mat('#c62828')); tb.position.set(0.5, 0.12, 0.3); g.add(tb); return g; }
 
 // junta os blocos estáticos de um grupo que usam o mesmo material em uma peça só (menos chamadas de desenho = mais FPS)
-export function mergeStatic(g) {
+export function mergeStatic(g, skip) {
   const by = new Map(), keep = [];
   for (const o of [...g.children]) {
-    if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && o.geometry.index) { o.updateMatrix(); (by.get(o.material) || by.set(o.material, []).get(o.material)).push(o); } else keep.push(o);
+    if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && o.geometry.index && !skip?.has(o)) { o.updateMatrix(); (by.get(o.material) || by.set(o.material, []).get(o.material)).push(o); } else keep.push(o);
   }
   for (const [mat, list] of by) {
     if (list.length < 2) continue;
@@ -374,6 +374,13 @@ export function mergeStatic(g) {
     for (const o of list) g.remove(o); g.add(m);
   }
   return g;
+}
+// animais montados por partes: junta as peças que se movem juntas (mesmo grupo e material), mantendo as articulações
+export function mergeRig(root) {
+  const skip = new Set(Object.values(root.userData).flat().filter(o => o?.isObject3D)), groups = [];
+  root.traverse(o => { if (!o.isMesh) groups.push(o); });
+  for (const g of groups) mergeStatic(g, skip);
+  return root;
 }
 // partes de um móvel (poste, lixeira, banco) já juntas por material, para desenhar várias cópias de uma vez (InstancedMesh)
 export const furnParts = (kit, type) => groupParts(buildFurn(kit, type));

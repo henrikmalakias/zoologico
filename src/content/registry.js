@@ -1,6 +1,6 @@
 import { BASE_PACK } from './base.js';
 
-export const APP_VERSION = '1.6.5';
+export const APP_VERSION = '1.7.0';
 export const AVAILABLE_PACKS = { base: BASE_PACK };
 
 // Catálogo de expansões. "em_breve" = ainda não publicada.
@@ -19,6 +19,15 @@ export const DLC_CATALOG = [
 ];
 
 export const CHANGELOG = [
+  { versao: '1.7.0', data: '09/11/2026', titulo: 'Versão 1.7: habitats do seu jeito', itens: [
+    'Habitat com formato livre: arraste o retângulo e ele contorna sozinho instalações, caminhos e outros habitats (dá para cercar o playground pelos lados e pelo fundo). A cerca segue o contorno',
+    'Construir > Habitat agora tem Ampliar (acrescenta blocos encostados), Recortar (tira um pedaço) e Mover objetos (plantas, comedouro e bebedouro)',
+    'Muro com plataforma mais bonito: pedras, pilares e mirantes com escada do lado de fora, que cabem na folga de 1 bloco (não precisa mais deixar 2)',
+    'Lagos com margem natural: a água acompanha o relevo, fica clarinha no raso e a terra perto da água fica molhada',
+    'Faixa de atualização: quando sair versão nova, aparece um aviso com Atualizar agora e Depois',
+    'Botão de alerta na lateral: leva a câmera até o próximo alerta e abre as opções',
+    'Mais leve: com o jogo pausado e a câmera parada, a tela é redesenhada só 1 vez por segundo; animais e cercas com menos peças; sombras recalculadas a cada 2 quadros na Economia',
+  ] },
   { versao: '1.6.5', data: '09/11/2026', titulo: 'Versão 1.6.5: os alertas são seus', itens: [
     'Avançar o relógio com o jogo aberto agora para no primeiro alerta novo (doença, fome, cerca, portão, fuga...) e o subgerente não age: você resolve o caos. O subgerente continua agindo só com o app fechado ou o celular bloqueado',
     'A pausa em alerta novo já valia nas velocidades normal, 2x e 3x',

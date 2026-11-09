@@ -34,9 +34,11 @@ class Game {
     requestAnimationFrame(t => this.frame(t));
     setInterval(() => this.save(), 15000);
     document.addEventListener('visibilitychange', () => this.onVisibility());
+    for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown']) addEventListener(ev, () => { this.lastInput = performance.now(); }, { passive: true, capture: true });
     this.wakeSync(); addEventListener('pointerdown', () => { if (!this.wake) this.wakeSync(); }, { passive: true });
     addEventListener('pagehide', () => this.save());
-    this.registerSW(); setTimeout(() => this.checkUpdate(false), 2500);
+    this.registerSW(); setTimeout(() => this.checkUpdate(false), 2500); setInterval(() => { if (!document.hidden) this.checkUpdate(false); }, 20 * 60e3);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - (this.lastUpdCheck || 0) > 10 * 60e3) this.checkUpdate(false); });
     document.getElementById('boot')?.remove();
   }
   wireEvents() {
@@ -68,7 +70,11 @@ class Game {
     this.world.update(s, dt);
     this.ui.tick(dt);
     this.perf(dt);
-    this.world.render();
+    // parado (pausado, sem mexer na câmera nem tocar na tela): redesenha só 1 vez por segundo, o celular descansa e esfria
+    const c = this.controls.cam, sig = `${c.x.toFixed(2)},${c.z.toFixed(2)},${c.dist.toFixed(2)},${c.yaw.toFixed(3)},${c.pitch.toFixed(3)}`, now2 = performance.now();
+    const busy = factor > 0 || this.live || now2 - (this.lastInput || 0) < 1500 || sig !== this.camSig || this.world.dirty;
+    this.camSig = sig;
+    if (busy || now2 - (this.lastRender || 0) > 1000) { this.world.render(); this.lastRender = now2; this.world.dirty = false; this.idle = false; } else this.idle = true;
     requestAnimationFrame(t2 => this.frame(t2));
   }
   // ---------- FPS e qualidade automática ----------
@@ -135,12 +141,12 @@ class Game {
     try { if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').then(r => { this.swReg = r; }).catch(() => {}); } catch (e) {}
   }
   async checkUpdate(manual) {
-    this.updateInfo = { ...(this.updateInfo || {}), checking: true };
+    this.updateInfo = { ...(this.updateInfo || {}), checking: true }; this.lastUpdCheck = Date.now();
     try {
       const r = await fetch('./version.json?t=' + Date.now(), { cache: 'no-store' }); if (!r.ok) throw new Error('http');
       const v = await r.json(); const newer = cmp(v.versao, APP_VERSION) > 0;
       this.updateInfo = { checked: true, available: newer, latest: v.versao, notes: v.novidades || [] };
-      if (newer && !manual) this.ui.toast(`Atualização ${v.versao} disponível! Veja em Menu > Novidades.`, 'bom');
+      if (newer) this.ui.showUpdateBar(v);
     } catch (e) { this.updateInfo = { checked: true, error: true }; }
   }
   async applyUpdate() {
