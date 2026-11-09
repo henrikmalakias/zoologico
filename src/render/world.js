@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Kit, buildAnimal, animateAnimal, buildPerson, buildPlant, buildFacility, buildFurn, buildVehicle, buildTool, buildCones } from './models.js';
+import { Kit, buildAnimal, animateAnimal, buildPerson, buildPlant, buildFacility, buildFurn, furnParts, groupParts, mergeStatic, buildVehicle, buildTool, buildCones } from './models.js';
 import { ModelLibrary, animateSDFAnimal, animateSDFHuman } from './library.js';
 import { instance as sdfInstance } from './sdfThree.js';
 let LIB = null; export const library = () => (LIB ||= new ModelLibrary());
@@ -17,7 +17,7 @@ export class World {
   build(q) {
     this.q = q; this.hi = q !== 'baixo'; this.ultra = q === 'ultra'; this.kit = new Kit(q);
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: this.hi, powerPreference: this.hi ? 'high-performance' : 'low-power' });
-    r.setPixelRatio((this.hi ? Math.min(devicePixelRatio, 2) : Math.min(devicePixelRatio, 1)) * (this.pxScale ?? 1));
+    r.setPixelRatio(this.pixelRatio() * (this.pxScale ?? 1));
     r.setSize(this.container.clientWidth, this.container.clientHeight);
     if (this.hi) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = this.ultra ? 0.92 : 1.05; }
     this.container.prepend(r.domElement); r.domElement.className = 'gl';
@@ -56,7 +56,7 @@ export class World {
     this.waterG = new THREE.Group(); sc.add(this.waterG);
     this.waterMat = this.ultra ? new THREE.MeshStandardMaterial({ color: '#24607a', roughness: 0.04, metalness: 0.0, transparent: true, opacity: 0.86, normalMap: waterNormalTexture(), normalScale: new THREE.Vector2(0.45, 0.45) }) : this.hi ? new THREE.MeshStandardMaterial({ color: '#2f7fb0', roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.82 }) : new THREE.MeshLambertMaterial({ color: '#3d86b3' });
     this.layers = {}; for (const k of ['habs', 'facs', 'objs', 'furn', 'animals', 'staff', 'fx']) { this.layers[k] = new THREE.Group(); sc.add(this.layers[k]); }
-    this.maps = { habs: new Map(), facs: new Map(), objs: new Map(), furn: new Map(), animals: new Map(), staff: new Map() };
+    this.maps = { habs: new Map(), facs: new Map(), objs: new Map(), furn: new Map(), animals: new Map(), staff: new Map() }; this._furnH = null; this._furnParts = {}; this._furnMeshes = []; this._plantH = null; this._plantParts = {}; this._plantMeshes = [];
     this.kit.lamp = this.hi ? new THREE.MeshStandardMaterial({ color: '#fff4c8', emissive: '#ffc766', emissiveIntensity: 0 }) : new THREE.MeshLambertMaterial({ color: '#fff4c8', emissive: '#ffc766' }); this.kit.lamp.emissiveIntensity = 0; this.lampOn = false;
     // visitantes instanciados
     const cap = 160;
@@ -83,7 +83,9 @@ export class World {
     this.usky = this.grass = this.tarr = this.tdata = null;
     this.scene.traverse(o => { if (o.isInstancedMesh || o === this.ground) o.geometry.dispose(); });
   }
-  setPixelScale(k) { this.pxScale = k; this.renderer.setPixelRatio((this.hi ? Math.min(devicePixelRatio, 2) : Math.min(devicePixelRatio, 1)) * k); this.resize(); }
+  pixelRatio() { return this.hi ? Math.min(devicePixelRatio, this.eco ? 1.5 : 2) : Math.min(devicePixelRatio, 1); }
+  setEco(on) { if (!!on === !!this.eco) return; this.eco = !!on; this.renderer.setPixelRatio(this.pixelRatio() * (this.pxScale ?? 1)); this.resize(); }
+  setPixelScale(k) { this.pxScale = k; this.renderer.setPixelRatio(this.pixelRatio() * k); this.resize(); }
   resize() { const w = this.container.clientWidth, h = this.container.clientHeight; this.renderer.setSize(w, h); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 
   // ---------- terreno ----------
@@ -224,10 +226,48 @@ export class World {
     add(k.cyl(0.6, 0.65, 0.4), k.mat('#9a948a'), wp.x, wy + 0.2, wp.z);
     if (h.waterLvl > 0.05) { const wv = k.mesh(k.cyl(0.52, 0.52, 0.05), this.waterMat, false); wv.position.set(wp.x, wy + 0.2 + 0.18 * h.waterLvl, wp.z); g.add(wv); }
     g.userData = { kind: 'hab', id: h.id };
-    return g;
+    return mergeStatic(g);
   }
 
   // ---------- sincronização ----------
+  // mobiliário de caminho: uma chamada de desenho por tipo e material (InstancedMesh), em vez de uma por peça
+  syncFurn(s) {
+    const list = s.furn || []; let hh = list.length * 7 + (s._ver || 0);
+    for (const f of list) hh = (hh * 31 + f.id * 3 + f.tx * 7 + f.ty * 13 + Math.round((f.rot + 4) * 100) + Math.round((f.ox || 0) * 100) * 5 + Math.round((f.oz || 0) * 100) * 11) | 0;
+    if (hh === this._furnH) return; this._furnH = hh;
+    for (const im of this._furnMeshes) { this.layers.furn.remove(im); im.dispose(); }
+    this._furnMeshes = [];
+    const by = {}; for (const f of list) (by[f.type] ||= []).push(f);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
+    for (const type in by) {
+      const arr = by[type], parts = (this._furnParts[type] ||= furnParts(this.kit, type));
+      for (const { geo, mat } of parts) {
+        const im = new THREE.InstancedMesh(geo, mat, arr.length);
+        arr.forEach((f, i) => { const p = tileToWorld(f.tx, f.ty), x = p.x + f.ox, z = p.z + f.oz; pos.set(x, heightAt(s, x, z), z); q.setFromAxisAngle(up, f.rot); m4.compose(pos, q, one); im.setMatrixAt(i, m4); });
+        im.instanceMatrix.needsUpdate = true; im.castShadow = im.receiveShadow = !!this.hi; im.computeBoundingSphere(); im.userData.kind = 'furn';
+        this.layers.furn.add(im); this._furnMeshes.push(im);
+      }
+    }
+  }
+  // plantas (fora do Ultra): uma chamada de desenho por tipo e material, em vez de uma por planta
+  syncPlants(s) {
+    const C = content(s), list = s.objects.filter(o => C.plants[o.type]); let hh = list.length * 5 + (s._ver || 0);
+    for (const o of list) hh = (hh * 31 + o.id * 3 + o.tx * 7 + o.ty * 13 + Math.round((o.rot || 0) * 100) + Math.round((o.sc || 1) * 100) * 5) | 0;
+    if (hh === this._plantH) return; this._plantH = hh;
+    for (const im of this._plantMeshes) { this.layers.objs.remove(im); im.dispose(); }
+    this._plantMeshes = [];
+    const by = {}; for (const o of list) (by[o.type] ||= []).push(o);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    for (const type in by) {
+      const arr = by[type], parts = (this._plantParts[type] ||= groupParts(buildPlant(this.kit, type)));
+      for (const { geo, mat } of parts) {
+        const im = new THREE.InstancedMesh(geo, mat, arr.length);
+        arr.forEach((o, i) => { const p = tileToWorld(o.tx, o.ty); pos.set(p.x, heightAt(s, p.x, p.z), p.z); q.setFromAxisAngle(up, o.rot || 0); sc.setScalar(o.sc || 1); m4.compose(pos, q, sc); im.setMatrixAt(i, m4); });
+        im.instanceMatrix.needsUpdate = true; im.castShadow = im.receiveShadow = !!this.hi; im.computeBoundingSphere();
+        this.layers.objs.add(im); this._plantMeshes.push(im);
+      }
+    }
+  }
   syncStatic(s) {
     const C = content(s);
     const syncSet = (map, layer, list, key, make) => {
@@ -244,10 +284,9 @@ export class World {
     syncSet(this.maps.facs, this.layers.facs, s.facilities.filter(f => C.facilities[f.type]), f => f.type + f.tx + ',' + f.ty + ':' + (f.dir ?? '-') + ':' + heightAt(s, ...Object.values(tileToWorld(f.tx, f.ty))).toFixed(1), f => {
       const D = C.facilities[f.type], o = buildFacility(this.kit, f.type, D);
       const p = tileToWorld(f.tx, f.ty); o.position.set(p.x - TILE / 2 + D.w, heightAt(s, p.x - TILE / 2 + D.w, p.z - TILE / 2 + D.h), p.z - TILE / 2 + D.h);
-      o.rotation.y = f.type === 'entrada' || f.dir == null ? 0 : DIR_ROT[f.dir]; o.userData = { kind: 'fac', id: f.id }; return o; });
-    syncSet(this.maps.furn, this.layers.furn, s.furn || [], f => f.type + f.tx + ',' + f.ty + ':' + f.rot.toFixed(2) + ':' + heightAt(s, ...Object.values(tileToWorld(f.tx, f.ty))).toFixed(1), f => {
-      const o = buildFurn(this.kit, f.type), p = tileToWorld(f.tx, f.ty), x = p.x + f.ox, z = p.z + f.oz; o.position.set(x, heightAt(s, x, z), z); o.rotation.y = f.rot; return o; });
-    syncSet(this.maps.objs, this.layers.objs, s.objects.filter(o => C.plants[o.type]), o => o.type + o.tx + ',' + o.ty + ':' + heightAt(s, ...Object.values(tileToWorld(o.tx, o.ty))).toFixed(1), o => {
+      o.rotation.y = f.type === 'entrada' || f.dir == null ? 0 : DIR_ROT[f.dir]; o.userData = { kind: 'fac', id: f.id }; return mergeStatic(o); });
+    this.syncFurn(s);
+    if (!this.ultra) this.syncPlants(s); else syncSet(this.maps.objs, this.layers.objs, s.objects.filter(o => C.plants[o.type]), o => o.type + o.tx + ',' + o.ty + ':' + heightAt(s, ...Object.values(tileToWorld(o.tx, o.ty))).toFixed(1), o => {
       const m = buildPlant(this.kit, o.type), p = tileToWorld(o.tx, o.ty); m.position.set(p.x, heightAt(s, p.x, p.z), p.z); m.rotation.y = o.rot || 0; m.scale.setScalar(o.sc || 1); return m; });
   }
   update(s, dt) {

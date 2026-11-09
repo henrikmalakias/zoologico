@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { canopyGeometry, leafMaterial } from './ultra.js';
 
 // ---------- materiais e geometrias com cache por qualidade ----------
@@ -357,3 +358,28 @@ export function buildTool(kit, tipo) {
   return g;
 }
 export function buildCones(kit) { const g = new THREE.Group(); for (const [x, z] of [[-0.9, 0.6], [0.9, 0.6], [0, 1.1]]) { const c = kit.mesh(kit.cone(0.16, 0.5), kit.mat('#ff6d00')); c.position.set(x, 0.25, z); g.add(c); const s = kit.mesh(kit.cyl(0.1, 0.12, 0.08), kit.mat('#ffffff'), false); s.position.set(x, 0.28, z); g.add(s); } const tb = kit.mesh(kit.box(0.5, 0.25, 0.25), kit.mat('#c62828')); tb.position.set(0.5, 0.12, 0.3); g.add(tb); return g; }
+
+// junta os blocos estáticos de um grupo que usam o mesmo material em uma peça só (menos chamadas de desenho = mais FPS)
+export function mergeStatic(g) {
+  const by = new Map(), keep = [];
+  for (const o of [...g.children]) {
+    if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && o.geometry.index) { o.updateMatrix(); (by.get(o.material) || by.set(o.material, []).get(o.material)).push(o); } else keep.push(o);
+  }
+  for (const [mat, list] of by) {
+    if (list.length < 2) continue;
+    const geos = list.map(o => { const ge = o.geometry.clone(); ge.applyMatrix4(o.matrix); return ge; });
+    const merged = mergeGeometries(geos, false); geos.forEach(ge => ge.dispose());
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, mat); m.castShadow = list[0].castShadow; m.receiveShadow = list[0].receiveShadow; m.userData.merged = true;
+    for (const o of list) g.remove(o); g.add(m);
+  }
+  return g;
+}
+// partes de um móvel (poste, lixeira, banco) já juntas por material, para desenhar várias cópias de uma vez (InstancedMesh)
+export const furnParts = (kit, type) => groupParts(buildFurn(kit, type));
+export function groupParts(g) {
+  const by = new Map(); g.updateMatrixWorld(true);
+  for (const o of g.children) { if (!o.isMesh) continue; o.updateMatrix(); const ge = o.geometry.clone(); ge.applyMatrix4(o.matrix); (by.get(o.material) || by.set(o.material, []).get(o.material)).push(ge); }
+  const parts = []; for (const [mat, geos] of by) { const geo = geos.length > 1 ? mergeGeometries(geos, false) : geos[0]; if (geo) parts.push({ geo, mat }); }
+  return parts;
+}

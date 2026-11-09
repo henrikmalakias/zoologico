@@ -23,7 +23,7 @@ class Game {
     let report = null;
     if (s) report = catchUp(s, Date.now()); else s = newGame(Date.now());
     this.state = s; this.live = false;
-    this.world = new World(app, s.settings.quality);
+    this.world = new World(app, s.settings.quality); this.world.setEco(s.settings.economia !== false);
     this.ui = new UI(app, this);
     this.controls = new Controls(app, this.world, () => this.state, this.ui);
     addEventListener('resize', () => this.world.resize());
@@ -43,7 +43,9 @@ class Game {
     // eventos da simulação viram avisos na tela
     this.state._events = [];
   }
+  applyEco() { this.world.setEco(this.state.settings.economia !== false); }
   frame(t) {
+    if (this.state.settings.economia !== false && t - this.last < 30) { requestAnimationFrame(t2 => this.frame(t2)); return; } // 30 FPS: metade do trabalho da GPU, bem menos calor
     const dt = Math.min(0.1, (t - this.last) / 1000); this.last = t;
     const s = this.state, now = Date.now();
     const factor = this.live ? 1 : SPEEDS[s.clock.speed] * timeFactor(s);
@@ -118,12 +120,12 @@ class Game {
   async copySave() { try { await navigator.clipboard.writeText(JSON.stringify(serialize(this.state))); this.ui.toast('Save copiado! Cole num bloco de notas para guardar.', 'bom'); } catch (e) { this.ui.toast('Não foi possível copiar aqui.', 'ruim'); } }
   pasteSave(t) { try { this.replaceState(deserialize(t)); this.ui.toast('Save carregado!', 'bom'); } catch (e) { this.ui.toast('Save inválido: ' + e.message, 'ruim'); } }
   async importSave() { try { const s = await importFile(); this.replaceState(s); this.ui.toast('Save importado!', 'bom'); } catch (e) { this.ui.toast(e.message, 'ruim'); } }
-  async newGame(opts = {}) { await backup(this.state, 'antes-novo-jogo'); const q = this.state.settings; const s = newGame(Date.now(), opts); Object.assign(s.settings, { quality: q.quality, autoQualidade: q.autoQualidade, mostrarFps: q.mostrarFps, telaLigada: q.telaLigada, subSoFechado: q.subSoFechado, pausaAlerta: q.pausaAlerta, som: q.som, volume: q.volume, ambiente: q.ambiente }); this.replaceState(s); this.undoInfo = null; this.ui.closeModal(); this.ui.tut.restart(); this.ui.welcome(); }
+  async newGame(opts = {}) { await backup(this.state, 'antes-novo-jogo'); const q = this.state.settings; const s = newGame(Date.now(), opts); Object.assign(s.settings, { quality: q.quality, autoQualidade: q.autoQualidade, mostrarFps: q.mostrarFps, telaLigada: q.telaLigada, economia: q.economia, subSoFechado: q.subSoFechado, pausaAlerta: q.pausaAlerta, som: q.som, volume: q.volume, ambiente: q.ambiente }); this.replaceState(s); this.undoInfo = null; this.ui.closeModal(); this.ui.tut.restart(); this.ui.welcome(); }
   replaceState(s) {
     sound.configure(s.settings);
     s._events = []; s.clock.lastRealTs = Date.now(); this.state = s; this._alertIds = null;
     this.world.setQuality(s.settings.quality === this.world.q ? (s.settings.quality === 'baixo' ? 'alto' : 'baixo') : s.settings.quality);
-    this.world.setQuality(s.settings.quality, s); this.controls.world = this.world; this.world.resize(); this.save();
+    this.world.setQuality(s.settings.quality, s); this.world.setEco(s.settings.economia !== false); this.controls.world = this.world; this.world.resize(); this.save();
   }
   installPack(id) { if (!AVAILABLE_PACKS[id]) return this.ui.toast('Esta expansão ainda não foi publicada.', 'ruim'); this.state.packs[id] = AVAILABLE_PACKS[id].versao; this.ui.toast('Expansão instalada!', 'bom'); }
   uninstallPack(id) { if (id === 'base') return; this.ui.closeModal(); this.ui.askConfirm('Desinstalar? Os itens dela ficam guardados e desativados.', () => { delete this.state.packs[id]; this.ui.toast('Expansão desinstalada.', 'bom'); }); }

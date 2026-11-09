@@ -538,6 +538,7 @@ export class UI {
       tg('autoQualidade', 'Ajuste automático', 'Se o jogo ficar lento, reduz a resolução e passa para o gráfico Baixo.'),
       tg('subSoFechado', 'Subgerente só com o jogo fechado', 'Ligado: com o jogo aberto os alertas ficam para você resolver; o subgerente só age enquanto o app está fechado ou o celular bloqueado (e ao avançar o relógio). Desligado: ele age também com o jogo aberto.'),
       tg('pausaAlerta', 'Pausar quando surgir alerta', 'Pausa o jogo quando aparece um alerta novo (doença, fome, cerca, portão, fuga), para você ler e decidir. Não pausa no modo AO VIVO.'),
+      tg('economia', 'Economia de calor e bateria', 'Limita o jogo a 30 quadros por segundo e usa uma resolução um pouco menor nos gráficos Alto e Ultra. O celular esquenta menos. Desligue para 60 FPS.', () => g.applyEco()),
       tg('telaLigada', 'Manter a tela ligada', 'Evita que a tela apague sozinha com o jogo aberto. Gasta um pouco mais de bateria.', () => g.wakeSync()),
       tg('mostrarFps', 'Mostrar FPS', 'Mostra quantos quadros por segundo o aparelho está desenhando.'),
       h('div', { class: 'row' }, h('div', {}, h('b', {}, '🌿 Modo Tranquilo'), h('div', { class: 'muted' }, 'Sem fugas e nenhum animal morre por falta de cuidados. Bom para construir com calma.')),
