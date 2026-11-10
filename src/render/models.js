@@ -119,17 +119,23 @@ export function buildAnimal(kit, sp, male, S) {
   root.userData = { sp, legs, neck, head, tail, trunk, rig, d, phase: Math.random() * 6 };
   return root;
 }
+// pose do animal a partir do estado (1.7.2b); estado desconhecido cai em "parado", nunca trava
+const POSE = { sleep: 'deitado', tree_sleep: 'deitado', sedado: 'deitado', in_toca: 'deitado', descanso: 'deitado', poeira: 'rolar', pastar: 'pastar', eat: 'comer', drink: 'comer', filtrar: 'comer', umaperna: 'umaperna', descanso_pe: 'quieto', ameaca: 'encarar', investida: 'carga' };
+export const poseDe = a => POSE[a.st] || 'normal';
 export function animateAnimal(obj, a, dt, moving) {
-  const u = obj.userData, d = u.d;
-  const sleeping = a.st === 'sleep' || a.st === 'tree_sleep' || a.st === 'sedado';
+  const u = obj.userData, d = u.d, pose = poseDe(a);
+  const sleeping = pose === 'deitado' || pose === 'rolar';
+  if (u.rig.rotation.z && pose !== 'rolar') u.rig.rotation.z *= 0.8;
   u.phase += dt * (moving ? 7 * (1.4 / Math.max(0.6, d.legH)) : 1.6);
   const p = u.phase;
-  if (u.bird && (a.st === 'sleep' || a.st === 'tree_sleep')) { u.legs[0].rotation.x = 0; u.legs[1].rotation.x = -2.6; u.neck.rotation.x += (-1.0 - u.neck.rotation.x) * Math.min(1, dt * 3); u.rig.position.y = 0; return; }
+  if (u.bird && pose === 'umaperna') { u.legs[0].rotation.x = 0; u.legs[1].rotation.x += (-2.6 - u.legs[1].rotation.x) * Math.min(1, dt * 3); u.neck.rotation.x += (Math.sin(p * 0.3) * 0.05 - u.neck.rotation.x) * Math.min(1, dt * 3); u.rig.position.y = 0; return; }
+  if (u.bird && sleeping) { u.legs[0].rotation.x = 0; u.legs[1].rotation.x = -2.6; u.neck.rotation.x += (-1.0 - u.neck.rotation.x) * Math.min(1, dt * 3); u.rig.position.y = 0; return; }
   if (sleeping) {
     u.rig.position.y += (-(d.legH * 0.75) - u.rig.position.y) * Math.min(1, dt * 3);
     u.legs.forEach((l, i) => { l.rotation.x = i < 2 ? -1.3 : 1.3; });
     u.neck.rotation.x += (0.6 - u.neck.rotation.x) * Math.min(1, dt * 3);
     u.tail.rotation.z = 0;
+    if (pose === 'rolar') u.rig.rotation.z = Math.sin(p * 1.4) * 0.6; // banho de poeira: rola de um lado para o outro
     return;
   }
   u.rig.position.y += (0 - u.rig.position.y) * Math.min(1, dt * 4);
@@ -137,8 +143,8 @@ export function animateAnimal(obj, a, dt, moving) {
   if (a.st === 'pulando' || a.st === 'salto') { u.legs.forEach((l, i) => { l.rotation.x = i < 2 ? -0.9 : 0.9; }); return; }
   if (moving) { u.legs.forEach((l, i) => { l.rotation.x = Math.sin(p + (i === 0 || i === 3 ? 0 : Math.PI)) * 0.55; }); u.rig.position.y = Math.abs(Math.sin(p)) * 0.04; }
   else u.legs.forEach(l => { l.rotation.x *= 0.85; });
-  const eating = a.st === 'eat' || a.st === 'drink' || a.st === 'filtrar';
-  const nt = eating ? (u.sp === 'girafa' ? 0.9 : u.bird ? 2.2 : 1.0) : Math.sin(p * 0.3) * 0.06;
+  const eating = pose === 'comer' || pose === 'pastar';
+  const nt = pose === 'encarar' ? -0.25 : pose === 'carga' ? 0.45 : pose === 'quieto' ? 0.12 : eating ? (u.sp === 'girafa' ? 0.9 : u.bird ? 2.2 : 1.0) : Math.sin(p * 0.3) * 0.06;
   u.neck.rotation.x += (nt - u.neck.rotation.x) * Math.min(1, dt * 4);
   u.tail.rotation.z = Math.sin(p * 1.3) * 0.35;
   if (u.trunk) u.trunk.rotation.x = Math.sin(p * 0.7) * 0.25 + (eating ? 0.5 : 0);
@@ -381,6 +387,29 @@ export function mergeRig(root) {
   root.traverse(o => { if (!o.isMesh) groups.push(o); });
   for (const g of groups) mergeStatic(g, skip);
   return root;
+}
+// toca com vidro (1.7.2b): caixa oca de 4 m x 4 m; vidro no lado +z, entrada do animal no lado "porta" (1 = +x, 2 = -z, 3 = -x)
+export function buildToca(kit, modelo, altura, porta, fechada, glassMat) {
+  const g = new THREE.Group(), W = 3.8, T = 0.22, H = altura, md = modelo === 'madeira';
+  const wall = kit.mat(md ? '#8a6236' : '#9a948a', { rough: 0.9 }), roof = kit.mat('#5e4128'), floor = kit.mat(md ? '#6b5a3c' : '#6f6a60'), frame = kit.mat(md ? '#5e4128' : '#6d6862');
+  const add = (geo, m, x, y, z, ry = 0) => { const o = kit.mesh(geo, m); o.position.set(x, y, z); o.rotation.y = ry; g.add(o); return o; };
+  add(kit.box(W, 0.6, W), floor, 0, -0.2, 0); // piso e alicerce (cobre pequenos desníveis)
+  add(kit.box(W + 0.5, 0.2, W + 0.5), roof, 0, H + 0.1, 0);
+  if (md) for (const x of [-1.3, 0, 1.3]) add(kit.box(0.16, 0.12, W + 0.7), roof, x, H + 0.26, 0); else add(kit.box(W - 0.6, 0.16, W - 0.6), frame, 0, H + 0.28, 0);
+  // paredes: lado 1 (+x), 2 (-z), 3 (-x). A da entrada tem um vão de 2,4 m
+  const DOOR = 2.4, lado = (k, fn) => { const ry = k === 2 ? 0 : Math.PI / 2, off = W / 2 - T / 2; fn((u, y, len, hh, m) => { const x = k === 1 ? off : k === 3 ? -off : u, z = k === 2 ? -off : (k === 1 ? -u : u); add(kit.box(len, hh, T), m, x, y, z, ry); }); };
+  for (const k of [1, 2, 3]) lado(k, put => {
+    if (k !== porta) { put(0, H / 2, W, H, wall); return; }
+    const sw = (W - DOOR) / 2, top = 0.55;
+    put(-(DOOR + sw) / 2, H / 2, sw, H, wall); put((DOOR + sw) / 2, H / 2, sw, H, wall); put(0, H - top / 2, DOOR, top, wall);
+    if (fechada) put(0, (H - top) / 2, DOOR, H - top, frame); // porta fechada: animais recolhidos para a visita
+  });
+  // lado do vidro: mureta, colunas e viga; o vidro fica fora da junção (material transparente, um só para todas as tocas)
+  const zf = W / 2 - T / 2, sill = 0.45, beam = 0.3;
+  add(kit.box(W, sill, T), wall, 0, sill / 2, zf); add(kit.box(W, beam, T), frame, 0, H - beam / 2, zf);
+  for (const x of [-(W / 2 - T / 2), W / 2 - T / 2]) add(kit.box(T, H, T), frame, x, H / 2, zf);
+  const glass = new THREE.Mesh(kit.box(W - 2 * T, H - sill - beam, 0.06), glassMat); glass.position.set(0, sill + (H - sill - beam) / 2, zf); glass.castShadow = false; glass.renderOrder = 3; g.add(glass);
+  return mergeStatic(g, new Set([glass]));
 }
 // partes de um móvel (poste, lixeira, banco) já juntas por material, para desenhar várias cópias de uma vez (InstancedMesh)
 export const furnParts = (kit, type) => groupParts(buildFurn(kit, type));

@@ -24,16 +24,19 @@ export function rebuildOcc(s) {
   for (const f of s.facilities) { const d = C.facilities[f.type] || { w: f.w || 1, h: f.h || 1 };
     for (let y = f.ty; y < f.ty + d.h; y++) for (let x = f.tx; x < f.tx + d.w; x++) if (inMap(x, y)) fac[idx(x, y)] = f.id; }
   for (const o of s.objects) obj[idx(o.tx, o.ty)] = o.id;
-  s._occ = { hab, fac, obj };
+  const toca = new Int32Array(n); markTocas(s, obj, toca);
+  s._occ = { hab, fac, obj, toca };
   let pn = 0; for (let i = 0; i < n; i++) if (isPathT(s.terrain[i])) pn++; s._pathN = pn;
   s._ver = (s._ver || 0) + 1;
   rebuildBridges(s);
   fixShore(s);
 }
+// tocas (2 x 2 blocos): ocupam o bloco como um objeto, então planta, caminho e instalação não entram em cima
+function markTocas(s, obj, toca) { for (const t of s.tocas || []) for (let y = t.ty; y < t.ty + 2; y++) for (let x = t.tx; x < t.tx + 2; x++) if (inMap(x, y)) { obj[idx(x, y)] = t.id; toca[idx(x, y)] = t.id; } }
 // pintar terreno/caminho não muda habitats nem instalações: atualiza só o necessário (arrastar um caminho longo fica leve)
 export function refreshAfterPaint(s, i, was, objsRemoved) {
   if (!s._occ) return rebuildOcc(s);
-  if (objsRemoved) { const obj = new Int32Array(MAP * MAP); for (const o of s.objects) obj[idx(o.tx, o.ty)] = o.id; s._occ.obj = obj; }
+  if (objsRemoved) { const obj = new Int32Array(MAP * MAP); for (const o of s.objects) obj[idx(o.tx, o.ty)] = o.id; const toca = new Int32Array(MAP * MAP); markTocas(s, obj, toca); s._occ.obj = obj; s._occ.toca = toca; }
   s._pathN = (s._pathN || 0) + (isPathT(s.terrain[i]) ? 1 : 0) - (isPathT(was) ? 1 : 0);
   s._ver = (s._ver || 0) + 1;
   fixShore(s);

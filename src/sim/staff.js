@@ -2,9 +2,10 @@ import { content, papel } from '../content/registry.js';
 import { centerCell, perimeter, routeInside } from './habshape.js';
 import { clamp, rnd, uid, log, dist, hourOf } from './util.js';
 import { MAP, tileToWorld, worldToTile, astar, staffPassable, accessTile, idx, isPathT } from './grid.js';
-import { habById, breachPoint } from './animals.js';
+import { habById, breachPoint, tocaLivre, mandarParaToca, dentro, perigoDe, PERIGOSO } from './animals.js';
+import { tocaById } from './tocas.js';
 
-export const ALERT_ROLES = { doenca: ['veterinario'], fome: ['tratador'], cerca: ['seguranca'], brecha: ['seguranca'], portao: ['seguranca', 'tratador'], fuga: ['seguranca', 'veterinario'] };
+export const ALERT_ROLES = { doenca: ['veterinario'], fome: ['tratador'], cerca: ['seguranca'], brecha: ['seguranca'], portao: ['seguranca', 'tratador'], fuga: ['seguranca', 'veterinario'], visita: ['seguranca'] };
 export const TRANSFER_ROLES = ['tratador', 'seguranca', 'veterinario'];
 export const ALERT_INFO = {
   doenca: { nome: 'Animal doente', sev: 2, desc: 'Precisa de um veterinário.' },
@@ -13,8 +14,9 @@ export const ALERT_INFO = {
   brecha: { nome: 'Cerca rompida', sev: 3, desc: 'Um animal derrubou um trecho da cerca. Outros podem sair pela brecha!' },
   portao: { nome: 'Portão aberto', sev: 3, desc: 'Alguém deixou o portão aberto. Fuga iminente!' },
   fuga: { nome: 'Animal fugiu', sev: 4, desc: 'Recapture o animal. Visitantes estão em pânico.' },
+  visita: { nome: 'Visitante em risco', sev: 2, desc: 'Um animal avançou em quem entrou no recinto. Envie um segurança para conferir o local.' },
 };
-const TASK_NOME = { feed: 'Alimentando', water: 'Repondo água', clean: 'Limpando fezes e restos de comida', treat: 'Tratando animal', checkup: 'Checagem', wc: 'Limpando banheiro', litter: 'Recolhendo lixo', repair: 'Consertando cerca', close: 'Fechando portão', recapture: 'Recapturando', transfer: 'Transferindo animal', patrol: 'Ronda', rest: 'Descansando', idle: 'Livre' };
+const TASK_NOME = { feed: 'Alimentando', water: 'Repondo água', clean: 'Limpando fezes e restos de comida', treat: 'Tratando animal', checkup: 'Checagem', wc: 'Limpando banheiro', litter: 'Recolhendo lixo', repair: 'Consertando cerca', close: 'Fechando portão', recapture: 'Recapturando', transfer: 'Transferindo animal', patrol: 'Ronda', guardar: 'Recolhendo animal para a toca', rest: 'Descansando', idle: 'Livre' };
 const REC_FASE = { travel: 'indo até o animal', sedate: 'aplicando dardo tranquilizante', load: 'colocando no veículo', return: 'levando de volta', release: 'soltando no habitat' };
 export const taskName = t => (t ? (TASK_NOME[t.type] || t.type) + ((t.type === 'recapture' || t.type === 'transfer') && REC_FASE[t.phase] ? ': ' + (t.type === 'transfer' && t.phase === 'return' ? 'levando ao novo habitat' : REC_FASE[t.phase]) : '') : 'Livre');
 
@@ -38,7 +40,7 @@ function destFor(s, type, target) {
   }
   if (['repair', 'close', 'patrol'].includes(type)) { const h = habById(s, target); if (!h) return null; const p = tileToWorld(h.gateOut[0], h.gateOut[1]); return { hab: 0, x: p.x, z: p.z }; }
   if (type === 'recapture') { const a = s.animals.find(a => a.id === target); if (!a) return null; return { hab: 0, x: a.x, z: a.z }; }
-  if (type === 'transfer') { const a = s.animals.find(a => a.id === target); if (!a || a.escaped) return null; return { hab: a.hab, x: a.x, z: a.z }; }
+  if (type === 'transfer' || type === 'guardar') { const a = s.animals.find(a => a.id === target); if (!a || a.escaped) return null; return { hab: a.hab, x: a.x, z: a.z }; }
   if (type === 'wc') { const f = s.facilities.find(f => f.id === target); const t = f && accessTile(s, f); if (!t) return null; const p = tileToWorld(t[0], t[1]); return { hab: 0, x: p.x, z: p.z }; }
   if (type === 'litter') { const p = tileToWorld(target % MAP, (target / MAP) | 0); return { hab: 0, x: p.x, z: p.z }; }
   if (type === 'rest' || type === 'idle') {
@@ -49,7 +51,7 @@ function destFor(s, type, target) {
   }
   return null;
 }
-const WORK = { transfer: 9, feed: 30, water: 15, clean: 40, treat: 60, checkup: 20, wc: 20, litter: 4, repair: 45, close: 5, recapture: 25, patrol: 10, rest: 0, idle: 6 };
+const WORK = { transfer: 9, feed: 30, water: 15, clean: 40, treat: 60, checkup: 20, wc: 20, litter: 4, repair: 45, close: 5, recapture: 25, patrol: 10, guardar: 60, rest: 0, idle: 6 };
 
 export function startTask(s, st, type, target, alertId = null) {
   const dest = destFor(s, type, target); if (!dest) return false;
@@ -77,6 +79,7 @@ function buildRoute(s, st, dest) {
 function cancelTask(s, st) {
   const t = st.task; if (!t) return;
   if (t.type === 'recapture' || t.type === 'transfer') { const a = s.animals.find(a => a.id === t.target); if (a && (a.carriedBy === st.id || a.sedated)) { if (a.carriedBy === st.id && t.type === 'transfer') { const hh = habById(s, a.hab); if (hh) { const p = tileToWorld(hh.gateIn[0], hh.gateIn[1]); a.x = p.x; a.z = p.z; } } a.carriedBy = 0; a.sedated = false; a.st = 'idle'; } st.veh = null; }
+  if (t.type === 'guardar') { const a = s.animals.find(a => a.id === t.target); if (a && a.guard && !a.preso) a.guard = false; }
   if (t.alertId) { const a = s.alerts.find(a => a.id === t.alertId); if (a && a.assigned === st.id) a.assigned = null; }
   st.task = null;
 }
@@ -84,7 +87,7 @@ function cancelTask(s, st) {
 export function dispatch(s, alertId, staffId, by = 'você') {
   const a = s.alerts.find(a => a.id === alertId), st = s.staff.find(x => x.id === staffId);
   if (!a || !st) return false;
-  const type = { doenca: 'treat', fome: 'feed', cerca: 'repair', brecha: 'repair', portao: 'close', fuga: 'recapture' }[a.type];
+  const type = { doenca: 'treat', fome: 'feed', cerca: 'repair', brecha: 'repair', portao: 'close', fuga: 'recapture', visita: 'patrol' }[a.type];
   if (!type || !destFor(s, type, a.target)) return false; // sem destino: não cancela o que a pessoa já fazia
   const prev = s.staff.find(x => x.id === a.assigned); if (prev && prev !== st) cancelTask(s, prev);
   cancelTask(s, st);
@@ -160,7 +163,7 @@ function completeTask(s, st) {
     case 'litter': delete s.litter[t.target]; break;
     case 'repair': if (h) { h.fenceHp = 1; h.breaches = []; spend(s, 'manutencao', C.fences[h.fence].custo * perimeter(h) * 0.15); if (t.alertId) log(s, `${st.name} consertou a cerca do ${h.name}.`, 'bom'); } break;
     case 'close': if (h) { h.gateOpen = false; log(s, `${st.name} fechou o portão do ${h.name}.`, 'bom'); } break;
-    case 'patrol': if (h && h.fenceHp < 0.7) startTask(s, st, 'repair', h.id); break;
+    case 'patrol': if (h && t.alertId && h.visitaRisco) { h.visitaRisco = 0; log(s, `${st.name} conferiu o ${h.name} depois do incidente. Tudo sob controle.`, 'bom'); } if (h && h.fenceHp < 0.7) startTask(s, st, 'repair', h.id); break;
     case 'transfer': { const a = s.animals.find(a => a.id === t.target); const hh = habById(s, t.destHab);
       if (a && hh) { const from = habById(s, a.hab); const p = tileToWorld(hh.gateIn[0], hh.gateIn[1]); Object.assign(a, { hab: hh.id, sedated: false, carriedBy: 0, x: p.x, z: p.z, tgt: null, st: 'idle', stT: 2 }); a.stress = clamp(a.stress + 0.15); log(s, `${a.name} foi transferido(a) do ${from?.name || '?'} para o ${hh.name}.`, 'bom'); }
       st.veh = null; break; }
@@ -196,6 +199,8 @@ export function updateStaff(s, gameMin, ctx) {
     }
     const t = st.task; if (!t) continue;
     if (t.type === 'recapture' && t.phase === 'travel') { const a = s.animals.find(a => a.id === t.target); if (!a || !a.escaped) { cancelTask(s, st); continue; } if (!a.escaping) { t.dest.x = a.x; t.dest.z = a.z; } }
+    if (t.type === 'guardar' && ctx.abstract) { cancelTask(s, st); continue; } // recolher para a visita só acontece com o jogo aberto
+    if (t.type === 'guardar' && t.phase === 'travel') { const a = s.animals.find(a => a.id === t.target); if (!a || a.escaped) { cancelTask(s, st); continue; } t.dest.x = a.x; t.dest.z = a.z; }
     if (t.type === 'transfer' && t.phase === 'travel') { const a = s.animals.find(a => a.id === t.target); if (!a || a.escaped) { cancelTask(s, st); continue; } t.dest.x = a.x; t.dest.z = a.z; }
     if ((t.type === 'recapture' || t.type === 'transfer') && t.phase === 'return') { const a = s.animals.find(a => a.id === t.target); if (a) { a.x = st.x - Math.sin(st.rot || 0) * 1.6; a.z = st.z - Math.cos(st.rot || 0) * 1.6; a.rot = st.rot || 0; } }
     if (t.phase === 'travel' || t.phase === 'return') {
@@ -204,7 +209,7 @@ export function updateStaff(s, gameMin, ctx) {
         if (t.travelLeft <= 0) { st.x = t.dest.x; st.z = t.dest.z; st.inHab = t.dest.hab; t.route = null; arrive(s, st, t); }
       } else {
         if (!t.route) { t.route = buildRoute(s, st, t.dest); if (!t.route) { log(s, `${st.name} não encontrou caminho até o destino e voltou ao trabalho normal. Ligue o local a um caminho.`, 'ruim'); cancelTask(s, st); continue; } }
-        if ((t.type === 'recapture' || t.type === 'transfer') && t.phase === 'travel' && t.route.length) t.route[t.route.length - 1] = { x: t.dest.x, z: t.dest.z };
+        if ((t.type === 'recapture' || t.type === 'transfer' || t.type === 'guardar') && t.phase === 'travel' && t.route.length) t.route[t.route.length - 1] = { x: t.dest.x, z: t.dest.z };
         const sp = (st.veh ? 7 : 1.5 * (0.8 + 0.1 * st.attrs.rapidez) * (t.alertId ? 1.4 : 1)) * ctx.moveMul;
         let left = sp * ctx.realDt;
         while (left > 0 && t.route.length) {
@@ -212,12 +217,13 @@ export function updateStaff(s, gameMin, ctx) {
           if (d <= left) { st.x = p.x; st.z = p.z; left -= d; t.route.shift(); }
           else { st.x += (dx / d) * left; st.z += (dz / d) * left; st.rot = Math.atan2(dx, dz); left = 0; }
         }
-        const near = (t.type === 'recapture' || t.type === 'transfer') && t.phase === 'travel' && (() => { const a = s.animals.find(a => a.id === t.target); return a && dist(st, a) < 7; })();
+        const near = (t.type === 'recapture' || t.type === 'transfer' || t.type === 'guardar') && t.phase === 'travel' && (() => { const a = s.animals.find(a => a.id === t.target); return a && dist(st, a) < 7; })();
         if (!t.route.length || near) { st.inHab = t.dest.hab; t.route = null; arrive(s, st, t); }
       }
     } else {
       if (t.type === 'rest') { if (st.energy >= 0.95) st.task = null; continue; }
       if (t.type === 'recapture' || t.type === 'transfer') { recaptureWork(s, st, t, gameMin, ctx); continue; }
+      if (t.type === 'guardar') { guardarWork(s, st, t, gameMin, ctx); continue; }
       if (t.type === 'clean' && !ctx.abstract) { cleanWork(s, st, t, gameMin, ctx); continue; }
       t.work -= gameMin * workMul(st);
       const h = habById(s, t.target), prog = 1 - Math.max(0, t.work) / (t.work0 || 1);
@@ -253,6 +259,36 @@ function recaptureWork(s, st, t, gameMin, ctx) {
   }
   if (t.phase === 'release') completeTask(s, st);
 }
+// recolher um animal perigoso na toca antes da visita (1.7.2b): o tratador toca o animal até a toca e fecha a porta
+function guardarWork(s, st, t, gameMin, ctx) {
+  const a = s.animals.find(a => a.id === t.target), h = a && habById(s, a.hab);
+  if (!a || !h || a.escaped || a.sedated || !h.preparo) return cancelTask(s, st);
+  t.work -= gameMin;
+  const fechar = () => {
+    const tc = tocaById(s, a.toca); a.preso = true; a.guard = true; a.asleep = false; if (tc) tc.fechada = true;
+    h.preparo.prontos = s.animals.filter(b => b.hab === h.id && b.preso).length;
+    log(s, `${st.name} recolheu ${a.name} na toca do ${h.name}.`, 'info'); st.task = null; proximoGuardar(s, st, h);
+  };
+  if (a.st === 'in_toca' && a.guard) return fechar();
+  if (!(a.guard && (a.st === 'toca_go' || a.st === 'toca_in'))) {
+    const tc = (a.toca != null && dentro(a) && tocaById(s, a.toca)) || tocaLivre(s, a, h, true);
+    if (!tc) { log(s, `Não há toca com vaga para ${a.name} no ${h.name}.`, 'ruim'); h.preparo.falta = (h.preparo.falta || 0) + 1; return cancelTask(s, st); }
+    if (a.toca === tc.id && dentro(a)) { a.guard = true; if (a.st === 'toca_out') a.st = 'toca_in'; }
+    else if (!mandarParaToca(s, a, h, tc, true) && t.work > 0) return; // sem rota agora: tenta de novo
+  }
+  // demorou demais (animal travado): o tratador conduz até a porta
+  if (t.work <= 0) { const tc = tocaById(s, a.toca) || tocaLivre(s, a, h, true); if (!tc) return cancelTask(s, st); a.toca = tc.id; a.guard = true; a.st = 'toca_in'; a.tgt = null; a.wp = null; t.work = 5; }
+  // acompanha o animal a alguns passos
+  const dx = a.x - st.x, dz = a.z - st.z, dd = Math.hypot(dx, dz);
+  if (dd > 3.2 && ctx.realDt) { const step = Math.min(dd - 3, 1.6 * ctx.moveMul * ctx.realDt); st.x += (dx / dd) * step; st.z += (dz / dd) * step; st.rot = Math.atan2(dx, dz); t.moving = true; } else t.moving = false;
+}
+export function ordenarGuardar(s, st, animalId) { cancelTask(s, st); if (!startTask(s, st, 'guardar', animalId)) return false; st.task.manual = true; return true; }
+function proximoGuardar(s, st, h) {
+  const P = h.preparo; if (!P) return;
+  const ocupado = new Set(s.staff.filter(o => o.task?.type === 'guardar').map(o => o.task.target));
+  const a = s.animals.find(a => a.hab === h.id && !a.escaped && !a.preso && !ocupado.has(a.id) && perigoDe(s, a) >= PERIGOSO);
+  if (a) startTask(s, st, 'guardar', a.id);
+}
 function cleanWork(s, st, t, gameMin, ctx) {
   const h = habById(s, t.target); if (!h) return cancelTask(s, st);
   if (!h.dirt || !h.dirt.length) { t.work = 0; return completeTask(s, st); }
@@ -277,6 +313,7 @@ export function refreshAlerts(s) {
     if (h.fenceHp < 0.35) want.push(['cerca', h.id]);
     if (h.breaches?.length) want.push(['brecha', h.id]);
     if (h.gateOpen) want.push(['portao', h.id]);
+    if (h.visitaRisco && s.clock.min < h.visitaRisco) want.push(['visita', h.id]); else if (h.visitaRisco) h.visitaRisco = 0;
   }
   const key = (t, id) => t + ':' + id;
   const wk = new Set(want.map(([t, id]) => key(t, id)));

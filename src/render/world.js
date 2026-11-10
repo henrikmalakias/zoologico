@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { Kit, buildAnimal, animateAnimal, buildPerson, buildPlant, buildFacility, buildFurn, furnParts, groupParts, mergeStatic, mergeRig, buildVehicle, buildTool, buildCones } from './models.js';
+import { Kit, buildAnimal, animateAnimal, buildPerson, buildPlant, buildFacility, buildFurn, furnParts, groupParts, mergeStatic, mergeRig, buildVehicle, buildTool, buildCones, buildToca } from './models.js';
+import { tocaCenter, tocaAltura } from '../sim/tocas.js';
 import { ModelLibrary, animateSDFAnimal, animateSDFHuman } from './library.js';
 import { instance as sdfInstance } from './sdfThree.js';
 let LIB = null; export const library = () => (LIB ||= new ModelLibrary());
@@ -71,8 +72,10 @@ export class World {
     }
     this.waterG = new THREE.Group(); sc.add(this.waterG);
     this.waterMat = this.ultra ? new THREE.MeshStandardMaterial({ color: '#24607a', roughness: 0.04, metalness: 0.0, transparent: true, opacity: 0.86, normalMap: waterNormalTexture(), normalScale: new THREE.Vector2(0.45, 0.45) }) : this.hi ? new THREE.MeshStandardMaterial({ color: '#2f7fb0', roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.82 }) : new THREE.MeshLambertMaterial({ color: '#3d86b3' });
-    this.layers = {}; for (const k of ['habs', 'facs', 'objs', 'furn', 'animals', 'staff', 'fx']) { this.layers[k] = new THREE.Group(); sc.add(this.layers[k]); }
-    this.maps = { habs: new Map(), facs: new Map(), objs: new Map(), furn: new Map(), animals: new Map(), staff: new Map() }; this._furnH = null; this._furnParts = {}; this._furnMeshes = []; this._plantH = null; this._plantParts = {}; this._plantMeshes = [];
+    // vidro das tocas (1.7.2b): um material só, transparente, nos três níveis de gráfico
+    this.glassMat = this.hi ? new THREE.MeshStandardMaterial({ color: '#cfe6ef', transparent: true, opacity: 0.24, roughness: 0.06, metalness: 0, depthWrite: false, side: THREE.DoubleSide }) : new THREE.MeshLambertMaterial({ color: '#cfe6ef', transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
+    this.layers = {}; for (const k of ['habs', 'facs', 'objs', 'tocas', 'furn', 'animals', 'staff', 'fx']) { this.layers[k] = new THREE.Group(); sc.add(this.layers[k]); }
+    this.maps = { habs: new Map(), facs: new Map(), objs: new Map(), tocas: new Map(), furn: new Map(), animals: new Map(), staff: new Map() }; this._furnH = null; this._furnParts = {}; this._furnMeshes = []; this._plantH = null; this._plantParts = {}; this._plantMeshes = [];
     this.kit.lamp = this.hi ? new THREE.MeshStandardMaterial({ color: '#fff4c8', emissive: '#ffc766', emissiveIntensity: 0 }) : new THREE.MeshLambertMaterial({ color: '#fff4c8', emissive: '#ffc766' }); this.kit.lamp.emissiveIntensity = 0; this.lampOn = false;
     // visitantes instanciados
     const cap = 160;
@@ -96,6 +99,7 @@ export class World {
   setQuality(q, s) { if (q === this.q) return; this.dispose(); this.build(q); if (s) this.update(s, 0); }
   dispose() {
     this.renderer.forceContextLoss?.(); this.renderer.dispose(); this.renderer.domElement.remove(); // libera a memória da GPU do contexto antigo this.kit.lamp?.dispose(); this.kit.dispose(); this.ttex.dispose();
+    this.glassMat?.dispose();
     this.usky?.dispose(); this.grass?.dispose(); this.tarr?.cor.dispose(); this.tarr?.nor.dispose(); this.tdata?.dispose(); this.waterMat.normalMap?.dispose(); this.lakeMat?.dispose(); this.lakeMat = null;
     this.usky = this.grass = this.tarr = this.tdata = null;
     this.scene.traverse(o => { if (o.isInstancedMesh || o === this.ground || o.userData?.merged) o.geometry.dispose(); });
@@ -192,7 +196,7 @@ export class World {
   // ---------- habitats ----------
   habKey(h, s) {
     let hs = 0, pv = 0; for (const e of edges(h)) { if (s.height) hs += (heightAt(s, e.ax, e.az) + heightAt(s, e.mx, e.mz) * 0.5) * ((e.c % 97) + 1); if (h.fence === 'muro' && isPath(s, e.out[0], e.out[1])) pv += (e.c % 13) + 1; }
-    return [h.cells.length, h.cells[0], h.cells[h.cells.length - 1], h.x, h.y, h.w, h.h, h.fence, h.gateOpen, h.gateOut.join(), h.feed.join(), h.water.join(), Math.round(h.fenceHp * 5), (h.breaches || []).map(b => b.side + b.k).join(), hs.toFixed(1), pv].join('|');
+    return [h.cells.length, h.cells[0], h.cells[h.cells.length - 1], h.x, h.y, h.w, h.h, h.fence, h.gateOpen || !!h.visitOpen, h.gateOut.join(), h.feed.join(), h.water.join(), Math.round(h.fenceHp * 5), (h.breaches || []).map(b => b.side + b.k).join(), hs.toFixed(1), pv].join('|');
   }
   buildHabitat(s, h) {
     const k = this.kit, g = new THREE.Group(), C = content(s), F = C.fences[h.fence] || {}, Y = (x, z) => heightAt(s, x, z);
@@ -232,7 +236,7 @@ export class World {
         const hinge = new THREE.Group(); hinge.position.set(e.ax, Y(e.ax, e.az), e.az);
         const gate = k.mesh(k.box(0.08, H * 0.85, TILE), k.mat(isMuro ? '#6b4a2b' : '#2b2f33')); gate.position.set(0, H * 0.43, TILE / 2);
         if (e.d === 'N' || e.d === 'S') hinge.rotation.y = Math.PI / 2;
-        hinge.add(gate); if (h.gateOpen) hinge.rotation.y += e.d === 'S' || e.d === 'L' ? -1.4 : 1.4; g.add(hinge);
+        hinge.add(gate); if (h.gateOpen || h.visitOpen) hinge.rotation.y += e.d === 'S' || e.d === 'L' ? -1.4 : 1.4; g.add(hinge);
         continue;
       }
       if (br.has(e.d + ':' + e.c)) { debris(e.ax, e.az, e.bx, e.bz); continue; }
@@ -287,7 +291,7 @@ export class World {
       for (const sgn of [-1, 1]) { const nx = (a1.z - a0.z) / len * 0.9 * sgn, nz = -(a1.x - a0.x) / len * 0.9 * sgn; beam(k.box(0.06, 0.06, len), wood, a0.x + nx, 1.2, a0.z + nz, a1.x + nx, 1.2, a1.z + nz); for (const f of [0.15, 0.5, 0.85]) add(k.cyl(0.05, 0.05, 0.9), wood, a0.x + (a1.x - a0.x) * f + nx, 0.75, a0.z + (a1.z - a0.z) * f + nz); }
       const gx = a1.x + (a0.x - a1.x) / len * 0.9, gz = a1.z + (a0.z - a1.z) / len * 0.9;
       const gate = add(k.box(Math.abs(a1.x - a0.x) > 0.1 ? 0.08 : 1.8, 1.3, Math.abs(a1.x - a0.x) > 0.1 ? 1.8 : 0.08), k.mat('#5b3f26'), gx, 1.0, gz);
-      if (h.gateOpen) gate.rotation.y = 1.2;
+      if (h.gateOpen || h.visitOpen) gate.rotation.y = 1.2;
     }
     // comedouro e bebedouro
     const fp = tileToWorld(h.feed[0], h.feed[1]), wp = tileToWorld(h.water[0], h.water[1]), fy = Y(fp.x, fp.z), wy = Y(wp.x, wp.z);
@@ -363,6 +367,10 @@ export class World {
       const D = C.facilities[f.type], o = buildFacility(this.kit, D.parecido || f.type, D);
       const p = tileToWorld(f.tx, f.ty); o.position.set(p.x - TILE / 2 + D.w, heightAt(s, p.x - TILE / 2 + D.w, p.z - TILE / 2 + D.h), p.z - TILE / 2 + D.h);
       o.rotation.y = f.type === 'entrada' || f.dir == null ? 0 : DIR_ROT[f.dir]; o.userData = { kind: 'fac', id: f.id }; return mergeStatic(o); });
+    // tocas com vidro: cada uma é refeita só quando muda de lugar, de lado, de altura ou de porta (aberta/fechada)
+    syncSet(this.maps.tocas, this.layers.tocas, s.tocas || [], t => { const c = tocaCenter(t); return [t.modelo, t.tx, t.ty, t.dir, t.porta, t.fechada ? 1 : 0, tocaAltura(s, t).toFixed(1), heightAt(s, c.x, c.z).toFixed(1)].join('|'); }, t => {
+      const c = tocaCenter(t), o = buildToca(this.kit, t.modelo, tocaAltura(s, t), ((t.porta ?? (t.dir + 2) % 4) - t.dir + 4) % 4, !!t.fechada, this.glassMat);
+      o.position.set(c.x, heightAt(s, c.x, c.z) + 0.1, c.z); o.rotation.y = DIR_ROT[t.dir]; o.userData = { kind: 'toca', id: t.id }; return o; });
     this.syncFurn(s);
     if (!this.ultra) this.syncPlants(s); else syncSet(this.maps.objs, this.layers.objs, s.objects.filter(o => C.plants[o.type]), o => o.type + o.tx + ',' + o.ty + ':' + heightAt(s, ...Object.values(tileToWorld(o.tx, o.ty))).toFixed(1), o => {
       const m = buildPlant(this.kit, C.plants[o.type].parecido || o.type, C.plants[o.type].cor), p = tileToWorld(o.tx, o.ty); m.position.set(p.x, heightAt(s, p.x, p.z), p.z); m.rotation.y = o.rot || 0; m.scale.setScalar(o.sc || 1); return m; });
@@ -386,7 +394,7 @@ export class World {
       const o = e.o, climbing = a.st === 'climb_up' || a.st === 'climb_down', moving = (Math.hypot(a.x - e.px, a.z - e.pz) > 0.002 || climbing) && dt > 0 && !a.carriedBy;
       e.px = a.x; e.pz = a.z;
       const S = C.species[a.sp]; let sc = a.age < S.vida.adulto ? 0.5 + 0.5 * (a.age / S.vida.adulto) : 1;
-      let x = a.x, z = a.z, rot = a.rot || 0, y = walkY(s, x, z) + (a.jy || 0) + (a.cy || 0);
+      let x = a.x, z = a.z, rot = a.rot || 0, y = walkY(s, x, z) + (a.jy || 0) + (a.cy || 0) + (a.st === 'in_toca' ? 0.2 : 0);
       // na água funda o corpo boia na linha d'água (hipopótamo: só olhos e narinas de fora)
       if (!a.cy && s.height) { const fl = WATER_Y - (C.species[a.sp].calado ?? DRAFT[a.sp] ?? 1) * sc; if (fl > y && a._nada) y = fl; }
       if (a.carriedBy) { const v = this.maps.staff.get(a.carriedBy)?.veh; if (v) { const r = v.rotation.y; x = v.position.x - Math.sin(r) * (-v.userData.bedZ); z = v.position.z - Math.cos(r) * (-v.userData.bedZ); y = v.position.y + v.userData.bedY; rot = r + Math.PI / 2; } }
@@ -554,7 +562,7 @@ export class World {
   groundAt(cx, cy) { this.raycaster.setFromCamera(this.ndc(cx, cy), this.camera); const hit = this.raycaster.intersectObject(this.ground, false)[0]; if (hit) return hit.point; const p = new THREE.Vector3(); return this.raycaster.ray.intersectPlane(this.plane, p) ? p : null; }
   pickEntity(cx, cy) {
     this.raycaster.setFromCamera(this.ndc(cx, cy), this.camera);
-    const hits = this.raycaster.intersectObjects([this.layers.animals, this.layers.staff, this.layers.facs, this.layers.habs], true);
+    const hits = this.raycaster.intersectObjects([this.layers.animals, this.layers.staff, this.layers.facs, this.layers.tocas, this.layers.habs], true);
     for (const hh of hits) { let o = hh.object; while (o && !o.userData?.kind) o = o.parent; if (o) return { kind: o.userData.kind, id: o.userData.id }; }
     return null;
   }

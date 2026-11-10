@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { HALF, worldToTile, idx, inMap, walkY, heightAt } from '../sim/grid.js';
+import { HALF, worldToTile, idx, inMap, walkY, heightAt, depthAt } from '../sim/grid.js';
+import { walkSet } from '../sim/habshape.js';
+import { habById, habObstacles } from '../sim/animals.js';
 
 // Câmera do gerente pensada para toque:
 // 1 dedo = mover (com inércia) · pinça = zoom na direção dos dedos · 2 dedos girando = rodar
@@ -13,7 +15,7 @@ export class Controls {
     this.el = el; this.world = world; this.getState = getState; this.ui = ui;
     this.mode = 'manager';
     this.cam = { x: 0, z: 18, y: 0, dist: innerWidth < innerHeight ? 105 : 75, yaw: 0, pitch: 0.95 };
-    this.live = { x: 0, z: 0, yaw: 0, pitch: 0, jx: 0, jy: 0 };
+    this.live = { x: 0, z: 0, yaw: 0, pitch: 0, jx: 0, jy: 0, hab: 0, shake: 0 }; // hab = recinto que o jogador está visitando (0 = fora)
     this.ptrs = new Map(); this.keys = {}; this.vel = { x: 0, y: 0 }; this.hold = null; this.anim = null; this.lastTap = null;
     const on = (t, f, o) => el.addEventListener(t, f, o);
     on('pointerdown', e => this.down(e)); on('pointermove', e => this.move(e));
@@ -128,9 +130,23 @@ export class Controls {
   }
   // botões na tela (segurar = repetir)
   setHold(kind) { this.hold = kind; this.anim = null; }
-  enterLive(x, z) { this.mode = 'live'; this.live.x = x; this.live.z = z; this.live.yaw = 0; this.live.pitch = 0; this.world.camera.fov = 70; this.world.camera.updateProjectionMatrix(); }
-  exitLive() { this.mode = 'manager'; this.cam.x = this.live.x; this.cam.z = this.live.z; this.world.camera.fov = 50; this.world.camera.updateProjectionMatrix(); }
-  blocked(s, x, z) { const t = worldToTile(x, z); if (!inMap(t.tx, t.ty)) return true; const i = idx(t.tx, t.ty); return s._occ.hab[i] || s._occ.fac[i] || s.terrain[i] === 'w'; }
+  enterLive(x, z) { this.mode = 'live'; this.live.x = x; this.live.z = z; this.live.yaw = 0; this.live.pitch = 0; this.live.hab = 0; this.live.shake = 0; this.world.camera.fov = 70; this.world.camera.updateProjectionMatrix(); }
+  exitLive() { this.mode = 'manager'; this.live.hab = 0; this.cam.x = this.live.x; this.cam.z = this.live.z; this.world.camera.fov = 50; this.world.camera.updateProjectionMatrix(); }
+  // 1.7.2b: dentro de um recinto (hab) o jogador anda só pelos blocos dele, sem atravessar tocas, troncos nem água funda;
+  // fora, recintos e água continuam fechados, mas a ponte da ilha é caminho
+  blocked(s, x, z, hab = this.live.hab) {
+    const t = worldToTile(x, z); if (!inMap(t.tx, t.ty)) return true; const i = idx(t.tx, t.ty);
+    if (hab) {
+      const h = habById(s, hab); if (!h) return false;
+      if (!walkSet(h).has(i) || s._occ.toca?.[i] || depthAt(s, x, z) > 0.35) return true;
+      for (const o of habObstacles(s, h)) if (o.tree && Math.hypot(x - o.x, z - o.z) < o.r + 0.25) return true;
+      return false;
+    }
+    if (s._bridge?.has(i)) return false;
+    return !!(s._occ.hab[i] || s._occ.fac[i] || s.terrain[i] === 'w');
+  }
+  // entrar/sair de um recinto: só muda a posição (as regras da visita ficam em main.js e sim/visita.js)
+  irPara(p, hab, olhar) { const L = this.live; L.x = p.x; L.z = p.z; L.hab = hab || 0; if (olhar) L.yaw = Math.atan2(-(olhar.x - p.x), -(olhar.z - p.z)); }
   // posiciona a câmera a partir do alvo, sempre acima do terreno
   apply() {
     const c = this.cam, cam = this.world.camera, s = this.getState();
@@ -146,10 +162,12 @@ export class Controls {
       let fx = -L.jy, sx = L.jx;
       if (this.keys['w'] || this.keys['arrowup']) fx += 1; if (this.keys['s'] || this.keys['arrowdown']) fx -= 1;
       if (this.keys['a'] || this.keys['arrowleft']) sx -= 1; if (this.keys['d'] || this.keys['arrowright']) sx += 1;
-      const sp = 3.2 * dt, fw = [-Math.sin(L.yaw), -Math.cos(L.yaw)], rt = [Math.cos(L.yaw), -Math.sin(L.yaw)];
+      const sp = (L.hab ? 2.2 : 3.2) * dt, fw = [-Math.sin(L.yaw), -Math.cos(L.yaw)], rt = [Math.cos(L.yaw), -Math.sin(L.yaw)];
       const nx = L.x + (fw[0] * fx + rt[0] * sx) * sp, nz = L.z + (fw[1] * fx + rt[1] * sx) * sp;
       if (!this.blocked(s, nx, L.z)) L.x = nx; if (!this.blocked(s, L.x, nz)) L.z = nz;
-      const ey = walkY(s, L.x, L.z) + 1.7; cam.position.set(L.x, ey, L.z);
+      let ey = walkY(s, L.x, L.z) + 1.7, sx2 = 0, sz2 = 0;
+      if (L.shake > 0) { L.shake = Math.max(0, L.shake - dt); const k = L.shake * 0.5; sx2 = (Math.random() - 0.5) * k; sz2 = (Math.random() - 0.5) * k; ey += (Math.random() - 0.5) * k; } // tremor depois de um ataque
+      cam.position.set(L.x + sx2, ey, L.z + sz2);
       cam.lookAt(L.x - Math.sin(L.yaw) * Math.cos(L.pitch), ey + Math.sin(L.pitch), L.z - Math.cos(L.yaw) * Math.cos(L.pitch));
       return;
     }

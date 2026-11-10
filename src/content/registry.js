@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.7.2a';
+export const APP_VERSION = '1.7.2b';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -21,6 +21,16 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.7.2b', data: '10/11/2026', titulo: 'Versão 1.7.2b: vida selvagem', itens: [
+    'Tocas com vidro: em Construir > Habitat > Toca com vidro. De pedra na savana e de madeira na floresta, com o vidro virado para os visitantes e a entrada do animal em outro lado. Cada toca abriga 2 animais (1 dos bem grandes); até 6 por habitat',
+    'Os animais descansam e dormem dentro das tocas, e dá para vê-los pelo vidro. Tocar na toca mostra quem está lá dentro',
+    'Mover objetos agora também move as tocas (o animal que estiver dentro vai junto)',
+    'Rotina de cada espécie: pastar de manhã e à tarde, descanso no meio do dia (leão deitado, zebra e girafa em pé, flamingo numa perna só), banho de poeira do elefante e do rinoceronte. O hipopótamo dorme de dia dentro da água e sai à noite para pastar. Vale também com o jogo fechado',
+    'AO VIVO dentro dos recintos: chegue ao portão e toque em Entrar (ou use Visitar no painel do habitat). Na ilha, a ponte agora é caminho. Lá dentro você anda mais devagar e não atravessa tocas, troncos nem água funda',
+    'Modo selvagem: com animal perigoso solto aparece o aviso; se você chegar perto demais ele encara e depois avança. É só um susto: ninguém morre, a visita acaba e o recinto fica 1 hora de jogo fechado para visita. No Modo Tranquilo o animal para a 1 m. Dá para desligar em Menu > Configurações',
+    'Preparar visita: no painel do habitat, o tratador recolhe os animais perigosos nas tocas e fecha as portas; aí a visita fica liberada. Ao sair, eles são soltos',
+    'Novo alerta Visitante em risco (para o segurança) depois de um ataque. Seu save é convertido sozinho',
+  ] },
   { versao: '1.7.2a', data: '09/11/2026', titulo: 'Versão 1.7.2a: correções e preparação para expansões', itens: [
     'Sincronia com o Drive mais segura: não decide mais pelo relógio dos aparelhos, nunca envia por cima sem perguntar, guarda uma cópia do save do Drive antes de substituir e não cria save duplicado',
     'A pergunta "qual zoológico manter" só aparece ao abrir o jogo, ao voltar ao app ou em Sincronizar agora (no meio do jogo vira um aviso)',
@@ -142,7 +152,7 @@ export function content(state) {
   const ids = Object.keys(state?.packs || { base: 1 }).filter(id => AVAILABLE_PACKS[id]).sort((a, b) => (b === 'base') - (a === 'base') || a.localeCompare(b));
   const key = ids.join(',');
   if (merged && key === mergedKey) return merged;
-  const out = { terrains: {}, biomes: {}, plants: {}, fences: {}, species: {}, facilities: {}, roles: {}, furniture: {} };
+  const out = { terrains: {}, biomes: {}, plants: {}, fences: {}, species: {}, facilities: {}, roles: {}, furniture: {}, estruturas: {} };
   for (const id of ids) {
     const p = AVAILABLE_PACKS[id];
     for (const k of Object.keys(out)) for (const [kk, v] of Object.entries(p[k] || {})) {

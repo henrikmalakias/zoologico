@@ -10,7 +10,8 @@ import * as B from './sim/build.js';
 import { hire } from './sim/core.js';
 import { dispatch, refreshAlerts, startTask, orderTransfer, ALERT_INFO, alertTargetName } from './sim/staff.js';
 import { library } from './render/world.js';
-import { startEscape } from './sim/animals.js';
+import { startEscape, habById } from './sim/animals.js';
+import * as V from './sim/visita.js';
 import { content } from './content/registry.js';
 import * as sound from './audio/sound.js';
 import { distributeFurniture } from './sim/furn.js';
@@ -56,8 +57,10 @@ class Game {
     const s = this.state, now = Date.now();
     const factor = this.live ? 1 : SPEEDS[s.clock.speed] * timeFactor(s);
     if (factor > 0) {
-      const ctx = { abstract: false, realDt: dt, moveMul: this.live ? 1 : Math.min(3, Math.max(1, factor / 24)), now };
+      const L = this.controls.live, ctx = { abstract: false, realDt: dt, moveMul: this.live ? 1 : Math.min(3, Math.max(1, factor / 24)), now, player: this.live && L.hab ? { x: L.x, z: L.z, hab: L.hab } : null };
       step(s, (dt * factor) / 60, ctx);
+      if (ctx.ameaca || ctx.investida) this.avisoSelvagem(ctx.investida || ctx.ameaca, !!ctx.investida);
+      if (ctx.ataque) this.ataque(ctx.ataque);
     }
     // alerta novo com o jogo aberto: pausa para o jogador ler (não no AO VIVO)
     const ids = new Set(s.alerts.map(a => a.id)), fresh = this._alertIds ? s.alerts.filter(a => !this._alertIds.has(a.id)) : [];
@@ -98,7 +101,7 @@ class Game {
     const u = this.undoInfo; if (!u || Date.now() - u.at > 60000) { this.undoInfo = null; return; }
     const s = deserialize(u.data); s._events = []; s.clock.lastRealTs = Date.now(); s.clock.speed = this.state.clock.speed;
     s.settings = { ...this.state.settings }; seedCrowd(s); this.state = s; this._alertIds = null; this.undoInfo = null;
-    this.world.cache.hver = -1; this.ui.closeSheet(); this.ui.hideConfirm(); if (!this.ui.el.drawer.classList.contains('hidden')) this.ui.renderDrawer();
+    this.world.cache.hver = -1; this.controls.live.hab = 0; this.ui.closeSheet(); this.ui.hideConfirm(); if (!this.ui.el.drawer.classList.contains('hidden')) this.ui.renderDrawer();
     sound.undo(); this.ui.toast(`Desfeito: ${u.label}.`, 'bom');
   }
   async save() { try { if (!document.hidden) this.state.clock.lastRealTs = Date.now(); // escondido: mantém a hora em que saiu (o tempo fora é simulado ao voltar)
@@ -114,7 +117,7 @@ class Game {
     } catch (e) { this.wake = null; }
   }
   onVisibility() {
-    if (document.hidden) { this.state.clock.lastRealTs = Date.now(); this.save(); this.hiddenAt = Date.now(); this.wake = null; return; }
+    if (document.hidden) { if (this.habVisita()) this.sairVisita(); this.state.clock.lastRealTs = Date.now(); this.save(); this.hiddenAt = Date.now(); this.wake = null; return; }
     this.wakeSync();
     if (this.drive?.ativo) this.drive.antesDeSimular(contentHash(JSON.stringify(serialize(this.state))));
     const rep = catchUp(this.state, Date.now()); this.last = performance.now();
@@ -133,8 +136,45 @@ class Game {
     if (rep && rep.minutos > 10) this.ui.showReport(rep, '📰 Enquanto você esteve fora');
   }
   advance(hour) { const rep = advanceTo(this.state, hour, Date.now()); this.ui.showReport(rep, '⏩ Relógio avançado'); this.save(); }
+  // ---------- visita aos recintos (AO VIVO) e modo selvagem ----------
+  habVisita() { return this.live && this.controls.live.hab ? habById(this.state, this.controls.live.hab) : null; }
+  // recinto cujo portão está ao alcance do jogador (do lado de fora)
+  portaoPerto() {
+    if (!this.live || this.controls.live.hab) return null; const L = this.controls.live, s = this.state;
+    for (const h of s.habitats) { const p = V.pontoFora(s, h); if (Math.hypot(p.x - L.x, p.z - L.z) < 1.4) return h; }
+    return null;
+  }
+  entrarVisita(h) {
+    const s = this.state, r = V.abrirVisita(s, h); if (!r.ok) { this.ui.toast(r.msg, 'ruim'); return false; }
+    this.controls.irPara(V.pontoDentro(h), h.id); sound.click();
+    this.ui.toast(r.msg + (r.soltos && s.settings.selvagem !== false ? ` ⚠ ${r.soltos} animal(is) perigoso(s) solto(s): mantenha distância.` : ''), r.soltos ? 'perigo' : 'bom');
+    return true;
+  }
+  sairVisita() {
+    const h = this.habVisita(); if (!h) return; const s = this.state;
+    V.fecharVisita(s, h); this.controls.irPara(V.pontoFora(s, h), 0); this.ui.toast(`Você saiu do ${h.name}. Portão fechado.`, 'bom');
+  }
+  // pelo painel do habitat: liga o AO VIVO já dentro do recinto
+  visitar(h) {
+    const c = V.podeVisitar(this.state, h); if (!c.ok) return this.ui.toast(c.msg, 'ruim');
+    if (!this.live) this.toggleLive();
+    this.controls.irPara(V.pontoFora(this.state, h), 0, V.pontoDentro(h)); this.entrarVisita(h);
+  }
+  avisoSelvagem(id, carga) {
+    const s = this.state, a = s.animals.find(x => x.id === id); if (!a) return; const S = content(s).species[a.sp], L = this.controls.live;
+    sound.animal(a.sp, 0, Math.max(2, Math.hypot(a.x - L.x, a.z - L.z)), S); try { navigator.vibrate?.(carga ? [120, 60, 200] : 120); } catch (e) {}
+    if (carga) sound.alarm();
+  }
+  ataque({ id, manso }) {
+    const s = this.state, a = s.animals.find(x => x.id === id); if (!a) return;
+    const r = V.ataqueVisita(s, a, manso); if (!r) return;
+    const pf = V.pontoFora(s, r.hab), pd = V.pontoDentro(r.hab); this.controls.irPara(pf, 0, { x: 2 * pf.x - pd.x, z: 2 * pf.z - pd.z }); this.controls.live.shake = manso ? 0.4 : 1; // sai de costas para o recinto
+    this.ui.flash(manso ? 0.25 : 0.6); if (!manso) sound.bad(); try { navigator.vibrate?.(manso ? 150 : [250, 80, 250]); } catch (e) {}
+    this.ui.toast(r.msg, manso ? 'ruim' : 'perigo'); this.save();
+  }
   toggleLive() {
     const s = this.state;
+    if (this.live && this.controls.live.hab) this.sairVisita(); // sair do AO VIVO de dentro de um recinto: primeiro volta para fora e fecha o portão
     this.live = !this.live; this.ui.setLive(this.live);
     if (this.live) { const e = s.facilities.find(f => f.type === 'entrada'); const t = accessTile(s, e) || [e.tx, e.ty - 1]; const p = tileToWorld(t[0], t[1]); this.controls.enterLive(p.x, p.z); }
     else this.controls.exitLive();
@@ -147,7 +187,7 @@ class Game {
   async newGame(opts = {}) { await backup(this.state, 'antes-novo-jogo'); const q = this.state.settings; const s = newGame(Date.now(), opts); Object.assign(s.settings, { quality: q.quality, autoQualidade: q.autoQualidade, mostrarFps: q.mostrarFps, telaLigada: q.telaLigada, economia: q.economia, subSoFechado: q.subSoFechado, pausaAlerta: q.pausaAlerta, som: q.som, volume: q.volume, ambiente: q.ambiente }); this.replaceState(s); this.undoInfo = null; this.ui.closeModal(); this.ui.tut.restart(); this.ui.welcome(); }
   replaceState(s) {
     sound.configure(s.settings);
-    s._events = []; s.clock.lastRealTs = Date.now(); this.state = s; this._alertIds = null;
+    s._events = []; s.clock.lastRealTs = Date.now(); this.state = s; this._alertIds = null; if (this.controls) this.controls.live.hab = 0;
     this.world.setQuality(s.settings.quality === this.world.q ? (s.settings.quality === 'baixo' ? 'alto' : 'baixo') : s.settings.quality);
     this.world.setQuality(s.settings.quality, s); this.world.setEco(s.settings.economia !== false); this.controls.world = this.world; this.world.resize(); this.save();
   }
@@ -177,5 +217,5 @@ class Game {
 const vnum = v => String(v).split('.').map(p => { const m = /^(\d+)([a-z]?)$/.exec(p); return m ? +m[1] + (m[2] ? (m[2].charCodeAt(0) - 96) / 100 : 0) : 0; }); // 1.7.2b > 1.7.2a > 1.7.2
 const cmp = (a, b) => { const x = vnum(a), y = vnum(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
 
-const game = new Game(); window.__game = game; window.__sound = sound; window.__api = { ...B, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
+const game = new Game(); window.__game = game; window.__sound = sound; window.__api = { ...B, V, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
 game.start().catch(e => { console.error(e); const b = document.getElementById('boot'); if (b) b.textContent = 'Erro ao iniciar: ' + e.message; });

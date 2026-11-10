@@ -1,9 +1,10 @@
 import { content } from '../content/registry.js';
 import { clamp, rnd, uid, log } from './util.js';
-import { MAP, idx, inMap, inArea, rebuildOcc, isPath, isPathT, accessTile, orientFacility, CW, ci, tileCorners, tileSlope, WATER_Y, worldToTile, fixShore, refreshAfterPaint } from './grid.js';
+import { MAP, idx, inMap, inArea, rebuildOcc, isPath, isPathT, accessTile, orientFacility, viewTiles, tileToWorld, CW, ci, tileCorners, tileSlope, WATER_Y, worldToTile, fixShore, refreshAfterPaint } from './grid.js';
 import { removeFurnAt, addFurnNear } from './furn.js';
 import { newAnimal, habById } from './animals.js';
 import { spend, earn } from './staff.js';
+import { TOCA_MAX, DIRV, tocasDe, tocaCells, ladoTiles, ocupantes, modeloDoBioma, tocaEm, tocaLugar, tocaVagas } from './tocas.js';
 import { rectCells, ensureCells, cellSet, walkSet, edges, fitBox, touch, cellXY, biggestComponent, connected, DIRS, perimeter } from './habshape.js';
 
 const R = (ok, msg = '', extra = {}) => ({ ok, msg, ...extra });
@@ -46,6 +47,7 @@ function chooseGate(s, h) {
 }
 function chooseFeedWater(s, h) {
   const W = walkSet(h), [gx, gy] = h.gateIn, [dx, dy] = DIRS[h.side], bad = new Set([idx(gx, gy)]);
+  for (const t of tocasDe(s, h.id)) for (const [x, y] of tocaCells(t)) bad.add(idx(x, y));
   const dry = i => s.terrain[i] !== 'w';
   let f = idx(gx - dx, gy - dy);
   if (!W.has(f) || !dry(f) || bad.has(f)) { let bd = 1e9; f = -1; for (const i of W) { if (bad.has(i) || !dry(i)) continue; const [x, y] = cellXY(i), d = Math.hypot(x - gx, y - gy); if (d < bd) { bd = d; f = i; } } }
@@ -178,6 +180,7 @@ export function checkShrink(s, x0, y0, x1, y1) {
   if (!h) return R(false, 'Desenhe sobre a parte do habitat que quer tirar.', { rect: r });
   if (content(s).fences[h.fence]?.fosso) return R(false, 'Ilhas não podem ser recortadas.', { rect: r, hab: h });
   const keep = new Set([idx(...h.gateIn), idx(...h.feed), idx(...h.water)]);
+  if (tocasDe(s, h.id).some(t => tocaCells(t).some(([x, y]) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h))) return R(false, 'Mova a toca antes de recortar o habitat.', { rect: r, hab: h, cells: [] });
   const cut = h.cells.filter(i => { const x = i % MAP, y = (i / MAP) | 0; return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h && !keep.has(i); });
   if (!cut.length) return R(false, 'Nada para tirar aqui (portão, comedouro e bebedouro ficam).', { rect: r, hab: h, cells: [] });
   const cs = new Set(cut), rest = h.cells.filter(i => !cs.has(i));
@@ -199,6 +202,7 @@ const worldToTileXZ = (x, z) => { const t = worldToTile(x, z); return idx(t.tx, 
 export function movableAt(s, tx, ty) {
   if (!inMap(tx, ty)) return null;
   const i = idx(tx, ty), oid = s._occ.obj[i], hid = s._occ.hab[i];
+  const tc = tocaEm(s, tx, ty); if (tc) return { kind: 'toca', toca: tc, hab: habById(s, tc.hab), nome: 'Toca' };
   if (hid) { const h = habById(s, hid); if (h.feed[0] === tx && h.feed[1] === ty) return { kind: 'feed', hab: h, nome: 'Comedouro' }; if (h.water[0] === tx && h.water[1] === ty) return { kind: 'water', hab: h, nome: 'Bebedouro' }; }
   if (oid) { const o = s.objects.find(o => o.id === oid); if (o && content(s).plants[o.type]) return { kind: 'plant', obj: o, hab: hid ? habById(s, hid) : null, nome: content(s).plants[o.type].nome }; }
   return null;
@@ -209,6 +213,12 @@ export function moveObject(s, m, tx, ty) {
   if (m.hab && hid !== m.hab.id) return R(false, 'Mova só dentro do mesmo habitat.');
   if (!m.hab && hid) return R(false, 'Essa planta está fora de um habitat; plante outra lá dentro.');
   const h = m.hab;
+  if (m.kind === 'toca') {
+    const c = checkToca(s, tx, ty, { mover: m.toca }); if (!c.ok) return c;
+    const t = m.toca, vg = ocupantes(s, t); Object.assign(t, { tx: c.tx, ty: c.ty, dir: c.dir, porta: c.porta });
+    for (const a of vg) { if (a.st === 'in_toca' || a.st === 'toca_in') { const q = tocaLugar(t, a.tocaSlot || 0, tocaVagas(s, a.sp)); a.x = q.x; a.z = q.z; a.rot = Math.atan2(DIRV[t.dir][0], DIRV[t.dir][1]); a.st = 'in_toca'; } else { a.toca = null; a.st = 'idle'; a.stT = 1; } a.tgt = null; a.wp = null; }
+    touch(h); rebuildOcc(s); return R(true, 'Toca movida.');
+  }
   if (h && !walkSet(h).has(i)) return R(false, 'Esse é o fosso da ilha.');
   if (s._occ.fac[i] || s._occ.obj[i] || isPathT(s.terrain[i])) return R(false, 'Já há algo aqui.');
   if (h && ((h.gateIn[0] === tx && h.gateIn[1] === ty) || (h.feed[0] === tx && h.feed[1] === ty) || (h.water[0] === tx && h.water[1] === ty))) return R(false, 'Deixe o portão, o comedouro e o bebedouro livres.');
@@ -219,12 +229,63 @@ export function moveObject(s, m, tx, ty) {
   rebuildOcc(s);
   return R(true, `${m.nome} movido.`);
 }
+// ---------- tocas com vidro (1.7.2b) ----------
+// lado do vidro: o que fica mais perto de onde os visitantes olham (caminhos em volta); sem caminho, olha para o portão.
+// entrada do animal: outro lado com os 2 blocos livres (de preferência o oposto ao vidro).
+function ladosToca(s, h, t, livre) {
+  const ok = d => ladoTiles(t, d).every(([x, y]) => livre(x, y));
+  const vt = viewTiles(s, h), alvo = vt.length ? vt : [h.gateOut], c = [t.tx + 0.5, t.ty + 0.5];
+  const perto = d => { const [dx, dy] = DIRV[d], fx = c[0] + dx * 1.5, fy = c[1] + dy * 1.5; let b = 1e9; for (const [x, y] of alvo) b = Math.min(b, Math.hypot(x - fx, y - fy)); return b; };
+  const cand = [0, 1, 2, 3].filter(ok).sort((a, b) => perto(a) - perto(b));
+  if (cand.length < 2) return null;
+  const dir = cand[0], op = (dir + 2) % 4, porta = cand.includes(op) ? op : cand[1];
+  return { dir, porta };
+}
+// opts.mover = toca que está mudando de lugar (não cobra e ignora os próprios blocos)
+export function checkToca(s, tx0, ty0, opts = {}) {
+  const E = content(s).estruturas?.toca; if (!E) return R(false, 'Indisponível.');
+  const mv = opts.mover || null; let last = R(false, 'Toque dentro de um habitat.');
+  // o toque vale como qualquer um dos 4 blocos da toca: tenta os 4 encaixes
+  for (const [ox, oy] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) {
+    const tx = tx0 + ox, ty = ty0 + oy, t = { tx, ty }, r = { x: tx, y: ty, w: 2, h: 2 };
+    const hid = inMap(tx0, ty0) ? s._occ.hab[idx(tx0, ty0)] : 0, h = hid && habById(s, hid);
+    if (!h) return R(false, 'Toque dentro de um habitat.', { rect: { x: tx0, y: ty0, w: 2, h: 2 } });
+    if (mv && mv.hab !== h.id) return R(false, 'Mova só dentro do mesmo habitat.', { rect: r });
+    const W = walkSet(h), meu = (x, y) => mv && x >= mv.tx && x < mv.tx + 2 && y >= mv.ty && y < mv.ty + 2;
+    const livre = (x, y) => { if (!inMap(x, y)) return false; const i = idx(x, y); return W.has(i) && s.terrain[i] !== 'w' && !s._occ.fac[i] && (!s._occ.toca[i] || meu(x, y)); };
+    let msg = '';
+    for (const [x, y] of tocaCells(t)) {
+      const i = inMap(x, y) ? idx(x, y) : -1;
+      if (i < 0 || !W.has(i)) { msg = cellSet(h).has(i) ? 'Esse é o fosso da ilha.' : 'A toca (2 x 2 blocos) precisa caber inteira dentro do habitat.'; break; }
+      if (s.terrain[i] === 'w') { msg = 'Não dá para pôr a toca na água.'; break; }
+      if ((s._occ.obj[i] && !meu(x, y)) || s._occ.fac[i] || isPathT(s.terrain[i])) { msg = 'Já há algo aqui (planta ou outra toca). Escolha 2 x 2 blocos livres.'; break; }
+      if ((h.gateIn[0] === x && h.gateIn[1] === y) || (h.feed[0] === x && h.feed[1] === y) || (h.water[0] === x && h.water[1] === y)) { msg = 'Deixe o portão, o comedouro e o bebedouro livres.'; break; }
+    }
+    if (!msg && s.height) { let lo = 1e9, hi = -1e9; for (let y = ty; y <= ty + 2; y++) for (let x = tx; x <= tx + 2; x++) { const v = s.height[ci(x, y)]; lo = Math.min(lo, v); hi = Math.max(hi, v); } if (hi - lo > 0.8) msg = 'Terreno muito inclinado. Use Relevo > Nivelar antes.'; }
+    const L = !msg && ladosToca(s, h, t, livre);
+    if (!msg && !L) msg = 'A toca precisa de 2 lados livres dentro do habitat: um para o vidro e um para a entrada do animal.';
+    if (msg) { last = R(false, msg, { rect: r, hab: h }); continue; }
+    const extra = { rect: r, hab: h, tx, ty, dir: L.dir, porta: L.porta, cost: mv ? 0 : E.custo };
+    if (!mv && tocasDe(s, h.id).length >= TOCA_MAX) return R(false, `Máximo de ${TOCA_MAX} tocas por habitat.`, extra);
+    if (!mv && s.money < E.custo) return R(false, `Custa R$ ${E.custo.toLocaleString('pt-BR')}. Dinheiro insuficiente.`, extra);
+    return R(true, `R$ ${E.custo.toLocaleString('pt-BR')}`, extra);
+  }
+  return last;
+}
+export function placeToca(s, tx, ty, modelo) {
+  const c = checkToca(s, tx, ty); if (!c.ok) return c;
+  const E = content(s).estruturas.toca, h = c.hab, m = modelo && E.modelos[modelo] ? modelo : modeloDoBioma(s, h.biome);
+  const t = { id: uid(s), hab: h.id, tx: c.tx, ty: c.ty, dir: c.dir, porta: c.porta, modelo: m, fechada: false, pack: E.pack };
+  (s.tocas ||= []).push(t); spend(s, 'construcao', E.custo); touch(h); rebuildOcc(s);
+  return R(true, `${E.modelos[m]?.nome || E.nome} construída no ${h.name}.`, { toca: t, hab: h });
+}
 export function paintCost(s, t) { return content(s).terrains[t]?.custo || 5; }
 export function paintTerrain(s, tx, ty, t) {
   if (!inMap(tx, ty) || !inArea(s, tx, ty)) return R(false, 'Fora da área do parque.');
   const i = idx(tx, ty), isP = isPathT(t);
   if (s.terrain[i] === t) return R(true);
   if (s._occ.fac[i]) return R(false, 'Há uma instalação aqui.');
+  if (t === 'w' && s._occ.toca?.[i]) return R(false, 'Há uma toca aqui. Mova a toca antes.');
   const hid = s._occ.hab[i];
   if (isP && hid) return R(false, 'Caminhos não podem ficar dentro de habitats.');
   if (hid) { const hh = habById(s, hid); if (content(s).fences[hh.fence]?.fosso && (tx < hh.x + 2 || tx >= hh.x + hh.w - 2 || ty < hh.y + 2 || ty >= hh.y + hh.h - 2)) return R(false, 'Esse é o fosso da ilha.'); }
@@ -327,12 +388,17 @@ export function demolish(s, tx, ty) {
     s.facilities.splice(s.facilities.indexOf(f), 1); earn(s, 'metas', Math.round((D?.custo || 0) * 0.5)); rebuildOcc(s); return R(true, 'Instalação removida.'); }
   const fu = s.furn.filter(f => f.tx === tx && f.ty === ty);
   if (fu.length) { const C2 = C.furniture; for (const f of fu) earn(s, 'metas', Math.round((C2[f.type]?.custo || 0) * 0.5)); removeFurnAt(s, tx, ty); return R(true, 'Mobiliário removido.'); }
+  const tc = tocaEm(s, tx, ty);
+  if (tc) { if (ocupantes(s, tc).some(a => a.st === 'in_toca' || a.st === 'toca_in')) return R(false, 'Há um animal dentro da toca. Espere ele sair.');
+    for (const a of ocupantes(s, tc)) { a.toca = null; a.preso = false; }
+    s.tocas.splice(s.tocas.indexOf(tc), 1); earn(s, 'metas', Math.round((C.estruturas?.toca?.custo || 0) * 0.5)); const hh = habById(s, tc.hab); if (hh) touch(hh); rebuildOcc(s); return R(true, 'Toca removida.'); }
   const oid = s._occ.obj[i];
   if (oid) { s.objects = s.objects.filter(o => o.id !== oid); rebuildOcc(s); return R(true, 'Planta removida.'); }
   const hid = s._occ.hab[i];
   if (hid) { const h = habById(s, hid);
     if (s.animals.some(a => a.hab === hid)) return R(false, 'Venda ou remova os animais desse habitat antes.');
     if (s.staff.some(st => st.inHab === hid)) for (const st of s.staff) if (st.inHab === hid) { st.inHab = 0; st.task = null; }
+    s.tocas = (s.tocas || []).filter(t => t.hab !== hid);
     s.habitats.splice(s.habitats.indexOf(h), 1); s.alerts = s.alerts.filter(a => a.target !== hid || a.type === 'doenca' || a.type === 'fuga');
     earn(s, 'metas', Math.round(habitatCostRef(s, h) * 0.3)); rebuildOcc(s); return R(true, 'Habitat demolido.'); }
   if (isPathT(s.terrain[i])) { s.terrain[i] = 'g'; delete s.litter[i]; removeFurnAt(s, tx, ty); rebuildOcc(s); reorientAround(s, tx, ty); return R(true, 'Caminho removido.'); }

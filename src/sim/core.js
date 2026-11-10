@@ -7,7 +7,7 @@ import { updateAnimals, hourlyAnimals, dailyAnimals, habInfo } from './animals.j
 import { updateStaff, refreshAlerts, managerTick, spend, earn, recalcClean } from './staff.js';
 import { updateVisitors, arrivalRate, arrive, isOpen, litterCount, seedCrowd } from './visitors.js';
 
-export const SCHEMA = 7;
+export const SCHEMA = 8;
 export const SPEEDS = [0, 1, 2, 3]; // multiplicador da velocidade normal
 export const MES = 30;
 // segundos de jogo por segundo real na velocidade normal (depende da hora: dia devagar, noite rápida)
@@ -15,14 +15,14 @@ export function timeFactor(s) { const T = content(s).tempo, h = hourOf(s.clock.m
 export const H2 = 2 * 3600e3, H72 = 72 * 3600e3;
 export const VAGAS = [1, 1, 2, 3];
 
-export const DEFAULT_SETTINGS = () => ({ quality: 'baixo', fugas: true, tranquilo: false, autoQualidade: true, mostrarFps: false, telaLigada: true, economia: true, subSoFechado: true, pausaAlerta: true, som: true, volume: 0.7, ambiente: true, tutorial: { passo: 0, feito: false } });
+export const DEFAULT_SETTINGS = () => ({ quality: 'baixo', fugas: true, tranquilo: false, autoQualidade: true, mostrarFps: false, telaLigada: true, economia: true, subSoFechado: true, pausaAlerta: true, selvagem: true, som: true, volume: 0.7, ambiente: true, tutorial: { passo: 0, feito: false } });
 export function newGame(now = Date.now(), opts = {}) {
   const s = {
     schemaVersion: SCHEMA, gameVersion: APP_VERSION, packs: { base: '1.0.0' }, rng: (now % 2147483647) | 0, nextId: 1,
     clock: { min: 7 * 60, day: 0, speed: 1, lastRealTs: now },
     money: opts.tranquilo ? 120000 : 60000, ticket: 30, areaLevel: 0,
     terrain: new Array(MAP * MAP).fill('g'), height: new Array((MAP + 1) * (MAP + 1)).fill(0), litter: {},
-    habitats: [], facilities: [], objects: [], furn: [], vstock: [], animals: [], staff: [], managers: [], visitors: [],
+    habitats: [], facilities: [], objects: [], tocas: [], player: { lesoes: 0 }, furn: [], vstock: [], animals: [], staff: [], managers: [], visitors: [],
     policies: { doencaPrimeiro: true, segurancaPrimeiro: false, fugaImediata: true },
     candidates: [], hiring: { nextAt: now + H2 },
     alerts: [], metas: {}, settings: { ...DEFAULT_SETTINGS(), tranquilo: !!opts.tranquilo, fugas: !opts.tranquilo },

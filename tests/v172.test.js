@@ -47,7 +47,7 @@ const run = (s, k, fn) => { for (let i = 0; i < k; i++) { step(s, 0.0125, live);
   for (const a of s.animals) { a.thirst = 0.1; a.hunger = 0.1; }
   const over = {}, inWater = {}, maxD = {}, states = new Set();
   run(s, 14000, i => { if (i % 4) return; for (const a of s.animals) {
-    if (a.st === 'sleep') continue; states.add(a.sp + ':' + a.st);
+    if (a.st === 'sleep' && a.sp !== 'hipopotamo') continue; states.add(a.sp + ':' + a.st); // 1.7.2b: o hipopótamo dorme de dia, dentro da água
     const d = depthAt(s, a.x, a.z), m = maxDepth(s, a);
     if (!a.wade && d > m + 0.03) over[a.sp] = (over[a.sp] || 0) + 1;
     if (d > 0.3) inWater[a.sp] = (inWater[a.sp] || 0) + 1;

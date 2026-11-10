@@ -102,3 +102,11 @@ textarea,input{user-select:text;-webkit-user-select:text;color:#111}
 @keyframes pulsen{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 .updbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 76px);z-index:16;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;background:rgba(18,40,30,.94);border:1px solid #7be0a5;border-radius:14px;padding:8px 10px;width:min(560px,94vw);box-shadow:0 4px 16px rgba(0,0,0,.4);font-size:13px}
 .updbar span{flex:1;min-width:160px}
+
+/* 1.7.2b: visita aos recintos no AO VIVO */
+.visitbtn{font-size:16px;padding:12px 16px;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+.visitmsg{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 140px);z-index:7;max-width:min(560px,92vw);text-align:center;background:rgba(18,40,30,.86);color:#fff;border-radius:12px;padding:7px 12px;font-size:13px;font-weight:700;pointer-events:none}
+.visitmsg.aviso{background:rgba(150,96,18,.92)}
+.visitmsg.perigo{background:rgba(190,40,34,.95);animation:pulsev 1s infinite}
+@keyframes pulsev{0%,100%{opacity:1}50%{opacity:.72}}
+.flash{position:absolute;inset:0;background:#c62828;opacity:0;pointer-events:none;z-index:30}

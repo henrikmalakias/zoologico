@@ -4,6 +4,8 @@ import { content } from '../content/registry.js';
 
 // Migrações: cada função leva o save da versão N para N+1.
 export const MIGRATIONS = {
+  // v7 -> v8 (versão 1.7.2b): tocas com vidro, visita aos recintos e modo selvagem
+  7: s => { s.tocas = s.tocas || []; s.player = s.player || { lesoes: 0 }; for (const h of s.habitats || []) { h.visitOpen = false; h.preparo = null; } s.settings = { selvagem: true, ...(s.settings || {}) }; s.schemaVersion = 8; return s; },
   // v6 -> v7 (versão 1.7): habitats com formato livre (lista de blocos); brechas passam a apontar para o bloco da borda
   6: s => {
     for (const h of s.habitats || []) {
@@ -46,7 +48,16 @@ export function deserialize(o) {
   s.terrain = typeof s.terrain === 'string' ? s.terrain.split('') : s.terrain;
   s.visitors = [];
   for (const st of s.staff) if (st.task) st.task.route = null;
-  for (const a of s.animals) { a.tgt = null; a.wp = null; }
+  s.tocas = s.tocas || []; s.player = s.player || { lesoes: 0 };
+  // ninguém fica preso numa visita ao reabrir; quem estava a caminho de uma toca volta a decidir; toca que sumiu solta o animal
+  for (const h of s.habitats) h.visitOpen = false;
+  for (const a of s.animals) {
+    a.tgt = null; a.wp = null;
+    if (a.toca != null) { const t = s.tocas.find(t => t.id === a.toca && t.hab === a.hab);
+      if (!t || a.st === 'toca_go' || a.st === 'toca_out') { a.toca = null; a.preso = false; if (['toca_go', 'toca_in', 'in_toca', 'toca_out'].includes(a.st)) { a.st = 'idle'; a.stT = 1; } }
+      else if (a.st === 'toca_in') a.st = 'in_toca'; }
+    if (a.st === 'investida' || a.st === 'ameaca') { a.st = 'idle'; a.stT = 1; }
+  }
   s.furn = s.furn || []; s.vstock = [];
   rebuildOcc(s);
   const C = content(s);

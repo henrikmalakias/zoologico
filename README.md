@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.7.2a
+# Projeto Zoológico — v1.7.2b
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -31,6 +31,13 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `src/render/ultra.js`: céu 360° por hora (Poly Haven, CC0), luz do ambiente, terreno com texturas (array de texturas), capim instanciado, água com ondas, copas de folhas, pelo em camadas e rugas.
 - `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
 - Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.
+
+## Vida selvagem (1.7.2b)
+- Tocas com vidro (`s.tocas`, `src/sim/tocas.js`): 2 x 2 blocos dentro do habitat, vidro no lado `dir` e entrada no lado `porta`; colocadas em Construir > Habitat > Toca com vidro e movidas em Mover objetos. Cada toca abriga 2 animais da mesma espécie (1 dos bem grandes); até 6 por habitat.
+- Rotina por espécie (`rotina` em `src/content/base.js`): hora de acordar/dormir, janelas de atividade (pastar, descanso, banho, social, filtrar), onde dorme (toca, árvore, água). Vale também no modo abstrato (app fechado).
+- Visita no AO VIVO (`src/sim/visita.js`, `Controls.blocked`): botão Entrar no portão, ponte da ilha andável, `h.visitOpen` (não é `gateOpen`: não gera alerta).
+- Modo selvagem (`perigoDe`, `wildBehave` em `src/sim/animals.js`): aviso, encarar e investida; sem mortes. `Preparar visita` cria a tarefa `guardar` (tratador recolhe os perigosos nas tocas). Opção em Configurações; no Modo Tranquilo o animal para a 1 m.
+- Save: `SCHEMA 8` (migração 7 → 8 cria `tocas`, `player` e o ajuste `selvagem`). Testes: `tests/v172b.test.js`.
 
 ## Correções e expansões (1.7.2a)
 - Rodada de bugs do Deepseek (B01–B20): sincronia com o Drive por "rev" (contador gravado no Drive) e conteúdo, nunca pelo relógio dos aparelhos; cópia do save do Drive antes de substituir; tempo fora do jogo; avisos; alertas; memória.
