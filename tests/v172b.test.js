@@ -121,7 +121,7 @@ const naCaixa = (a, t, R) => { const c = tocaCenter(t); return Math.abs(a.x - c.
   for (const a of s.animals) { a.st = 'idle'; a.stT = 0; a.asleep = false; } vistos.clear();
   run(s, 7000, i => { if (i % 200 === 0) { hora(s, 22); quieto(); } for (const a of s.animals) { vistos.add(a.sp + ':' + a.st); if (!ESTADOS.has(a.st)) invalido = a.st; } });
   ok(hip.every(a => !a.asleep) && vistos.has('hipopotamo:pastar'), 'hipopótamo acordado às 22 h, pastando fora da água');
-  ok(s.animals.filter(a => a.sp !== 'hipopotamo').every(a => a.asleep), 'os outros dormem à noite');
+  ok(s.animals.filter(a => a.sp !== 'hipopotamo').every(a => a.asleep), `os outros dormem à noite (${s.animals.filter(a => a.sp !== 'hipopotamo' && !a.asleep).map(a => a.sp + ':' + a.st)})`);
   ok(invalido === null, `nenhum estado desconhecido em 21000 passos (${invalido})`);
   ok(s.animals.every(a => a.energy > 0.3), 'ninguém fica sem energia com a rotina nova');
   // modo abstrato concorda com a rotina

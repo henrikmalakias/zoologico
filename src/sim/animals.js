@@ -295,6 +295,9 @@ function visualBehavior(s, a, h, S, ctx) {
   if (a.tgt && !a.sedated) {
     const moved = Math.hypot(a.x - px, a.z - pz);
     if (moved < speedOf(s, a.sp) * dt * 0.12) a.stk = (a.stk || 0) + dt; else a.stk = Math.max(0, (a.stk || 0) - dt);
+    // sem progresso (1.7.2b): empurrado para lá e para cá por quem dorme no caminho, anda sem chegar mais perto do destino
+    const dT = Math.hypot(a.tgt.x - a.x, a.tgt.z - a.z);
+    if (a._pT !== a.tgt || dT < a._pD - 0.25) { a._pT = a.tgt; a._pD = dT; a._pt = 0; } else if ((a._pt += dt) > 4 && a.st !== 'investida') a.stk = 9;
     if (a.stk > 2) { if (a.st === 'toca_go' && (a.tocaFalha = (a.tocaFalha || 0) + 1) >= 3) { a.tocaFalha = 0; a.semToca = s.clock.min + 60; } // não achou o caminho da toca 3 vezes: descansa onde está por 1 h
       a.stk = 0; a.tgt = null; a.wp = null; a.st = 'idle'; a.stT = 1 + rnd(s) * 2; }
   } else a.stk = 0;
@@ -372,7 +375,7 @@ function behave(s, a, h, S, ctx) {
   const c = opts[0][0];
   if (c === 'sleep' && trees.length) { goTree(s, a, h, trees, 'sleep'); if (!a.tgt) { a.st = 'sleep'; a.asleep = true; } }
   else if (c === 'sleep') {
-    let wp = null; if (ro.dormeEm === 'agua') for (let k = 0; k < 4; k++) { const q = waterSpot(s, h, S.banhoMin ?? BATH_MIN[a.sp] ?? 0.3, 99); if (q && (!wp || depthAt(s, q.x, q.z) > depthAt(s, wp.x, wp.z))) wp = q; } // dorme na parte mais funda que achar
+    let wp = null; if (ro.dormeEm === 'agua') { wp = waterSpot(s, h, 1.2, 99) || waterSpot(s, h, 1.2, 99); if (!wp) for (let k = 0; k < 4; k++) { const q = waterSpot(s, h, S.banhoMin ?? BATH_MIN[a.sp] ?? 0.3, 99); if (q && (!wp || depthAt(s, q.x, q.z) > depthAt(s, wp.x, wp.z))) wp = q; } } // dorme na parte funda (só olhos e narinas de fora); sem água funda, na mais funda que achar
     if (wp) { a.st = 'sono_go'; go(s, h, a, wp); } else if (tl) mandarParaToca(s, a, h, tl);
     if (!a.tgt) { a.st = 'sleep'; a.asleep = true; a.toca = null; }
   }

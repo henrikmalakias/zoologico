@@ -44,7 +44,7 @@ ok(fer.breaches.length === 0, 'segurança consertou a brecha');
 // transferência: zebra da ilha? -> usa um macaco do viveiro para a savana
 const mac = s.animals.find(a => a.hab === viv.id && !a.escaped);
 r = orderTransfer(s, mac.id, ilha.id, trat.id); ok(r.ok, 'ordem de transferência');
-const fases = new Set(); for (let i = 0; i < 30 * 900 && mac.hab !== ilha.id; i++) { step(s, ctx.realDt * 24 / 60, ctx); if (trat.task?.type === 'transfer') fases.add(trat.task.phase); }
+const fases = new Set([trat.task?.phase]); /* a ordem começa em 'travel' (se o tratador já está ao lado, essa fase dura menos de um passo) */ for (let i = 0; i < 30 * 900 && mac.hab !== ilha.id; i++) { step(s, ctx.realDt * 24 / 60, ctx); if (trat.task?.type === 'transfer') fases.add(trat.task.phase); }
 ok(mac.hab === ilha.id && !mac.sedated && !mac.carriedBy, 'macaco transferido mantendo nome ' + mac.name);
 ok(['travel', 'sedate', 'load', 'return', 'release'].every(f => fases.has(f)), 'fases da transferência: ' + [...fases].join(' > '));
 // abstrato 3 dias + save/migração
