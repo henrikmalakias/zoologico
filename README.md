@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.7.2b
+# Projeto Zoológico — v1.7.2c
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -31,6 +31,13 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `src/render/ultra.js`: céu 360° por hora (Poly Haven, CC0), luz do ambiente, terreno com texturas (array de texturas), capim instanciado, água com ondas, copas de folhas, pelo em camadas e rugas.
 - `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
 - Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.
+
+## Animais e funcionários (1.7.2c)
+- O perigo vale para a equipe (`perigoDe`, `PERIGOSO`, `wildBehave` em `src/sim/animals.js`, alvo = funcionários dentro do recinto, `equipeDentro`). Os mansos se afastam ~4 m (`MEDO`, estado `medo`).
+- Serviços que entram no recinto (feed, water, clean, checkup; transferência e internação também): `startTask` manda primeiro ao portão (`t.pre`); `noPortao` (staff.js) usa `planoServico` (quem cabe nas tocas e quem sobra). Fases: `recolher` (chama de fora para as tocas, `h.seg` segura enquanto alguém está lá dentro) → `espera`/`sedar` (veterinário seda no lugar: `sedarNoLugar`, `SED_MIN` 60 min, R$ 100) → entra. Ataque: sem toca e sem veterinário, traço `distraido` (30% esquece) ou sedativo que acaba. Ferido: `st.ferido` (1 dia), tarefa `ferido`, alerta `ferido` (segurança confere). App fechado: `preAbstrato` (tempo extra + chance de ataque).
+- Tratamento: `modoTratamento` (saúde ≥ 40% = dardo de fora; abaixo = internação). `src/sim/clinica.js`: `BASE_PACK.facilities.clinica` (3 x 3, 2 vagas, várias permitidas), `a.internado`, `a.habOrig`, `a.hab = 0`, `a.intAte` (1 a 3 dias), alta no portão de dentro do habitat.
+- AO VIVO fantasma (`src/sim/visita.js`): só entrar/sair; sem aviso, ataque, espera nem Preparar visita; `visitOpen` não abre o portão de verdade.
+- Save: `SCHEMA 9` (migração 8 → 9: `st.ferido`, `a.internado`, `h.seg`, tira `s.player`, `h.preparo`, `h.visitaAte`, `h.visitaRisco`, alerta `visita`, tarefa `guardar`). Testes: `tests/v172c.test.js`.
 
 ## Vida selvagem (1.7.2b)
 - Tocas com vidro (`s.tocas`, `src/sim/tocas.js`): 2 x 2 blocos dentro do habitat, vidro no lado `dir` e entrada no lado `porta`; colocadas em Construir > Habitat > Toca com vidro e movidas em Mover objetos. Cada toca abriga 2 animais da mesma espécie (1 dos bem grandes); até 6 por habitat.

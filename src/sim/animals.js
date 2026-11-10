@@ -3,7 +3,8 @@ import { clamp, rnd, pick, uid, log, hourOf } from './util.js';
 import { TILE, HALF, MAP, tileToWorld, worldToTile, waterDepth, idx, inMap, depthAt } from './grid.js';
 import { NOMES_ANIMAIS } from '../content/base.js';
 import { cellSet, walkSet, insideAt, clampInside, randomPoint, routeInside, edges, findEdge, gateEdge, ensureCells } from './habshape.js';
-import { addDirt, recalcClean } from './staff.js';
+import { addDirt, recalcClean, atacarFuncionario } from './staff.js';
+import { tickInternado } from './clinica.js';
 import { DIRV, tocasDe, tocaById, tocaCenter, portaPonto, tocaVagas, tocaLugar, ocupantes } from './tocas.js';
 
 export const SPEED = { leao: 1.6, zebra: 1.5, elefante: 1.1, girafa: 1.3, macaco: 1.4, hipopotamo: 1.0, rinoceronte: 1.2, flamingo: 0.9, gorila: 1.0, tartaruga: 0.25 };
@@ -94,8 +95,6 @@ function collide(s, a, h, dt, ctx) {
     const dx = a.x - o.x, dz = a.z - o.z, d = Math.hypot(dx, dz), min = o.r + R;
     if (d < min) { const k = (min - d) / (d || 1); px += (d ? dx : 1) * k; pz += (d ? dz : 0) * k; }
   }
-  // o jogador dentro do recinto (AO VIVO): os animais não passam por dentro dele
-  const J = ctx.player; if (J && J.hab === a.hab && a.st !== 'investida') { const dx = a.x - J.x, dz = a.z - J.z, d = Math.hypot(dx, dz), min = R + 0.6; if (d < min) { const k = (min - d) / (d || 1); px += (d ? dx : 1) * k; pz += (d ? dz : 0) * k; } }
   const naPorta = a.st === 'toca_go' && a.tgt && !a.wp?.length && Math.hypot(a.tgt.x - a.x, a.tgt.z - a.z) < 3; // chegando à porta da toca: passa por quem estiver deitado na frente
   for (const b of naPorta ? [] : ctx.byHab?.get(a.hab) || []) {
     if (b === a || b.escaped || b.escaping || b.carriedBy || aloft(b) || dentro(b)) continue;
@@ -196,14 +195,20 @@ export function rotinaAgora(S, hr) { for (const [a, b, o] of S?.rotina?.janelas 
 const dorme = (s, S) => dormeAgora(S, hourOf(s.clock.min));
 // estados que o desenho e o painel conhecem (qualquer outro vira "parado" no desenho)
 export const ESTADOS = new Set(['idle', 'walk', 'eat_go', 'eat', 'drink_go', 'drink', 'sleep', 'roam', 'sedado', 'bath_go', 'bath', 'filtrar_go', 'filtrar', 'tree_go', 'climb_up', 'tree', 'tree_move', 'salto', 'tree_sleep', 'climb_down', 'fugindo', 'empurrar', 'pulando',
-  'pastar_go', 'pastar', 'descanso', 'descanso_pe', 'umaperna', 'poeira', 'sono_go', 'toca_go', 'toca_in', 'in_toca', 'toca_out', 'ameaca', 'investida']);
+  'pastar_go', 'pastar', 'descanso', 'descanso_pe', 'umaperna', 'poeira', 'sono_go', 'toca_go', 'toca_in', 'in_toca', 'toca_out', 'ameaca', 'investida', 'medo']);
 
 export function updateAnimals(s, gameMin, ctx) {
   const C = content(s), hrs = gameMin / 60;
-  if (ctx.abstract) { for (const t of s.tocas || []) t.fechada = false; for (const h of s.habitats) { h.preparo = null; h.visitOpen = false; } }
-  if (!ctx.abstract) { ctx.byHab = new Map(); for (const a of s.animals) { if (a.escaped || a.carriedBy) continue; if (!ctx.byHab.has(a.hab)) ctx.byHab.set(a.hab, []); ctx.byHab.get(a.hab).push(a); } }
+  // app fechado/relógio avançado: o recolhimento para os serviços vira tempo extra (ninguém fica preso numa toca)
+  if (ctx.abstract) { for (const t of s.tocas || []) t.fechada = false; for (const h of s.habitats) { h.visitOpen = false; h.seg = []; } }
+  if (!ctx.abstract) {
+    ctx.byHab = new Map(); for (const a of s.animals) { if (a.escaped || a.carriedBy || a.internado) continue; if (!ctx.byHab.has(a.hab)) ctx.byHab.set(a.hab, []); ctx.byHab.get(a.hab).push(a); }
+    ctx.equipe = equipeDentro(s);
+  }
   for (let i = s.animals.length - 1; i >= 0; i--) {
     const a = s.animals[i], S = C.species[a.sp]; if (!S) continue; // pacote ausente: guardado, inativo
+    if (a.internado) { tickInternado(s, a, S, gameMin); continue; } // na Clínica veterinária: fora do habitat
+    if (a.sedAte && s.clock.min >= a.sedAte && !a.carriedBy) acordaSedacao(s, a); // o sedativo acabou
     const h = habById(s, a.hab);
     const baby = a.age < S.vida.adulto;
     const fora = a.escaped ? 0.25 : 1; // fora do habitat o animal acha algo para comer e beber
@@ -324,8 +329,10 @@ function behave(s, a, h, S, ctx) {
   }
   if (!h) return;
   if (a.wCool) a.wCool = Math.max(0, a.wCool - dt);
-  if (ctx.player && ctx.player.hab === a.hab && s.settings.selvagem !== false && wildBehave(s, a, h, S, ctx, dt, sp)) return;
+  const eq = ctx.equipe?.get(h.id);
+  if (eq && s.settings.selvagem !== false && wildBehave(s, a, h, S, ctx, dt, sp, eq)) return;
   if (a.st === 'ameaca' || a.st === 'investida') { a.st = 'idle'; a.stT = 1; a.tgt = null; a.wHold = 0; }
+  if (medoBehave(s, a, h, S, ctx, dt, sp, eq)) return;
   if (aloft(a) || a.st === 'tree_go') { if (treeBehave(s, a, h, S, dt, sp)) return; }
   if (a.toca != null && tocaBehave(s, a, h, S, dt, sp)) return;
   if (a.sedated) { a.st = 'sedado'; a.asleep = true; return; }
@@ -357,14 +364,15 @@ function behave(s, a, h, S, ctx) {
   // rotina da espécie: soma peso à atividade da hora (o animal ainda pode fazer outra coisa de vez em quando)
   const hr = hourOf(s.clock.min), ro = S.rotina || {}, RT = rotinaAgora(S, hr), sono = dormeAgora(S, hr);
   const tl = ro.dormeEm === 'toca' ? tocaLivre(s, a, h) : null;
+  const medroso = !!ctx.equipe?.get(h.id)?.length && (s.settings.selvagem === false || perigoDe(s, a) < PERIGOSO); // espera a equipe sair de perto do comedouro
   const opts = [
     ['sleep', sono ? 2 : a.energy < 0.25 ? 1.5 : 0],
     ['pastar', RT === 'pastar' ? 0.7 + r() * 0.4 : 0],
     ['descanso', RT === 'descanso' ? 0.75 + r() * 0.4 : 0],
     ['toca', RT === 'descanso' && tl ? 0.8 + r() * 0.4 : 0],
     ['poeira', RT === 'banho' && S.poeira ? 0.6 + r() * 0.4 : 0],
-    ['eat', a.hunger > 0.4 && h.food > 0.02 ? a.hunger * 1.6 : 0],
-    ['drink', a.thirst > 0.35 && h.waterLvl > 0.02 ? a.thirst * 1.7 : 0],
+    ['eat', a.hunger > 0.4 && h.food > 0.02 && !(medroso && equipePerto(ctx, h, h.feed, 5)) ? a.hunger * 1.6 : 0],
+    ['drink', a.thirst > 0.35 && h.waterLvl > 0.02 && !(medroso && equipePerto(ctx, h, h.water, 5)) ? a.thirst * 1.7 : 0],
     ['wander', 0.4 + r() * 0.4],
     ['idle', 0.3 + r() * 0.4],
     ['social', 0.25 + r() * 0.3 + (RT === 'social' ? 0.45 : 0)],
@@ -420,11 +428,11 @@ export function mandarParaToca(s, a, h, t, guard) {
   if (!a.tgt) { a.toca = null; a.guard = false; return false; }
   return true;
 }
-// solta quem estava recolhido nas tocas do habitat (fim da visita, prazo vencido ou pedido do jogador)
+// solta quem estava recolhido nas tocas do habitat (a equipe terminou o serviço e saiu do recinto)
 export function soltarTocas(s, h) {
   for (const a of s.animals) if (a.hab === h.id) { a.preso = false; a.guard = false; }
   for (const t of tocasDe(s, h.id)) t.fechada = false;
-  h.preparo = null;
+  h.seg = [];
 }
 // devolve true quando cuidou do animal neste quadro
 function tocaBehave(s, a, h, S, dt, sp) {
@@ -447,7 +455,7 @@ function tocaBehave(s, a, h, S, dt, sp) {
     const sono = dorme(s, S), antes = a.asleep;
     a.asleep = sono || (antes ? a.energy < 0.6 : a.energy < 0.25);
     if (a.asleep) a.tocaSono = true;
-    if (a.preso || a.guard) return true; // recolhido para a visita: só sai quando soltarem
+    if (a.preso || a.guard) return true; // recolhido para um serviço: só sai quando a equipe sair do recinto
     if (antes && !a.asleep && a.tocaSono) { a.tocaSono = false; a.stress = clamp(a.stress - 0.05); a.st = 'toca_out'; return true; } // dormiu abrigado: acorda mais calmo
     if (a.asleep) return true;
     if (a.hunger > 0.6 || a.thirst > 0.55) { a.st = 'toca_out'; return true; }
@@ -461,56 +469,106 @@ function tocaBehave(s, a, h, S, dt, sp) {
   return true;
 }
 
-// ---------- modo selvagem (1.7.2b): o jogador dentro do recinto, no AO VIVO ----------
-// perigo de um animal agora: base da espécie + estresse, fome e fêmea com filhote por perto; recolhido na toca = 0
+// ---------- modo selvagem (1.7.2c): o perigo vale para os FUNCIONÁRIOS dentro do recinto ----------
+// perigo de um animal agora: base da espécie + estresse, fome e fêmea com filhote por perto; recolhido na toca ou sedado = 0
 export function perigoDe(s, a) {
   const C = content(s), S = C.species[a.sp]; if (!S) return 0;
   let P = S.perigo ?? (S.tracos?.perigoso ? 3 : 0); if (!P) return 0;
-  if (a.sedated || a.carriedBy || a.escaped || (a.preso && a.st === 'in_toca')) return 0;
+  if (a.sedated || a.carriedBy || a.escaped || a.internado || (a.preso && a.st === 'in_toca')) return 0;
   if (a.stress > 0.6) P += 1;
   if (a.hunger > 0.75) P += 0.5;
   if (a.sex === 'F' && a.age >= S.vida.adulto && s.animals.some(b => b !== a && b.hab === a.hab && b.sp === a.sp && b.age < S.vida.adulto && Math.hypot(b.x - a.x, b.z - a.z) < 8)) P += 1;
   return P;
 }
-// a partir deste perigo o animal conta como perigoso: aparece no aviso, pode atacar e é recolhido na toca antes da visita
+// a partir deste perigo o animal conta como perigoso: é recolhido na toca (ou sedado) antes dos serviços e pode atacar a equipe
 export const PERIGOSO = 3;
-// distâncias do aviso: o animal encara a partir de "encara" metros e ataca se o jogador ficar "espera" segundos a menos de "ataca"
+// distâncias: o animal encara a partir de "encara" metros e ataca se o funcionário ficar "espera" segundos a menos de "ataca"
 export const limites = P => ({ encara: P + 2, ataca: Math.max(2.5, P), espera: P >= 4 ? 2 : 3.5 });
-// o maior risco para o jogador dentro do habitat (para a faixa de aviso)
-export function riscoVisita(s, J) {
-  let best = null, soltos = 0;
-  for (const a of s.animals) {
-    if (a.hab !== J.hab || a.escaped || aloft(a)) continue;
-    const P = perigoDe(s, a); if (P < PERIGOSO) continue; soltos++;
-    const d = Math.hypot(a.x - J.x, a.z - J.z), nivel = a.st === 'investida' ? 3 : a.st === 'ameaca' ? 2 : 1;
-    if (!best || nivel > best.nivel || (nivel === best.nivel && d < best.d)) best = { a, d, P, nivel };
+export const MEDO = 4; // os mansos mantêm esta distância (m) de quem trabalha no recinto
+export const perigosos = (s, h) => s.animals.filter(a => a.hab === h.id && !a.escaped && perigoDe(s, a) >= PERIGOSO);
+// plano antes de entrar: quem cabe nas tocas (recolher) e quem sobra (sedar); excl = animal alvo do serviço (internar, transferir)
+export function planoServico(s, h, excl) {
+  const lista = perigosos(s, h).filter(a => a.id !== excl), tocas = tocasDe(s, h.id).map(t => ({ t, oc: ocupantes(s, t).filter(b => b.preso || b.guard || dentro(b)) }));
+  const cabem = [], sobram = [];
+  for (const a of lista) {
+    if (a.toca != null && (dentro(a) || a.guard)) { const t = tocaById(s, a.toca); if (t) { cabem.push({ a, t }); continue; } }
+    const vg = tocaVagas(s, a.sp), x = tocas.find(o => o.oc.length < vg && o.oc.every(b => b.sp === a.sp));
+    if (x) { x.oc.push(a); cabem.push({ a, t: x.t }); } else sobram.push(a);
   }
-  return best ? { ...best, soltos } : null;
+  return { cabem, sobram, total: lista.length };
 }
-// devolve true quando o animal está reagindo ao jogador neste quadro
-function wildBehave(s, a, h, S, ctx, dt, sp) {
-  if (aloft(a) || dentro(a) || a.preso || a.sedated) return false;
-  const J = ctx.player, dx = J.x - a.x, dz = J.z - a.z, d = Math.hypot(dx, dz), R = radiusOf(s, a) * 0.7;
-  const vira = k => { const al = Math.atan2(dx, dz); let dr = al - a.rot; while (dr > Math.PI) dr -= 6.283; while (dr < -Math.PI) dr += 6.283; a.rot += dr * Math.min(1, dt * k); };
+// funcionários a pé dentro de cada recinto (alvos do modo selvagem e de quem tem medo); feridos e motoristas ficam de fora
+export function equipeDentro(s) {
+  const m = new Map();
+  for (const st of s.staff) {
+    if (st.ferido || st.veh) continue;
+    const { tx, ty } = worldToTile(st.x, st.z), hid = inMap(tx, ty) ? s._occ?.hab[idx(tx, ty)] : 0; if (!hid) continue;
+    const h = habById(s, hid); if (!h || !insideAt(h, st.x, st.z, 0)) continue;
+    if (!m.has(hid)) m.set(hid, []); m.get(hid).push(st);
+  }
+  return m;
+}
+const maisPerto = (L, a) => { let b = null, bd = 1e9; for (const st of L) { const d = Math.hypot(st.x - a.x, st.z - a.z); if (d < bd) { bd = d; b = st; } } return b ? { st: b, d: bd } : null; };
+export function equipePerto(ctx, h, tile, r) { const L = ctx.equipe?.get(h.id); if (!L?.length) return false; const p = tileToWorld(tile[0], tile[1]); return L.some(st => Math.hypot(st.x - p.x, st.z - p.z) < r); }
+// sedação no lugar (veterinário, de fora da cerca): o animal dorme por SED_MIN minutos de jogo
+export const SED_MIN = 60;
+export function sedarNoLugar(s, a) {
+  Object.assign(a, { sedated: true, sedAte: s.clock.min + SED_MIN, st: 'sedado', tgt: null, wp: null, asleep: true, wHold: 0, tree: null, cy: 0, jy: 0 });
+  if (a.toca != null && !dentro(a)) { a.toca = null; a.guard = false; }
+  a.stress = clamp(a.stress + 0.1);
+}
+function acordaSedacao(s, a) { a.sedAte = 0; a.sedated = false; a.asleep = false; a.st = 'idle'; a.stT = 1 + rnd(s); a.tgt = null; a.wp = null; a.wCool = 0; }
+// devolve true quando o animal está reagindo a um funcionário neste quadro (ameaça, investida, contato)
+function wildBehave(s, a, h, S, ctx, dt, sp, eq) {
+  if (aloft(a) || dentro(a) || a.preso || a.guard || a.sedated) { a.wHold = 0; return false; }
   if (a.st === 'investida') {
+    const J = s.staff.find(x => x.id === a.wAlvo);
+    if (!J || J.ferido || !eq.includes(J)) { a.st = 'idle'; a.stT = 2; a.tgt = null; a.wHold = 0; a.wCool = 6; return true; }
+    const d = Math.hypot(J.x - a.x, J.z - a.z), R = radiusOf(s, a) * 0.7;
     a.asleep = false; a.wT = (a.wT || 0) + dt; a.tgt = { x: J.x, z: J.z }; a.wp = null; a.wade = false;
-    const manso = !!s.settings.tranquilo; // Modo Tranquilo: faz a carga e para a 1 m
-    if (d <= R + (manso ? 1.0 : 0.75)) { ctx.ataque = { id: a.id, manso }; a.st = 'ameaca'; a.tgt = null; a.wHold = 0; a.wCool = 30; return true; }
+    const manso = !!s.settings.tranquilo, para = R + (manso ? 1.0 : 0.75); // Modo Tranquilo: faz a carga e para a 1 m; o serviço só atrasa
+    if (d <= para + 0.02) { atacarFuncionario(s, J, a, manso); (ctx.ataques ||= []).push({ id: a.id, st: J.id, manso }); a.st = 'ameaca'; a.tgt = null; a.wHold = 0; a.wCool = 30; return true; }
     if (a.wT > 3) { a.st = 'idle'; a.stT = 2; a.tgt = null; a.wHold = 0; a.wCool = 6; return true; }
-    moveTo(a, dt, sp * 2.4); return true;
+    moveTo(a, dt, Math.min(sp * 2.4, Math.max(0.01, d - para) / dt)); return true; // não passa do ponto de parada
   }
   if (a.wCool > 0) return false;
   const P = perigoDe(s, a); if (P < PERIGOSO) { a.wHold = 0; return false; }
-  const L = limites(P);
+  const n = maisPerto(eq, a); if (!n) { a.wHold = 0; return false; }
+  const L = limites(P), J = n.st, d = n.d, dx = J.x - a.x, dz = J.z - a.z;
   if (a.asleep && d > 2.5) return false; // dormindo: só reage se chegarem bem perto
   if (d < L.encara) {
     if (a.st !== 'ameaca') ctx.ameaca = a.id;
-    a.st = 'ameaca'; a.asleep = false; a.tgt = null; a.wp = null; a.toca = null; vira(5);
+    a.st = 'ameaca'; a.asleep = false; a.tgt = null; a.wp = null; if (a.toca != null && !dentro(a)) a.toca = null; a.tree = null;
+    const al = Math.atan2(dx, dz); let dr = al - a.rot; while (dr > Math.PI) dr -= 6.283; while (dr < -Math.PI) dr += 6.283; a.rot += dr * Math.min(1, dt * 5);
     a.wHold = d < L.ataca ? (a.wHold || 0) + dt : Math.max(0, (a.wHold || 0) - dt);
-    if (a.wHold >= L.espera) { a.st = 'investida'; a.wT = 0; a.wHold = 0; ctx.investida = a.id; }
+    // o funcionário continua trabalhando ali: depois de encarar um pouco, o animal se aproxima devagar
+    if (d >= L.ataca) { a.wStalk = (a.wStalk || 0) + dt; if (a.wStalk > 1.5) { a.tgt = { x: J.x, z: J.z }; moveTo(a, dt, Math.min(sp * 0.45, (d - L.ataca + 0.3) / dt)); a.tgt = null; } } else a.wStalk = 0;
+    if (a.wHold >= L.espera) { a.st = 'investida'; a.wT = 0; a.wHold = 0; a.wStalk = 0; a.wAlvo = J.id; ctx.investida = a.id; }
     return true;
   }
-  a.wHold = 0; return false;
+  a.wHold = 0; a.wStalk = 0; return false;
+}
+// medo (1.7.2c): quem não oferece perigo real (ou todos, com o modo selvagem desligado) se afasta de quem trabalha no recinto
+function medoBehave(s, a, h, S, ctx, dt, sp, eq) {
+  if (aloft(a) || dentro(a) || a.sedated || a.preso || a.guard) { if (a.st === 'medo') { a.st = 'idle'; a.stT = 1; a.tgt = null; } return false; }
+  if (a.st === 'medo') {
+    if (a.tgt && !moveTo(a, dt, sp * 1.15)) return true;
+    a.tgt = null; a.wp = null; a.st = 'idle'; a.stT = 1.5 + rnd(s) * 2;
+  }
+  if (!eq?.length || (s.settings.selvagem !== false && perigoDe(s, a) >= PERIGOSO)) return false;
+  const n = maisPerto(eq, a); if (!n || n.d >= MEDO) return false;
+  if (a.asleep && n.d > 2) return false; // dormindo: só acorda se chegarem bem perto
+  const ux = n.d > 0.01 ? (a.x - n.st.x) / n.d : 1, uz = n.d > 0.01 ? (a.z - n.st.z) / n.d : 0, D = MEDO + 1.5 + rnd(s);
+  let best = null, bd = -1;
+  for (const ang of [0, 0.7, -0.7, 1.4, -1.4, 2.2, -2.2]) {
+    const c = Math.cos(ang), sn = Math.sin(ang), vx = ux * c - uz * sn, vz = ux * sn + uz * c;
+    const q = clampInside(h, { x: n.st.x + vx * D, z: n.st.z + vz * D }, 0.6), dd = Math.hypot(q.x - n.st.x, q.z - n.st.z);
+    if (s.height && maxDepth(s, a) < 99 && depthAt(s, q.x, q.z) > maxDepth(s, a)) continue;
+    if (dd > bd) { bd = dd; best = q; } if (dd >= MEDO + 0.5) break;
+  }
+  if (!best || bd <= n.d + 0.3) return false; // encurralado: fica onde está
+  a.st = 'medo'; a.tgt = best; a.wp = null; a.wade = false; a.asleep = false; a.tree = null; if (a.toca != null && !dentro(a)) { a.toca = null; a.guard = false; }
+  return true;
 }
 
 // ---------- subir em árvores (macaco; gorila jovem) ----------
@@ -581,13 +639,12 @@ function branchEdge(s, a, h, F) {
 const POOP = { elefante: 0.35, leao: 0.12, zebra: 0.2, girafa: 0.2, macaco: 0.1, hipopotamo: 0.3, rinoceronte: 0.3, flamingo: 0.08, gorila: 0.15, tartaruga: 0.1 };
 export function hourlyAnimals(s) {
   const C = content(s);
-  for (const h of s.habitats) if (h.preparo && !h.visitOpen && s.clock.min > (h.preparo.ate || 0)) { soltarTocas(s, h); log(s, `Os animais do ${h.name} foram soltos das tocas (a visita não aconteceu).`, 'info'); }
   for (const a of s.animals) {
     const S = C.species[a.sp]; if (!S || a.escaped) continue;
     const h = habById(s, a.hab); if (!h) continue;
     if (rnd(s) < spv(s, a.sp, 'fezes', POOP, 0.15)) addDirt(s, h, a.x + (rnd(s) - 0.5) * 0.6, a.z + (rnd(s) - 0.5) * 0.6, 0);
     if (!s.settings.fugas || s.settings.tranquilo) continue;
-    if (a.sedated || a.carriedBy || a.escaping || dentro(a)) continue;
+    if (a.sedated || a.carriedBy || a.escaping || dentro(a) || a.internado) continue;
     const F = C.fences[h.fence];
     const tr = S.tracos;
     let weak = 1;
@@ -599,7 +656,7 @@ export function hourlyAnimals(s) {
     if (branchEdge(s, a, h, F)) weak *= 2; // galho por cima da cerca: um pouco mais fácil, nunca garantido
     const hp = h.fenceHp < 0.35 ? 4 : h.fenceHp < 0.7 ? 1.5 : 1;
     let p = 0.0003 * weak * hp * (0.5 + a.stress * 2);
-    if (h.gateOpen || h.visitOpen) p += 0.08; // na visita o portão está de fato aberto
+    if (h.gateOpen) p += 0.08; // o AO VIVO é um "fantasma": a visita do jogador não abre o portão de verdade
     p += 0.06 * (h.breaches?.length || 0);
     if (rnd(s) < p) startEscape(s, a, h, S, F);
   }
@@ -623,7 +680,7 @@ export function addBreach(s, h, side, k) {
 }
 export function startEscape(s, a, h, S, F) {
   const tr = S.tracos; let mode, pts, e = null;
-  if (h.gateOpen || h.visitOpen) { mode = 'portao'; const i = tileToWorld(h.gateIn[0], h.gateIn[1]), o = tileToWorld(h.gateOut[0], h.gateOut[1]); pts = [i, o]; }
+  if (h.gateOpen) { mode = 'portao'; const i = tileToWorld(h.gateIn[0], h.gateIn[1]), o = tileToWorld(h.gateOut[0], h.gateOut[1]); pts = [i, o]; }
   else if (h.breaches?.length && !F.fosso) { mode = 'brecha'; const br = h.breaches[0]; e = breachPoint(h, br); pts = [e.inner, e.outer]; }
   else if ((e = branchEdge(s, a, h, F))) { mode = 'galho'; pts = []; }
   else {

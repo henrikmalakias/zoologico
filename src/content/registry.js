@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.7.2b';
+export const APP_VERSION = '1.7.2c';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -21,6 +21,15 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.7.2c', data: '10/11/2026', titulo: 'Versão 1.7.2c: animais e funcionários', itens: [
+    'O perigo dos animais agora vale para a equipe: antes de comida, água, limpeza ou checagem, o funcionário para no portão e chama os animais perigosos para as tocas. Faz o serviço e, quando sai, eles são soltos',
+    'Sem toca (ou sem vaga): o veterinário vem sedar os perigosos com dardo, de fora da cerca. Cada sedação custa R$ 100 e estressa o animal. A toca compensa',
+    'Ataque a funcionário: quando entra sem toca e sem veterinário, quando um funcionário distraído esquece de recolher, ou quando o sedativo acaba num serviço demorado. Ninguém morre: ele fica ferido, 1 dia de jogo afastado no Centro de cuidados, e aparece o alerta "Funcionário ferido". No Modo Tranquilo o animal só ameaça e o serviço atrasa',
+    'Os animais que não oferecem perigo têm medo: ficam a uns 4 m de quem trabalha no recinto e esperam a equipe sair de perto do comedouro',
+    'Tratamento: caso leve (saúde a partir de 40%) com remédio por dardo, de fora da cerca. Caso grave: sedação, veículo e internação de 1 a 3 dias na Clínica veterinária',
+    'Clínica veterinária nova (Construir > Instalações): 2 vagas de internação, pode construir várias. Com mais de uma, você escolhe o destino no alerta; com o app fechado o subgerente escolhe a mais perto com vaga. O Centro de cuidados fica para a equipe',
+    'AO VIVO "fantasma": entre e saia dos recintos pelo portão como observador. Os animais não percebem você (sem aviso, ataque nem espera) e a visita não abre o portão de verdade',
+  ] },
   { versao: '1.7.2b', data: '10/11/2026', titulo: 'Versão 1.7.2b: vida selvagem', itens: [
     'Tocas com vidro: em Construir > Habitat > Toca com vidro. De pedra na savana e de madeira na floresta, com o vidro virado para os visitantes e a entrada do animal em outro lado. Cada toca abriga 2 animais (1 dos bem grandes); até 6 por habitat',
     'Os animais descansam e dormem dentro das tocas, e dá para vê-los pelo vidro. Tocar na toca mostra quem está lá dentro',
@@ -167,6 +176,6 @@ export function content(state) {
   merged = out; mergedKey = key; return out;
 }
 // papel de uma instalação para os visitantes: as do base pelo próprio tipo; as de DLC pelo "comportamento"
-const PAPEL = { comida: 'lanchonete', compras: 'loja', banheiro: 'banheiro', lazer: 'playground', mesas: 'mesas', descanso: 'banco' };
+const PAPEL = { comida: 'lanchonete', compras: 'loja', banheiro: 'banheiro', lazer: 'playground', mesas: 'mesas', descanso: 'banco', clinica: 'clinica' };
 export const papel = (C, t) => { const D = C.facilities[t]; return !D ? null : D.comportamento ? (PAPEL[D.comportamento] || null) : t; };
 export const has = (state, kind, id) => !!content(state)[kind][id];

@@ -5,7 +5,7 @@ import { suitability, hourlyAnimals } from '../src/sim/animals.js';
 import { heightAt, waterDepth, walkY, tileToWorld } from '../src/sim/grid.js';
 import { serialize, deserialize } from '../src/save/save.js';
 let fails = 0; const ok = (c, m) => { console.log((c ? 'ok - ' : 'FALHOU: ') + m); if (!c) fails++; };
-const now = Date.now(), s = newGame(now); s.money = 1e6; s.areaLevel = 2;
+const now = Date.now(), s = newGame(now); s.money = 1e6; s.areaLevel = 2; s.settings.selvagem = false; // 1.7.2c: sem toca nem veterinário, o tratador seria atacado pelos leões estressados (testado em v172c)
 // relevo
 let r = sculpt(s, 22, 44, 'subir'); ok(r.ok && heightAt(s, tileToWorld(22, 44).x, tileToWorld(22, 44).z) > 0.2, 'subir terreno');
 for (let i = 0; i < 6; i++) sculpt(s, 22, 44, 'subir');

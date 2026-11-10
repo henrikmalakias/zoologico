@@ -47,7 +47,7 @@ export const BASE_PACK = {
       modelos: { pedra: { nome: 'Toca de pedra', biomas: ['savana'] }, madeira: { nome: 'Toca de madeira', biomas: ['floresta'] } } },
   },
   // rotina (1.7.2b): acorda/dorme em horas do jogo (se acorda > dorme, o animal é ativo à noite); janelas = [início, fim, atividade];
-  // dormeEm: toca | arvore | agua; descanso: deitado | empe | umaperna. perigo: 0 a 5 (modo selvagem)
+  // dormeEm: toca | arvore | agua; descanso: deitado | empe | umaperna. perigo: 0 a 5 (modo selvagem, vale para os funcionários desde a 1.7.2c)
   // árvores (alta: true): tronco = raio sólido (m), galho = altura onde os macacos sentam, copa = raio dos galhos
   // água (1.7.2a): aguaModo anfibio | vadeador | evita; aguaMax = profundidade máxima (m) em que o animal entra andando
   // espacoPorAnimal em blocos (1 bloco = 2 m x 2 m)
@@ -102,7 +102,9 @@ export const BASE_PACK = {
     banco: { nome: 'Banco', w: 1, h: 1, custo: 150, cor: '#7a5230', manut: 0 },
     mesas: { nome: 'Área de mesas', w: 3, h: 3, custo: 2800, cor: '#c0803a', manut: 12 },
     placa: { nome: 'Placa educativa', w: 1, h: 1, custo: 300, cor: '#2e6b54', manut: 0 },
-    centro: { nome: 'Centro de cuidados básicos', w: 3, h: 3, custo: 12000, cor: '#e9ecef', manut: 40, semCaminho: true },
+    centro: { nome: 'Centro de cuidados básicos', w: 3, h: 3, custo: 12000, cor: '#e9ecef', manut: 40, semCaminho: true, desc: 'Base da equipe: descanso e recuperação de quem se feriu.' },
+    // 1.7.2c: internação dos casos graves (2 vagas por clínica; pode construir várias). Precisa de caminho (o veículo chega pela frente)
+    clinica: { nome: 'Clínica veterinária', w: 3, h: 3, custo: 15000, cor: '#dff1f7', manut: 45, vagas: 2, desc: 'Interna os animais em estado grave (2 vagas) e deixa o tratamento por dardo mais rápido.' },
   },
   roles: {
     tratador: { nome: 'Tratador', salario: 120, cor: '#3f8f3a' },

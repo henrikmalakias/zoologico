@@ -385,6 +385,7 @@ export function demolish(s, tx, ty) {
   const fid = s._occ.fac[i];
   if (fid) { const f = s.facilities.find(f => f.id === fid); const D = C.facilities[f.type];
     if (D?.fixo) return R(false, 'A entrada não pode ser demolida.');
+    if (s.animals.some(a => a.internado === f.id) || s.staff.some(st => st.task?.clinica === f.id)) return R(false, 'A clínica tem animal internado (ou a caminho). Espere a alta.');
     s.facilities.splice(s.facilities.indexOf(f), 1); earn(s, 'metas', Math.round((D?.custo || 0) * 0.5)); rebuildOcc(s); return R(true, 'Instalação removida.'); }
   const fu = s.furn.filter(f => f.tx === tx && f.ty === ty);
   if (fu.length) { const C2 = C.furniture; for (const f of fu) earn(s, 'metas', Math.round((C2[f.type]?.custo || 0) * 0.5)); removeFurnAt(s, tx, ty); return R(true, 'Mobiliário removido.'); }
@@ -396,7 +397,7 @@ export function demolish(s, tx, ty) {
   if (oid) { s.objects = s.objects.filter(o => o.id !== oid); rebuildOcc(s); return R(true, 'Planta removida.'); }
   const hid = s._occ.hab[i];
   if (hid) { const h = habById(s, hid);
-    if (s.animals.some(a => a.hab === hid)) return R(false, 'Venda ou remova os animais desse habitat antes.');
+    if (s.animals.some(a => a.hab === hid || a.habOrig === hid)) return R(false, 'Venda ou remova os animais desse habitat antes (inclusive os internados na clínica).');
     if (s.staff.some(st => st.inHab === hid)) for (const st of s.staff) if (st.inHab === hid) { st.inHab = 0; st.task = null; }
     s.tocas = (s.tocas || []).filter(t => t.hab !== hid);
     s.habitats.splice(s.habitats.indexOf(h), 1); s.alerts = s.alerts.filter(a => a.target !== hid || a.type === 'doenca' || a.type === 'fuga');

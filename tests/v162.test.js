@@ -9,7 +9,7 @@ const mk = () => {
   const now = Date.now(), want = r => { let c; do { c = genCandidate(s, now); } while (c.role !== r); s.candidates.push(c); return hire(s, c.id); };
   want('veterinario'); want('subgerente');
   s.managers[0].traits = ['agil']; s.managers[0].attrs.rapidez = 5;
-  s.animals[0].sick = true; s.animals[0].health = 0.3;
+  s.animals[0].sick = true; s.animals[0].health = 0.6; // caso leve (dardo): desde a 1.7.2c o grave precisa de Clínica veterinária
   return s;
 };
 const live = { abstract: false, realDt: 0.05, moveMul: 1 };

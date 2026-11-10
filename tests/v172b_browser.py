@@ -45,16 +45,13 @@ async def main():
         await pg.evaluate("() => { const g = window.__game; g.ui.select('hab', g.state.habitats[0].id); }"); await pg.wait_for_timeout(600); await pg.screenshot(path=OUT + f'{PRE}_{Q}_painel.png')
         await pg.evaluate("() => { const g = window.__game; g.ui.closeSheet(); g.ui.opts.habMode = 'toca'; g.ui.cat = 'habitat'; g.ui.toggleBuild(true); }"); await pg.wait_for_timeout(600); await pg.screenshot(path=OUT + f'{PRE}_{Q}_construir.png')
         await pg.evaluate("() => window.__game.ui.toggleBuild(false)")
-        # AO VIVO: entra pelo portão do habitat 1, com leão solto por perto (aviso), depois ataque
+        # AO VIVO (1.7.2c: "fantasma"): entra pelo portão do habitat 1 com leões soltos por perto; eles ignoram o jogador
         r = await pg.evaluate("""() => { const g = window.__game, s = g.state, h = s.habitats[0]; s.clock.speed = 1; g.visitar(h); const L = g.controls.live;
           const le = s.animals.filter(a => a.sp === 'leao'); for (const a of le) { a.toca = null; a.preso = false; a.guard = false; a.st = 'idle'; a.stT = 99; } s.tocas[1].fechada = false;
-          const fx = -Math.sin(L.yaw), fz = -Math.cos(L.yaw); Object.assign(le[0], { x: L.x + fx * 7, z: L.z + fz * 7 + 1.5, rot: 0 }); Object.assign(le[1], { x: L.x + fx * 11 - 3, z: L.z + fz * 11, st: 'descanso', rot: 1 }); Object.assign(le[2], { x: L.x + fx * 14 + 4, z: L.z + fz * 12 });
-          return { live: g.live, hab: L.hab, vo: h.visitOpen }; }""")
-        await pg.wait_for_timeout(1500); await pg.screenshot(path=OUT + f'{PRE}_{Q}_vivo_aviso.png')
-        r2 = await pg.evaluate("""() => { const g = window.__game, s = g.state, L = g.controls.live, a = s.animals.find(a => a.sp === 'leao'); const fx = -Math.sin(L.yaw), fz = -Math.cos(L.yaw); Object.assign(a, { x: L.x + fx * 3.2, z: L.z + fz * 3.2, st: 'idle', stT: 99, tgt: null, wHold: 0, wCool: 0 }); return 1; }""")
-        await pg.wait_for_timeout(1300); await pg.screenshot(path=OUT + f'{PRE}_{Q}_vivo_ameaca.png')
-        await pg.wait_for_timeout(5000 if Q == 'baixo' else 16000); await pg.screenshot(path=OUT + f'{PRE}_{Q}_vivo_depois.png')
-        r3 = await pg.evaluate("() => { const g = window.__game, s = g.state; return { hab: g.controls.live.hab, lesoes: s.player.lesoes, vo: s.habitats[0].visitOpen, espera: s.habitats[0].visitaAte > s.clock.min, alerta: s.alerts.map(a => a.type), msg: document.querySelector('.visitmsg')?.textContent, toast: [...document.querySelectorAll('.toasts > *')].map(e => e.textContent).slice(-2) }; }")
+          const fx = -Math.sin(L.yaw), fz = -Math.cos(L.yaw); Object.assign(le[0], { x: L.x + fx * 3, z: L.z + fz * 3, rot: 0 }); Object.assign(le[1], { x: L.x + fx * 11 - 3, z: L.z + fz * 11, st: 'descanso', rot: 1 });
+          return { live: g.live, hab: L.hab, vo: h.visitOpen, gate: h.gateOpen }; }""")
+        await pg.wait_for_timeout(5000 if Q == 'baixo' else 12000); await pg.screenshot(path=OUT + f'{PRE}_{Q}_vivo_fantasma.png')
+        r3 = await pg.evaluate("() => { const g = window.__game, s = g.state, le = s.animals.filter(a => a.sp === 'leao'); return { hab: g.controls.live.hab, vo: s.habitats[0].visitOpen, estados: le.map(a => a.st), msg: document.querySelector('.visitmsg')?.textContent }; }")
         # ponte da ilha: anda pela ponte e mostra o botão Entrar
         r4 = await pg.evaluate("""() => { const g = window.__game, s = g.state, h = s.habitats[2], V = window.__api.V, p = V.pontoFora(s, h), q = V.pontoDentro(h); g.controls.irPara(p, 0, q); return { blk: g.controls.blocked(s, p.x, p.z), perto: g.portaoPerto()?.id === h.id }; }""")
         await pg.wait_for_timeout(700); await pg.screenshot(path=OUT + f'{PRE}_{Q}_ponte.png')

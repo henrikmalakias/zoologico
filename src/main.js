@@ -8,7 +8,7 @@ import { Controls } from './ui/controls.js';
 import { UI } from './ui/ui.js';
 import * as B from './sim/build.js';
 import { hire } from './sim/core.js';
-import { dispatch, refreshAlerts, startTask, orderTransfer, ALERT_INFO, alertTargetName } from './sim/staff.js';
+import { dispatch, refreshAlerts, startTask, orderTransfer, ALERT_INFO, alertTargetName, atacarFuncionario } from './sim/staff.js';
 import { library } from './render/world.js';
 import { startEscape, habById } from './sim/animals.js';
 import * as V from './sim/visita.js';
@@ -57,10 +57,9 @@ class Game {
     const s = this.state, now = Date.now();
     const factor = this.live ? 1 : SPEEDS[s.clock.speed] * timeFactor(s);
     if (factor > 0) {
-      const L = this.controls.live, ctx = { abstract: false, realDt: dt, moveMul: this.live ? 1 : Math.min(3, Math.max(1, factor / 24)), now, player: this.live && L.hab ? { x: L.x, z: L.z, hab: L.hab } : null };
+      const ctx = { abstract: false, realDt: dt, moveMul: this.live ? 1 : Math.min(3, Math.max(1, factor / 24)), now };
       step(s, (dt * factor) / 60, ctx);
-      if (ctx.ameaca || ctx.investida) this.avisoSelvagem(ctx.investida || ctx.ameaca, !!ctx.investida);
-      if (ctx.ataque) this.ataque(ctx.ataque);
+      if (ctx.ataques?.length && !ctx.ataques[0].manso) try { navigator.vibrate?.([200, 80, 200]); } catch (e) {}
     }
     // alerta novo com o jogo aberto: pausa para o jogador ler (não no AO VIVO)
     const ids = new Set(s.alerts.map(a => a.id)), fresh = this._alertIds ? s.alerts.filter(a => !this._alertIds.has(a.id)) : [];
@@ -136,7 +135,7 @@ class Game {
     if (rep && rep.minutos > 10) this.ui.showReport(rep, '📰 Enquanto você esteve fora');
   }
   advance(hour) { const rep = advanceTo(this.state, hour, Date.now()); this.ui.showReport(rep, '⏩ Relógio avançado'); this.save(); }
-  // ---------- visita aos recintos (AO VIVO) e modo selvagem ----------
+  // ---------- visita aos recintos (AO VIVO "fantasma": os animais ignoram o jogador) ----------
   habVisita() { return this.live && this.controls.live.hab ? habById(this.state, this.controls.live.hab) : null; }
   // recinto cujo portão está ao alcance do jogador (do lado de fora)
   portaoPerto() {
@@ -147,30 +146,18 @@ class Game {
   entrarVisita(h) {
     const s = this.state, r = V.abrirVisita(s, h); if (!r.ok) { this.ui.toast(r.msg, 'ruim'); return false; }
     this.controls.irPara(V.pontoDentro(h), h.id); sound.click();
-    this.ui.toast(r.msg + (r.soltos && s.settings.selvagem !== false ? ` ⚠ ${r.soltos} animal(is) perigoso(s) solto(s): mantenha distância.` : ''), r.soltos ? 'perigo' : 'bom');
+    this.ui.toast(r.msg, 'bom');
     return true;
   }
   sairVisita() {
     const h = this.habVisita(); if (!h) return; const s = this.state;
-    V.fecharVisita(s, h); this.controls.irPara(V.pontoFora(s, h), 0); this.ui.toast(`Você saiu do ${h.name}. Portão fechado.`, 'bom');
+    V.fecharVisita(s, h); this.controls.irPara(V.pontoFora(s, h), 0); this.ui.toast(`Você saiu do ${h.name}.`, 'bom');
   }
   // pelo painel do habitat: liga o AO VIVO já dentro do recinto
   visitar(h) {
     const c = V.podeVisitar(this.state, h); if (!c.ok) return this.ui.toast(c.msg, 'ruim');
     if (!this.live) this.toggleLive();
     this.controls.irPara(V.pontoFora(this.state, h), 0, V.pontoDentro(h)); this.entrarVisita(h);
-  }
-  avisoSelvagem(id, carga) {
-    const s = this.state, a = s.animals.find(x => x.id === id); if (!a) return; const S = content(s).species[a.sp], L = this.controls.live;
-    sound.animal(a.sp, 0, Math.max(2, Math.hypot(a.x - L.x, a.z - L.z)), S); try { navigator.vibrate?.(carga ? [120, 60, 200] : 120); } catch (e) {}
-    if (carga) sound.alarm();
-  }
-  ataque({ id, manso }) {
-    const s = this.state, a = s.animals.find(x => x.id === id); if (!a) return;
-    const r = V.ataqueVisita(s, a, manso); if (!r) return;
-    const pf = V.pontoFora(s, r.hab), pd = V.pontoDentro(r.hab); this.controls.irPara(pf, 0, { x: 2 * pf.x - pd.x, z: 2 * pf.z - pd.z }); this.controls.live.shake = manso ? 0.4 : 1; // sai de costas para o recinto
-    this.ui.flash(manso ? 0.25 : 0.6); if (!manso) sound.bad(); try { navigator.vibrate?.(manso ? 150 : [250, 80, 250]); } catch (e) {}
-    this.ui.toast(r.msg, manso ? 'ruim' : 'perigo'); this.save();
   }
   toggleLive() {
     const s = this.state;
@@ -217,5 +204,5 @@ class Game {
 const vnum = v => String(v).split('.').map(p => { const m = /^(\d+)([a-z]?)$/.exec(p); return m ? +m[1] + (m[2] ? (m[2].charCodeAt(0) - 96) / 100 : 0) : 0; }); // 1.7.2b > 1.7.2a > 1.7.2
 const cmp = (a, b) => { const x = vnum(a), y = vnum(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
 
-const game = new Game(); window.__game = game; window.__sound = sound; window.__api = { ...B, V, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
+const game = new Game(); window.__game = game; window.__sound = sound; window.__api = { ...B, V, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, atacar: (s, st, a) => atacarFuncionario(s, st, a, false), fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
 game.start().catch(e => { console.error(e); const b = document.getElementById('boot'); if (b) b.textContent = 'Erro ao iniciar: ' + e.message; });

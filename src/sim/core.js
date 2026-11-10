@@ -7,7 +7,7 @@ import { updateAnimals, hourlyAnimals, dailyAnimals, habInfo } from './animals.j
 import { updateStaff, refreshAlerts, managerTick, spend, earn, recalcClean } from './staff.js';
 import { updateVisitors, arrivalRate, arrive, isOpen, litterCount, seedCrowd } from './visitors.js';
 
-export const SCHEMA = 8;
+export const SCHEMA = 9;
 export const SPEEDS = [0, 1, 2, 3]; // multiplicador da velocidade normal
 export const MES = 30;
 // segundos de jogo por segundo real na velocidade normal (depende da hora: dia devagar, noite rápida)
@@ -22,11 +22,11 @@ export function newGame(now = Date.now(), opts = {}) {
     clock: { min: 7 * 60, day: 0, speed: 1, lastRealTs: now },
     money: opts.tranquilo ? 120000 : 60000, ticket: 30, areaLevel: 0,
     terrain: new Array(MAP * MAP).fill('g'), height: new Array((MAP + 1) * (MAP + 1)).fill(0), litter: {},
-    habitats: [], facilities: [], objects: [], tocas: [], player: { lesoes: 0 }, furn: [], vstock: [], animals: [], staff: [], managers: [], visitors: [],
+    habitats: [], facilities: [], objects: [], tocas: [], furn: [], vstock: [], animals: [], staff: [], managers: [], visitors: [],
     policies: { doencaPrimeiro: true, segurancaPrimeiro: false, fugaImediata: true },
     candidates: [], hiring: { nextAt: now + H2 },
     alerts: [], metas: {}, settings: { ...DEFAULT_SETTINGS(), tranquilo: !!opts.tranquilo, fugas: !opts.tranquilo },
-    stats: { today: blankDay(), history: [], rep: { animais: 0.3, sustent: 0.6, educacao: 0, experiencia: 0.5, total: 0.35 }, sat: 0.6, visitantesHoje: 0, visitorsIn: 0, mortes: 0 },
+    stats: { today: blankDay(), history: [], rep: { animais: 0.3, sustent: 0.6, educacao: 0, experiencia: 0.5, total: 0.35 }, sat: 0.6, visitantesHoje: 0, visitorsIn: 0, mortes: 0, feridos: 0 },
     log: [], acc: { hour: 0, q: 0, arr: 0 }, fin: { pendente: { salarios: 0, manutencao: 0 }, meses: [], novo: null },
   };
   // layout inicial: entrada ao sul e caminhos principais
@@ -162,7 +162,7 @@ export function hire(s, candId) {
   if (c.role === 'subgerente' && s.managers.length >= VAGAS[s.areaLevel]) return { ok: false, msg: `Sem vaga de subgerente (vagas: ${VAGAS[s.areaLevel]}). Inaugure novas áreas para abrir vagas.` };
   s.candidates.splice(s.candidates.indexOf(c), 1);
   const e = s.facilities.find(f => f.type === 'entrada'), p = tileToWorld(e.tx, e.ty - 1);
-  const person = { id: c.id, role: c.role, name: c.name, attrs: c.attrs, traits: c.hidden, salary: c.salary, expected: c.expected, energy: 1, sat: 0.8, x: p.x, z: p.z, rot: Math.PI, inHab: 0, task: null, pack: 'base' };
+  const person = { id: c.id, role: c.role, name: c.name, attrs: c.attrs, traits: c.hidden, salary: c.salary, expected: c.expected, energy: 1, sat: 0.8, x: p.x, z: p.z, rot: Math.PI, inHab: 0, task: null, ferido: 0, pack: 'base' };
   if (c.role === 'subgerente') s.managers.push(person); else s.staff.push(person);
   log(s, `${c.name} foi contratado(a) como ${content(s).roles[c.role].nome.toLowerCase()}.`, 'bom');
   return { ok: true, person };

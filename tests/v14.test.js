@@ -43,6 +43,7 @@ ok(METAS.some(m => m.id === 'colecao'), 'meta Coleção completa existe');
 
 // simulação com as novas espécies (com dois tratadores)
 for (let k = 0; k < 2; k++) { let c; do { c = genCandidate(s, now); } while (c.role !== 'tratador'); s.candidates.push(c); hire(s, c.id); }
+{ let c; do { c = genCandidate(s, now); } while (c.role !== 'veterinario'); s.candidates.push(c); hire(s, c.id); } // 1.7.2c: sem toca, o veterinário seda os perigosos antes de cada serviço
 simulateAbstract(s, 2 * 1440, { now });
 ok(s.animals.filter(a => NOVAS.includes(a.sp)).length >= 10, '2 dias de simulação com as novas espécies');
 

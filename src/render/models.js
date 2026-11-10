@@ -319,6 +319,16 @@ export function buildFacility(kit, type, D) {
       add(kit.box(w - 0.2, 0.3, d - 0.2), kit.mat('#2e6b54'), 0, 3.15, 0);
       const cross = kit.mat('#2e9a4a'); add(kit.box(1.2, 0.35, 0.1), cross, 0, 2.3, d / 2 - 0.25); add(kit.box(0.35, 1.2, 0.1), cross, 0, 2.3, d / 2 - 0.25);
       add(kit.box(1, 1.8, 0.1), kit.mat('#5b6770'), 1.6, 0.9, d / 2 - 0.25); break; }
+    case 'clinica': {
+      add(kit.box(w - 0.5, 2.8, d - 0.7), kit.mat('#f2f7f9'), 0, 1.4, -0.1);
+      add(kit.box(w - 0.1, 0.28, d - 0.3), kit.mat('#2f7fa8'), 0, 2.94, -0.1);
+      add(kit.box(1.9, 0.12, 1.1), kit.mat('#2f7fa8'), 0, 2.2, d / 2 - 0.2); // marquise da entrada do veículo
+      for (const sx of [-0.85, 0.85]) add(kit.cyl(0.06, 0.06, 2.2), kit.mat('#c9d6dc'), sx, 1.1, d / 2 - 0.25);
+      add(kit.box(1.5, 1.7, 0.08), kit.mat('#5b6770'), 0, 0.85, d / 2 - 0.42); // portão largo
+      const cr = kit.mat('#d6453d'); add(kit.box(0.9, 0.28, 0.08), cr, 0.95, 2.45, d / 2 - 0.42); add(kit.box(0.28, 0.9, 0.08), cr, 0.95, 2.45, d / 2 - 0.42);
+      // pegada na placa lateral
+      const pw = kit.mat('#2f7fa8'); add(kit.sphere(0.2), pw, -w / 2 + 0.22, 1.9, 0.2); for (const [y, z] of [[2.25, -0.05], [2.3, 0.2], [2.25, 0.45]]) add(kit.sphere(0.09), pw, -w / 2 + 0.22, y, z);
+      break; }
     default: add(kit.box(w - 0.4, 2, d - 0.4), kit.mat(D.cor || '#999'), 0, 1, 0);
   }
   return g;

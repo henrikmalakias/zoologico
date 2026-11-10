@@ -38,6 +38,7 @@ ok(s.animals.every(a => a.st), 'animais continuam ativos');
 { const w = s.animals.map(a => worldToTile(a.x, a.z)); ok(new Set(w.map(t => t.tx + ',' + t.ty)).size >= 2, 'animais se espalham pelo habitat'); }
 { // tratador limpa e alimenta
   const want = r => { let cc; do { cc = genCandidate(s, now); } while (cc.role !== r); s.candidates.push(cc); return hire(s, cc.id).person; };
+  s.settings.selvagem = false; // 1.7.2c: o elefante é perigoso e aqui não há toca nem veterinário (isso é testado em v172c)
   const st = want('tratador'); h.food = 0.1; startTask(s, st, 'feed', h.id);
   for (let k = 0; k < 8000 && st.task?.type === 'feed'; k++) step(s, 0.02, live);
   ok(h.food > 0.9, 'tratador entra pelo portão e enche o comedouro');

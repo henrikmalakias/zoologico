@@ -1,7 +1,7 @@
 // Testes da versão 1.7.2b (vida selvagem): tocas com vidro, mover toca, rotina por espécie, visita aos recintos e modo selvagem.
 import { newGame, step, simulateAbstract, SCHEMA } from '../src/sim/core.js';
 import { placeHabitat, placePlant, buyAnimal, paintTerrain, sculpt, demolish, checkToca, placeToca, movableAt, moveObject, checkShrink } from '../src/sim/build.js';
-import { habObstacles, dormeAgora, rotinaAgora, ESTADOS, perigoDe, riscoVisita, aloft, dentro, RADIUS, mandarParaToca, tocaLivre, limites } from '../src/sim/animals.js';
+import { habObstacles, dormeAgora, rotinaAgora, ESTADOS, perigoDe, aloft, dentro, RADIUS, mandarParaToca, tocaLivre, limites } from '../src/sim/animals.js';
 import { tocasDe, tocaCells, tocaCenter, portaPonto, ocupantes, tocaVagas } from '../src/sim/tocas.js';
 import * as V from '../src/sim/visita.js';
 import { serialize, deserialize, MIGRATIONS } from '../src/save/save.js';
@@ -25,7 +25,7 @@ const naCaixa = (a, t, R) => { const c = tocaCenter(t); return Math.abs(a.x - c.
 {
   const s = base(), h = placeHabitat(s, 24, 24, 35, 33, 'savana', 'muro').hab;
   placePlant(s, 30, 30, 'acacia');
-  ok(SCHEMA === 8 && Array.isArray(s.tocas) && s.player.lesoes === 0 && s.settings.selvagem === true, 'jogo novo: save 8 com tocas, jogador e modo selvagem ligado');
+  ok(SCHEMA >= 9 && Array.isArray(s.tocas) && s.settings.selvagem === true, 'jogo novo: save com tocas e modo selvagem ligado');
   ok(!!content(s).estruturas.toca && content(s).estruturas.toca.pack === 'base', 'categoria "estruturas" entra no conteúdo combinado');
   const m0 = s.money, c = checkToca(s, 27, 27);
   ok(c.ok && c.dir !== c.porta && c.cost === 1200, `prévia aceita a toca (vidro no lado ${c.dir}, entrada no lado ${c.porta})`);
@@ -83,7 +83,7 @@ const naCaixa = (a, t, R) => { const c = tocaCenter(t); return Math.abs(a.x - c.
   const s = base(), h = placeHabitat(s, 24, 24, 33, 31, 'savana', 'ferro').hab; buyAnimal(s, 'zebra', 26, 26);
   const o = JSON.parse(JSON.stringify(serialize(s))); o.schemaVersion = 7; delete o.tocas; delete o.player; delete o.settings.selvagem; o.habitats[0].visitOpen = true;
   const m = deserialize(o);
-  ok(m.schemaVersion === 8 && Array.isArray(m.tocas) && m.player.lesoes === 0 && m.settings.selvagem === true && m.habitats[0].visitOpen === false && m.animals.length === 1, 'save 7 vira 8 sem perder nada e sem visita aberta');
+  ok(m.schemaVersion === SCHEMA && Array.isArray(m.tocas) && m.settings.selvagem === true && m.habitats[0].visitOpen === false && m.animals.length === 1, 'save 7 vira 8 (e segue até o atual) sem perder nada e sem visita aberta');
   const o2 = JSON.parse(JSON.stringify(serialize(s))); o2.habitats[0].visitOpen = true; o2.animals[0].toca = 99999; o2.animals[0].st = 'in_toca';
   const m2 = deserialize(o2); ok(m2.habitats[0].visitOpen === false && m2.animals[0].toca == null && m2.animals[0].st === 'idle', 'ao abrir: visita fechada e animal de toca que não existe mais é solto');
   ok(typeof MIGRATIONS[7] === 'function', 'migração 7 existe');
@@ -175,85 +175,7 @@ const naCaixa = (a, t, R) => { const c = tocaCenter(t); return Math.abs(a.x - c.
   simulateAbstract(s, 30, { now }); ok(h.visitOpen === false, 'app fechado/relógio avançado fecha a visita');
 }
 
-// ---- item 5: modo selvagem ----
-{
-  const s = base(), h = placeHabitat(s, 24, 24, 37, 35, 'savana', 'muro').hab;
-  for (const sp of ['leao', 'leao', 'leao']) buyAnimal(s, sp, 30, 30);
-  buyAnimal(s, 'flamingo', 30, 30); buyAnimal(s, 'zebra', 30, 30);
-  const [l1, l2, l3] = s.animals.filter(a => a.sp === 'leao'), fl = s.animals.find(a => a.sp === 'flamingo'), zb = s.animals.find(a => a.sp === 'zebra');
-  const calmo = () => { for (const a of s.animals) { a.hunger = 0.1; a.thirst = 0.1; a.stress = 0.2; a.energy = 0.8; } };
-  calmo();
-  ok(perigoDe(s, l1) === 4 && perigoDe(s, fl) === 0 && perigoDe(s, zb) === 1, 'perigo base: leão 4, zebra 1, flamingo 0');
-  l2.sex = 'F'; l3.age = 1; l3.x = l2.x + 2; l3.z = l2.z; l2.stress = 0.8; l2.hunger = 0.8;
-  ok(perigoDe(s, l2) >= 6, `leoa estressada, com fome e com filhote perto: perigo ${perigoDe(s, l2)}`);
-  ok(limites(4).ataca === 4 && limites(4).espera === 2 && limites(6).encara === 8, 'limites de aviso e ataque crescem com o perigo');
-  calmo(); l3.age = 20;
-  // jogador parado a 3 m de um leão por alguns segundos
-  const posto = (a, x, z) => Object.assign(a, { x, z, st: 'idle', stT: 99, tgt: null, wp: null, asleep: false, wHold: 0, wCool: 0, toca: null });
-  const P0 = tileToWorld(30, 29); posto(l1, P0.x, P0.z); posto(l2, P0.x - 12, P0.z + 6); posto(l3, P0.x + 12, P0.z + 6); posto(fl, P0.x - 10, P0.z - 6); posto(zb, P0.x + 10, P0.z - 6);
-  const J = { x: P0.x + 3, z: P0.z, hab: h.id };
-  V.abrirVisita(s, h);
-  const rk = riscoVisita(s, J); ok(rk && rk.a === l1 && rk.nivel === 1 && rk.soltos === 3, 'faixa de aviso: 3 perigosos soltos, o mais perto é o leão');
-  let viu = { ameaca: false, investida: false }, atk = null, t = 0;
-  const ctx = { abstract: false, realDt: 0.05, moveMul: 1, player: J };
-  for (let i = 0; i < 400 && !atk; i++) { step(s, 0.05 / 60, ctx); t += 0.05; if (l1.st === 'ameaca') viu.ameaca = true; if (l1.st === 'investida') viu.investida = true; if (ctx.ataque) atk = ctx.ataque; calmo(); }
-  ok(viu.ameaca && viu.investida && atk && atk.id === l1.id && !atk.manso, `leão encara, investe e alcança o jogador (${t.toFixed(1)} s)`);
-  ok(t > 2 && t < 8, 'o ataque só vem depois de ~2 s parado dentro do raio');
-  const les0 = s.player.lesoes, res = V.ataqueVisita(s, l1, atk.manso);
-  ok(s.player.lesoes === les0 + 1 && h.visitOpen === false && s.animals.length === 5, 'ataque: 1 lesão, visita encerrada, ninguém morre');
-  ok(/empurrado/.test(res.msg) && V.emEspera(s, h) === 60 && !V.podeVisitar(s, h).ok, 'recinto fica 1 h de jogo fechado para visita');
-  const al = s.alerts.find(a => a.type === 'visita'); ok(al && al.target === h.id && ALERT_INFO.visita.sev === 2, 'alerta "Visitante em risco" criado');
-  const sg = seguranca(s); ok(eligibleStaff(s, al).some(x => x.st === sg) && dispatch(s, al.id, sg.id) && sg.task.type === 'patrol', 'e pode ser despachado para um segurança');
-  run(s, 30000, () => {}, { abstract: true, realDt: 0, moveMul: 0, now }); refreshAlerts(s);
-  ok(!s.alerts.some(a => a.type === 'visita') && !h.visitaRisco, 'o segurança confere o local e o alerta some');
-  // longe: nada acontece
-  hora(s, 9); h.visitaAte = 0; V.abrirVisita(s, h); calmo(); posto(l1, P0.x, P0.z);
-  const J2 = { x: P0.x + 9, z: P0.z, hab: h.id }, ctx2 = { abstract: false, realDt: 0.05, moveMul: 1, player: J2 };
-  let longe = false; for (let i = 0; i < 200; i++) { step(s, 0.05 / 60, ctx2); if (l1.st === 'ameaca' || l1.st === 'investida' || ctx2.ataque) longe = true; calmo(); }
-  ok(!longe, 'a 9 m o leão calmo não reage');
-  // zebra calma nunca ataca; flamingo ignora
-  posto(zb, P0.x + 8, P0.z); const ctx3 = { abstract: false, realDt: 0.05, moveMul: 1, player: { x: zb.x + 1.5, z: zb.z, hab: h.id } };
-  let zr = false; for (let i = 0; i < 200; i++) { ctx3.player.x = zb.x + 1.5; ctx3.player.z = zb.z; step(s, 0.05 / 60, ctx3); if (ctx3.ataque) zr = true; calmo(); }
-  ok(!zr, 'zebra calma não ataca');
-  // modo selvagem desligado
-  s.settings.selvagem = false; posto(l1, P0.x, P0.z); const ctx4 = { abstract: false, realDt: 0.05, moveMul: 1, player: J };
-  let off = false; for (let i = 0; i < 300; i++) { step(s, 0.05 / 60, ctx4); if (ctx4.ataque || l1.st === 'ameaca') off = true; calmo(); }
-  ok(!off, 'com o modo selvagem desligado os animais ignoram o jogador'); s.settings.selvagem = true;
-  // Modo Tranquilo: ameaça, para a 1 m, sem lesão
-  s.settings.tranquilo = true; posto(l1, P0.x, P0.z); l1.wCool = 0; const ctx5 = { abstract: false, realDt: 0.05, moveMul: 1, player: J }; let at5 = null, dmin = 9;
-  for (let i = 0; i < 400 && !at5; i++) { step(s, 0.05 / 60, ctx5); dmin = Math.min(dmin, Math.hypot(l1.x - J.x, l1.z - J.z)); if (ctx5.ataque) at5 = ctx5.ataque; calmo(); }
-  const les1 = s.player.lesoes, r5 = at5 && V.ataqueVisita(s, l1, at5.manso);
-  ok(at5 && at5.manso && dmin >= 0.95 && s.player.lesoes === les1 && h.visitOpen === false && /parou a 1 m/.test(r5.msg), `Modo Tranquilo: faz a carga, para a ~1 m (${dmin.toFixed(2)} m), sem lesão, visita encerrada`);
-  ok(!h.visitaRisco, 'e não gera alerta');
-  s.settings.tranquilo = false;
-}
-// preparar visita: tratador recolhe os perigosos nas tocas
-{
-  const s = base(), h = placeHabitat(s, 24, 24, 37, 35, 'savana', 'muro').hab;
-  for (const sp of ['leao', 'leao', 'leao', 'zebra']) buyAnimal(s, sp, 30, 30);
-  const calmo = () => { for (const a of s.animals) { a.hunger = 0.1; a.thirst = 0.1; a.stress = 0.2; a.energy = 0.8; } }; calmo();
-  let r = V.prepararVisita(s, h); ok(!r.ok && r.semToca, 'sem toca: explica que falta toca');
-  placeToca(s, 27, 27); r = V.prepararVisita(s, h);
-  ok(!r.ok && /Faltam vagas/.test(r.msg) && tocaVagas(s, 'leao') === 2 && tocaVagas(s, 'elefante') === 1, '1 toca abriga 2 leões: faltam vagas para o terceiro');
-  placeToca(s, 32, 31); r = V.prepararVisita(s, h); ok(!r.ok && /tratador/.test(r.msg), 'sem tratador: pede para contratar');
-  const tr = tratador(s); r = V.prepararVisita(s, h);
-  ok(r.ok && h.preparo.total === 3 && tr.task?.type === 'guardar', `tratador sai para recolher 3 leões (${r.msg})`);
-  let k = 0; const ctx = live();
-  while (k++ < 60000 && !V.visitaLiberada(s, h)) { step(s, 0.0125, ctx); if (k % 200 === 0) { hora(s, 10); calmo(); } }
-  const leoes = s.animals.filter(a => a.sp === 'leao');
-  ok(V.visitaLiberada(s, h) && leoes.every(a => a.preso && a.st === 'in_toca'), `os 3 leões ficam recolhidos (${leoes.map(a => a.st)}, ${k} passos)`);
-  ok(tocasDe(s, h.id).every(t => t.fechada) && leoes.every(a => perigoDe(s, a) === 0) && h.preparo.prontos === 3, 'tocas fechadas e perigo efetivo 0');
-  ok(tocasDe(s, h.id).every(t => ocupantes(s, t).length <= 2), 'no máximo 2 leões por toca');
-  // visita segura: 30 s lá dentro sem aviso nem ataque
-  V.abrirVisita(s, h); const tc = tocaCenter(tocasDe(s, h.id)[0]), J = { x: tc.x + 3.2, z: tc.z, hab: h.id }, c2 = { abstract: false, realDt: 0.05, moveMul: 1, player: J }; let aviso = false;
-  for (let i = 0; i < 600; i++) { step(s, 0.05 / 60, c2); if (riscoVisita(s, J) || c2.ataque || c2.ameaca) aviso = true; calmo(); }
-  ok(!aviso && leoes.every(a => a.st === 'in_toca'), 'com os animais recolhidos, 30 s dentro do recinto sem aviso');
-  V.fecharVisita(s, h); ok(!h.preparo && leoes.every(a => !a.preso) && tocasDe(s, h.id).every(t => !t.fechada), 'ao sair, os animais são soltos e as tocas reabrem');
-  run(s, 2500, i => { if (i % 200 === 0) { hora(s, 9); calmo(); } }); ok(leoes.some(a => a.st !== 'in_toca'), 'e eles voltam a sair sozinhos');
-  // prazo: preparo sem visita vence e solta
-  r = V.prepararVisita(s, h); ok(r.ok, 'preparar de novo'); s.clock.min += 200; h.preparo.ate = s.clock.min - 1;
-  simulateAbstract(s, 61, { now }); ok(!h.preparo && s.animals.every(a => !a.preso), 'relógio avançado/app fechado solta os animais e cancela o preparo');
-}
+// 1.7.2c: o modo selvagem e o recolhimento nas tocas passaram a valer para os funcionários (ver tests/v172c.test.js)
 console.log(`\n${n - fails}/${n} verificações`);
 if (fails) { console.error(`${fails} FALHA(S) NA 1.7.2b`); process.exit(1); }
 console.log('TODOS OS TESTES DA 1.7.2b PASSARAM');

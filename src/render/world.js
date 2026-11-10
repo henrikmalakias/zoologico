@@ -196,7 +196,7 @@ export class World {
   // ---------- habitats ----------
   habKey(h, s) {
     let hs = 0, pv = 0; for (const e of edges(h)) { if (s.height) hs += (heightAt(s, e.ax, e.az) + heightAt(s, e.mx, e.mz) * 0.5) * ((e.c % 97) + 1); if (h.fence === 'muro' && isPath(s, e.out[0], e.out[1])) pv += (e.c % 13) + 1; }
-    return [h.cells.length, h.cells[0], h.cells[h.cells.length - 1], h.x, h.y, h.w, h.h, h.fence, h.gateOpen || !!h.visitOpen, h.gateOut.join(), h.feed.join(), h.water.join(), Math.round(h.fenceHp * 5), (h.breaches || []).map(b => b.side + b.k).join(), hs.toFixed(1), pv].join('|');
+    return [h.cells.length, h.cells[0], h.cells[h.cells.length - 1], h.x, h.y, h.w, h.h, h.fence, h.gateOpen, h.gateOut.join(), h.feed.join(), h.water.join(), Math.round(h.fenceHp * 5), (h.breaches || []).map(b => b.side + b.k).join(), hs.toFixed(1), pv].join('|');
   }
   buildHabitat(s, h) {
     const k = this.kit, g = new THREE.Group(), C = content(s), F = C.fences[h.fence] || {}, Y = (x, z) => heightAt(s, x, z);
@@ -236,7 +236,7 @@ export class World {
         const hinge = new THREE.Group(); hinge.position.set(e.ax, Y(e.ax, e.az), e.az);
         const gate = k.mesh(k.box(0.08, H * 0.85, TILE), k.mat(isMuro ? '#6b4a2b' : '#2b2f33')); gate.position.set(0, H * 0.43, TILE / 2);
         if (e.d === 'N' || e.d === 'S') hinge.rotation.y = Math.PI / 2;
-        hinge.add(gate); if (h.gateOpen || h.visitOpen) hinge.rotation.y += e.d === 'S' || e.d === 'L' ? -1.4 : 1.4; g.add(hinge);
+        hinge.add(gate); if (h.gateOpen) hinge.rotation.y += e.d === 'S' || e.d === 'L' ? -1.4 : 1.4; g.add(hinge);
         continue;
       }
       if (br.has(e.d + ':' + e.c)) { debris(e.ax, e.az, e.bx, e.bz); continue; }
@@ -291,7 +291,7 @@ export class World {
       for (const sgn of [-1, 1]) { const nx = (a1.z - a0.z) / len * 0.9 * sgn, nz = -(a1.x - a0.x) / len * 0.9 * sgn; beam(k.box(0.06, 0.06, len), wood, a0.x + nx, 1.2, a0.z + nz, a1.x + nx, 1.2, a1.z + nz); for (const f of [0.15, 0.5, 0.85]) add(k.cyl(0.05, 0.05, 0.9), wood, a0.x + (a1.x - a0.x) * f + nx, 0.75, a0.z + (a1.z - a0.z) * f + nz); }
       const gx = a1.x + (a0.x - a1.x) / len * 0.9, gz = a1.z + (a0.z - a1.z) / len * 0.9;
       const gate = add(k.box(Math.abs(a1.x - a0.x) > 0.1 ? 0.08 : 1.8, 1.3, Math.abs(a1.x - a0.x) > 0.1 ? 1.8 : 0.08), k.mat('#5b3f26'), gx, 1.0, gz);
-      if (h.gateOpen || h.visitOpen) gate.rotation.y = 1.2;
+      if (h.gateOpen) gate.rotation.y = 1.2;
     }
     // comedouro e bebedouro
     const fp = tileToWorld(h.feed[0], h.feed[1]), wp = tileToWorld(h.water[0], h.water[1]), fy = Y(fp.x, fp.z), wy = Y(wp.x, wp.z);
@@ -384,7 +384,7 @@ export class World {
     // animais
     const L = this.hi ? library() : null, seen = new Set();
     for (const a of s.animals) {
-      if (!C.species[a.sp]) continue; seen.add(a.id);
+      if (!C.species[a.sp] || a.internado) continue; seen.add(a.id); // internado: está dentro da Clínica veterinária
       const vkey = a.sp === 'leao' || a.sp === 'gorila' || C.species[a.sp].dimorfismo ? a.sp + ':' + a.sex : a.sp + ':F';
       let tpl = null; if (L) { L.request(vkey); tpl = L.get(vkey); if (tpl && this.ultra && !tpl.userData.ultra) { tpl.userData.ultra = true; tpl.userData.baseMat = tpl.children[0].material; addFur(tpl, a.sp, C.species[a.sp]); addSkinDetail(tpl, a.sp, C.species[a.sp]); tpl.userData.skinMat = tpl.children[0].material; tpl.userData.farMat = gradeMaterial(tpl.userData.baseMat.clone()); tpl.children[0].material = tpl.userData.baseMat; } }
       const kind = tpl ? 'sdf' : 'proc';
@@ -432,17 +432,19 @@ export class World {
       e.o.visible = !driving;
       const sy = walkY(s, st.x, st.z); e.o.position.set(st.x, sy, st.z); if (st.rot !== undefined) e.o.rotation.y = st.rot;
       // ação e ferramenta
-      const working = t && ['work', 'sedate', 'load', 'release'].includes(t.phase) && !(t.type === 'clean' && t.moving);
+      const working = t && ['work', 'sedate', 'load', 'release', 'sedar', 'recolher'].includes(t.phase) && !(t.type === 'clean' && t.moving);
       const hab = t && s.habitats.find(h => h.id === t.target);
       let action = null, tool = null;
       if (t) {
         if (t.type === 'repair') { tool = hab?.fence === 'muro' ? 'martelo' : 'macarico'; action = tool === 'macarico' ? 'soldar' : 'martelar'; }
         else if (t.type === 'feed') { tool = 'balde'; action = 'alimentar'; } else if (t.type === 'water') { tool = 'baldeAgua'; action = 'alimentar'; }
         else if (t.type === 'clean' || t.type === 'wc' || t.type === 'litter') { tool = 'vassoura'; action = 'varrer'; }
-        else if (t.type === 'treat' || t.type === 'checkup') { tool = 'maleta'; action = 'tratar'; }
-        else if (t.type === 'recapture') { tool = t.phase === 'sedate' ? 'dardo' : null; action = t.phase === 'sedate' ? 'mirar' : 'carregar'; }
+        else if (t.type === 'sedar' || t.phase === 'sedar' || (t.type === 'treat' && t.modo !== 'internar')) { tool = 'dardo'; action = 'mirar'; }
+        else if (t.type === 'checkup') { tool = 'maleta'; action = 'tratar'; }
+        else if (t.type === 'recapture' || t.modo === 'internar' || t.type === 'transfer') { tool = t.phase === 'sedate' ? 'dardo' : null; action = t.phase === 'sedate' ? 'mirar' : 'carregar'; }
+        else if (t.phase === 'recolher') action = 'carregar';
         else if (t.type === 'close') action = 'carregar';
-        else if (t.type === 'rest') action = 'descansar';
+        else if (t.type === 'rest' || t.type === 'ferido') action = 'descansar';
       }
       if (!working && action !== 'descansar') action = null;
       if ((e.tool?.userData.tipo || null) !== tool) {
@@ -454,8 +456,10 @@ export class World {
       // efeitos: faíscas, cones, dardo
       this.fxSparks(st.id, action === 'soldar' ? e.o : null, dt);
       this.fxCones(st.id, t?.type === 'repair' && hab ? tileToWorld(hab.gateOut[0], hab.gateOut[1]) : null, hab?.side);
-      if (t?.type === 'recapture' && t.phase === 'sedate') { if (e.lastPhase !== 'sedate') e.dart = 0; this.fxDart(st.id, e, s.animals.find(a => a.id === t.target), dt); } else this.fxDart(st.id, null);
-      e.lastPhase = t?.phase;
+      // dardo: captura/transferência/internação (sedate), sedação no lugar (um por animal) e remédio por dardo
+      const dk = !t ? null : t.phase === 'sedate' ? 'sd:' + t.target : (t.type === 'sedar' || t.phase === 'sedar') && t.alvo ? 'sl:' + t.alvo : t.type === 'treat' && t.modo !== 'internar' && t.phase === 'work' ? 'tr:' + t.target : null;
+      if (dk) { if (e.lastDart !== dk) e.dart = 0; this.fxDart(st.id, e, s.animals.find(a => a.id === (dk[0] === 's' && dk[1] === 'l' ? t.alvo : t.target)), dt); } else this.fxDart(st.id, null);
+      e.lastDart = dk; e.lastPhase = t?.phase;
     }
     for (const [id, e] of this.maps.staff) if (!ss.has(id)) { this.layers.staff.remove(e.o); if (e.veh) this.layers.staff.remove(e.veh); this.fxSparks(id, null); this.fxCones(id, null); this.fxDart(id, null); this.maps.staff.delete(id); }
     // sujeira nos habitats

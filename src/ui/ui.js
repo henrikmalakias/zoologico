@@ -8,7 +8,8 @@ import { stars, hire, fireById, expandArea, METAS, VAGAS, SPEEDS, H2, MES, fixed
 import { checkToca, placeToca, checkExpand, expandHabitat, checkShrink, shrinkHabitat, movableAt, moveObject, checkHabitat, placeHabitat, paintTerrain, placePlant, checkFacility, placeFacility, buyAnimal, sellAnimal, demolish, setTicket, setSalary, renameHabitat, habitatCost, sculpt, SCULPT_COST } from '../sim/build.js';
 import { heightAt } from '../sim/grid.js';
 import { distributeFurniture, levelSpacing } from '../sim/furn.js';
-import { suitability, habById, habInfo, climber, riscoVisita, soltarTocas } from '../sim/animals.js';
+import { suitability, habById, habInfo, climber } from '../sim/animals.js';
+import { tratamento, clinicas, vagasClinica, internados, capClinica, isClinica, modoTratamento } from '../sim/clinica.js';
 import { tocasDe, tocaById, ocupantes, modeloDoBioma } from '../sim/tocas.js';
 import * as V from '../sim/visita.js';
 import { ALERT_INFO, alertPos, alertTargetName, eligibleStaff, dispatch, taskName, orderTransfer, TRANSFER_ROLES, orderTask, ORDER_ROLES } from '../sim/staff.js';
@@ -26,9 +27,9 @@ const h = (tag, attrs = {}, ...kids) => {
 const pct = v => Math.round(v * 100) + '%';
 const meter = (v, invert) => { const x = invert ? 1 - v : v; return h('div', { class: 'meter' + (x < 0.3 ? ' bad' : x < 0.55 ? ' warn' : '') }, h('i', { style: `width:${clamp(v) * 100}%` })); };
 const starStr = n => '★'.repeat(n) + '☆'.repeat(5 - n);
-const ICON = { doenca: '🩺', fome: '🍖', cerca: '🚧', brecha: '🧱', portao: '🚪', fuga: '🏃', visita: '🚶' };
+const ICON = { doenca: '🩺', fome: '🍖', cerca: '🚧', brecha: '🧱', portao: '🚪', fuga: '🏃', ferido: '🤕' };
 const ST_NOME = { idle: 'Parado', walk: 'Andando', eat_go: 'Indo comer', eat: 'Comendo', drink_go: 'Indo beber', drink: 'Bebendo', sleep: 'Dormindo', roam: 'Solto pelo parque', sedado: 'Sedado', bath_go: 'Indo se banhar', bath: 'Tomando banho', filtrar_go: 'Indo para a água rasa', filtrar: 'Filtrando comida na água', tree_go: 'Indo para uma árvore', climb_up: 'Subindo na árvore', tree: 'Na árvore', tree_move: 'Andando nos galhos', salto: 'Pulando de galho em galho', tree_sleep: 'Dormindo na árvore', climb_down: 'Descendo da árvore', fugindo: 'Fugindo!', empurrar: 'Forçando a cerca!', pulando: 'Pulando a cerca!',
-  pastar_go: 'Procurando pasto', pastar: 'Pastando', descanso: 'Descansando deitado', descanso_pe: 'Descansando em pé', umaperna: 'Descansando numa perna só', poeira: 'Banho de poeira', sono_go: 'Indo dormir na água', toca_go: 'Indo para a toca', toca_in: 'Entrando na toca', in_toca: 'Na toca', toca_out: 'Saindo da toca', ameaca: 'Encarando o visitante!', investida: 'Avançando!' };
+  pastar_go: 'Procurando pasto', pastar: 'Pastando', descanso: 'Descansando deitado', descanso_pe: 'Descansando em pé', umaperna: 'Descansando numa perna só', poeira: 'Banho de poeira', sono_go: 'Indo dormir na água', toca_go: 'Indo para a toca', toca_in: 'Entrando na toca', in_toca: 'Na toca', toca_out: 'Saindo da toca', ameaca: 'Encarando um funcionário!', investida: 'Avançando!', medo: 'Afastando-se da equipe' };
 const TOOL_NOME = { caminho: 'caminho', terreno: 'terreno', planta: 'plantas', relevo: 'relevo' };
 const STATUS_COR = { 'Pouco preocupante': '#2e8b57', 'Quase ameaçada': '#7cb342', 'Quase ameaçado': '#7cb342', 'Vulnerável': '#f2c230', 'Em perigo': '#f29c30', 'Criticamente em perigo': '#e53935' };
 const ATTR_NOME = { habilidade: 'Habilidade', rapidez: 'Rapidez', dedicacao: 'Dedicação', decisao: 'Decisão', economia: 'Economia' };
@@ -165,16 +166,23 @@ export class UI {
   openAlert(id) {
     const s = this.s, a = s.alerts.find(a => a.id === id); if (!a) return;
     const I = ALERT_INFO[a.type], el = eligibleStaff(s, a);
-    const roles = { doenca: 'veterinário', fome: 'tratador', cerca: 'segurança', brecha: 'segurança', portao: 'segurança ou tratador', fuga: 'segurança ou veterinário', visita: 'segurança' }[a.type];
+    const roles = { doenca: 'veterinário', fome: 'tratador', cerca: 'segurança', brecha: 'segurança', portao: 'segurança ou tratador', fuga: 'segurança ou veterinário', ferido: 'segurança' }[a.type];
     const assigned = s.staff.find(x => x.id === a.assigned);
+    // doença: remédio por dardo (leve) ou internação (grave); com mais de uma clínica, o jogador escolhe o destino
+    this._clin ||= {}; const an = a.type === 'doenca' ? s.animals.find(x => x.id === a.target) : null;
+    const T = an ? tratamento(s, an, this._clin[a.id]) : null, opts = T?.clinica ? { clinica: T.clinica.id } : {};
+    const trat = !an ? null : T.modo === 'dardo' ? h('div', { class: 'card' }, `Caso leve (saúde ${pct(an.health)}): o veterinário aplica o remédio por dardo, de fora da cerca.`)
+      : h('div', { class: 'card', style: T.ok ? '' : 'border-left:4px solid #e53935' }, h('div', {}, T.ok ? `Caso grave (saúde ${pct(an.health)}): sedação e internação na clínica.` : T.msg),
+        clinicas(s).length > 1 ? h('div', { style: 'margin-top:6px' }, h('span', { class: 'muted' }, 'Internar em: '), ...clinicas(s).map((f, i) => { const v = vagasClinica(s, f); return h('button', { class: 'btn sm ' + (T.clinica?.id === f.id ? '' : 'sec'), disabled: !v, style: 'margin:2px', onclick: () => { this._clin[a.id] = f.id; this.renderModal(); } }, `Clínica ${i + 1} (${v} vaga${v === 1 ? '' : 's'})`); })) : null,
+        !T.ok && T.semClinica ? h('button', { class: 'btn sm', style: 'margin-top:6px', onclick: () => { this.closeModal(); this.opts.fac = 'clinica'; this.cat = 'inst'; this.toggleBuild(true); } }, '🏥 Construir clínica') : null);
     this.showModal(() => h('div', {},
       h('h3', {}, ICON[a.type] + ' ' + I.nome), h('div', { class: 'muted' }, alertTargetName(s, a) + ' · há ' + Math.max(0, Math.round((s.clock.min - a.created) / 60)) + ' h de jogo'),
-      h('p', {}, I.desc),
+      h('p', {}, I.desc), trat,
       assigned ? h('div', { class: 'card' }, `A caminho: ${assigned.name} (enviado por ${a.by || 'você'}).`) : null,
       h('h3', { style: 'margin-top:8px' }, 'Quem enviar?'),
       el.length ? el.map(({ st, d, busyAlert }) => h('div', { class: 'card' }, h('div', { class: 'top' },
         h('div', {}, h('b', {}, st.name), ' · ' + content(s).roles[st.role].nome, h('div', { class: 'muted' }, `${Math.round(d)} m · energia ${pct(st.energy)} · ${taskName(st.task)}${busyAlert ? ' (em outra emergência)' : ''}`)),
-        h('button', { class: 'btn sm', onclick: () => { if (!dispatch(s, a.id, st.id)) return this.toast(`Não deu para enviar ${st.name} agora (sem destino para este alerta).`, 'ruim'); this.closeModal(); this.toast(`${st.name} foi enviado(a).`, 'bom'); } }, a.assigned === st.id ? 'Enviado' : 'Enviar'))))
+        h('button', { class: 'btn sm', onclick: () => { if (!dispatch(s, a.id, st.id, 'você', opts)) return this.toast(T && !T.ok ? T.msg : `Não deu para enviar ${st.name} agora (sem destino para este alerta).`, 'ruim'); this.closeModal(); this.toast(`${st.name} foi enviado(a).`, 'bom'); } }, a.assigned === st.id ? 'Enviado' : 'Enviar'))))
         : h('div', { class: 'card' }, `Nenhum funcionário adequado. Contrate um ${roles} em Equipe > Currículos.`),
       s.managers.length ? h('div', { class: 'muted' }, `Seu subgerente ${s.managers[0].name} despacha sozinho se você não agir.`) : h('div', { class: 'muted' }, 'Sem subgerente, ninguém atende este alerta até você enviar alguém.'),
       h('div', { style: 'margin-top:8px' }, h('button', { class: 'btn sec', onclick: () => { const p = alertPos(s, a); if (p) this.g.controls.centerOn(p.x, p.z, 40); this.closeModal(); } }, '📍 Ir até lá'))));
@@ -198,7 +206,7 @@ export class UI {
       const modes = h('div', { class: 'items' }, ...[['novo', '➕ Novo'], ['ampliar', '↔ Ampliar'], ['recortar', '✂ Recortar'], ['toca', '🏠 Toca com vidro'], ['mover', '✋ Mover objetos']].map(([k, n]) => item(mode === k, n, null, () => { o.habMode = k; this.moveSel = null; this.g.world.hidePreview(); this.renderDrawer(); })));
       body = mode !== 'novo' ? [modes] : [modes, h('div', { class: 'items' }, ...Object.entries(C.biomes).filter(([, b]) => !b.inativo).map(([k, b]) => item(o.biome === k, b.nome, 'Bioma', set('biome', k))),
         ...Object.entries(C.fences).filter(([, f]) => !f.inativo).map(([k, f]) => item(o.fence === k, f.nome, `R$ ${f.custo}/bloco · alt ${f.altura} m · res ${f.resistencia}`, set('fence', k))))];
-      hint = mode === 'ampliar' ? 'Arraste um retângulo encostado no habitat: os blocos livres ligados a ele entram (verde). Instalações, caminhos e a folga de 1 bloco de outros habitats ficam de fora. A cerca é refeita no novo contorno.' : mode === 'recortar' ? 'Arraste sobre a parte do habitat que quer tirar (laranja). Portão, comedouro e bebedouro ficam; o habitat não pode ficar dividido. Sem reembolso.' : mode === 'toca' ? `Toque dentro de um habitat para pôr a toca (2 x 2 blocos, R$ ${(C.estruturas?.toca?.custo || 0).toLocaleString('pt-BR')}). O vidro fica virado para onde os visitantes olham e a entrada do animal fica em outro lado; os animais descansam e dormem lá dentro, e é nas tocas que o tratador recolhe os perigosos antes de uma visita. Cada toca abriga 2 animais (1 dos bem grandes); até 6 por habitat.` : mode === 'mover' ? (this.moveSel ? `Toque no novo lugar do(a) ${this.moveSel.nome.toLowerCase()} dentro do mesmo habitat.` : 'Toque em uma planta, no comedouro, no bebedouro ou em uma toca de um habitat e depois no novo lugar.') : o.fence === 'fosso' ? 'Ilha pronta: arraste para desenhar (mín. 8 x 8, retângulo inteiro livre). Um fosso de água funda de 2 blocos vira a barreira, com ponte e portão. Ótima para macacos e leões; elefantes nadam, então ainda podem fugir.' : 'Arraste para desenhar (mín. 4 x 4). O habitat contorna sozinho o que já está construído (instalações, caminhos e a folga de 1 bloco de outros habitats) e a cerca segue o formato.' + (o.fence === 'tela' ? ' Viveiro: rede por cima, ideal para macacos, que escalam; fraco contra animais fortes.' : '');
+      hint = mode === 'ampliar' ? 'Arraste um retângulo encostado no habitat: os blocos livres ligados a ele entram (verde). Instalações, caminhos e a folga de 1 bloco de outros habitats ficam de fora. A cerca é refeita no novo contorno.' : mode === 'recortar' ? 'Arraste sobre a parte do habitat que quer tirar (laranja). Portão, comedouro e bebedouro ficam; o habitat não pode ficar dividido. Sem reembolso.' : mode === 'toca' ? `Toque dentro de um habitat para pôr a toca (2 x 2 blocos, R$ ${(C.estruturas?.toca?.custo || 0).toLocaleString('pt-BR')}). O vidro fica virado para onde os visitantes olham e a entrada do animal fica em outro lado; os animais descansam e dormem lá dentro, e é nas tocas que a equipe recolhe os perigosos antes de cada serviço (sem toca, o veterinário precisa sedá-los). Cada toca abriga 2 animais (1 dos bem grandes); até 6 por habitat.` : mode === 'mover' ? (this.moveSel ? `Toque no novo lugar do(a) ${this.moveSel.nome.toLowerCase()} dentro do mesmo habitat.` : 'Toque em uma planta, no comedouro, no bebedouro ou em uma toca de um habitat e depois no novo lugar.') : o.fence === 'fosso' ? 'Ilha pronta: arraste para desenhar (mín. 8 x 8, retângulo inteiro livre). Um fosso de água funda de 2 blocos vira a barreira, com ponte e portão. Ótima para macacos e leões; elefantes nadam, então ainda podem fugir.' : 'Arraste para desenhar (mín. 4 x 4). O habitat contorna sozinho o que já está construído (instalações, caminhos e a folga de 1 bloco de outros habitats) e a cerca segue o formato.' + (o.fence === 'tela' ? ' Viveiro: rede por cima, ideal para macacos, que escalam; fraco contra animais fortes.' : '');
     } else if (this.cat === 'caminho') {
       const PRE = { p: { poste: 3, lixeira: 3, banco: 3 }, q: { poste: 0, lixeira: 0, banco: 0 }, c: { poste: 5, lixeira: 5, banco: 5 }, k: { poste: 5, lixeira: 5, banco: 5 } };
       const types = Object.entries(C.terrains).filter(([, t]) => t.caminho);
@@ -215,7 +223,7 @@ export class UI {
     else if (this.cat === 'relevo') { body = [h('div', { class: 'items' }, ...[['subir', '⬆ Subir'], ['baixar', '⬇ Baixar'], ['suavizar', '〰 Suavizar'], ['nivelar', '▬ Nivelar']].map(([k, n]) => item((o.relevo || 'subir') === k, n, `R$ ${SCULPT_COST} por pincelada`, set('relevo', k))))]; hint = 'Arraste para moldar colinas e vales. Baixar dentro da água deixa o lago mais fundo (elefantes gostam de água funda para o banho). Nivelar usa a altura de onde você começou. Caminhos só aceitam rampas suaves.'; }
     else if (this.cat === 'terreno') { body = [h('div', { class: 'items' }, ...Object.entries(C.terrains).filter(([, t]) => !t.caminho).map(([k, t]) => item(o.terrain === k, t.nome, `R$ ${t.custo}/bloco`, set('terrain', k))))]; hint = 'Arraste para pintar o terreno. Dentro dos habitats, siga o terreno do bioma.'; }
     else if (this.cat === 'planta') { body = [h('div', { class: 'items' }, ...Object.entries(C.plants).map(([k, p]) => item(o.plant === k, p.nome, `${C.biomes[p.bioma].nome} · R$ ${p.custo}${p.alta ? ' · alta' : ''}`, set('plant', k))))]; hint = 'Toque ou arraste para plantar. Cada espécie precisa de plantas do seu bioma.'; }
-    else if (this.cat === 'inst') { body = [h('div', { class: 'items' }, ...Object.entries(C.facilities).filter(([, d]) => !d.fixo).map(([k, d]) => item(o.fac === k, d.nome, `R$ ${d.custo.toLocaleString('pt-BR')} · ${d.w}x${d.h}`, set('fac', k))))]; hint = 'Toque no mapa para posicionar. Precisa ficar ao lado de um caminho (exceto o centro de cuidados); a entrada vira sozinha para o caminho. A área de mesas precisa ficar perto de uma lanchonete.'; }
+    else if (this.cat === 'inst') { body = [h('div', { class: 'items' }, ...Object.entries(C.facilities).filter(([, d]) => !d.fixo).map(([k, d]) => item(o.fac === k, d.nome, `R$ ${d.custo.toLocaleString('pt-BR')} · ${d.w}x${d.h}`, set('fac', k))))]; hint = 'Toque no mapa para posicionar. Precisa ficar ao lado de um caminho (exceto o centro de cuidados); a entrada vira sozinha para o caminho. A área de mesas precisa ficar perto de uma lanchonete.' + (C.facilities[o.fac]?.desc ? ' ' + C.facilities[o.fac].desc : ''); }
     else if (this.cat === 'animal') { body = [h('div', { class: 'items' }, ...Object.entries(C.species).map(([k, a]) => item(o.sp === k, a.nome, `R$ ${a.custo.toLocaleString('pt-BR')} · ${C.biomes[a.bioma].nome}`, set('sp', k))))];
       body.push(h('button', { class: 'btn sec sm', style: 'margin-top:6px', onclick: () => this.openZoopedia(o.sp) }, `📖 Ver ${C.species[o.sp].nome} na Zoopédia`));
       const S = C.species[o.sp]; hint = `Toque dentro de um habitat para comprar. ${S.nome}: ${S.dieta}, grupo de ${S.social.min} a ${S.social.max}, ${S.espaco} blocos por animal, barreira mín. ${S.barreira.altura} m / res. ${S.barreira.resistencia}${S.agua ? `, ${S.agua} blocos de água` : ''}.`; }
@@ -339,7 +347,7 @@ export class UI {
     if (hb.breaches?.length) out.push([`🧱 Cerca rompida em ${hb.breaches.length} ponto(s). Animais podem fugir!`, 'Enviar segurança', send('repair', hb.id, 'Consertar a cerca'), 1]);
     else if (hb.fenceHp < 0.7) out.push([`🚧 Cerca com ${pct(hb.fenceHp)} de condição.`, 'Enviar segurança', send('repair', hb.id, 'Consertar a cerca'), hb.fenceHp < 0.35]);
     if (hb.gateOpen) out.push(['🚪 Portão aberto!', 'Enviar alguém', send('close', hb.id, 'Fechar o portão'), 1]);
-    for (const a of an.filter(x => x.sick)) out.push([`🩺 ${a.name} está doente.`, 'Enviar veterinário', send('treat', a.id, `Tratar ${a.name}`), 1]);
+    for (const a of an.filter(x => x.sick)) { const T = tratamento(s, a); out.push(T.ok || T.modo === 'dardo' ? [`🩺 ${a.name} está doente${T.modo === 'internar' ? ' (grave: internação)' : ''}.`, 'Enviar veterinário', send('treat', a.id, `Tratar ${a.name}`), 1] : [`🏥 ${a.name} está em estado grave e ${T.semClinica ? 'não há Clínica veterinária' : 'as clínicas estão cheias'}.`, 'Construir clínica', () => { this.closeSheet(); this.opts.fac = 'clinica'; this.cat = 'inst'; this.toggleBuild(true); }, 1]); }
     if (an.length && hb.food < 0.5) out.push([`🍖 Comedouro com ${pct(hb.food)}.`, 'Enviar tratador', send('feed', hb.id, 'Alimentar'), hb.food < 0.15]);
     if (an.length && hb.waterLvl < 0.5) out.push([`💧 Bebedouro com ${pct(hb.waterLvl)}.`, 'Enviar tratador', send('water', hb.id, 'Repor água'), hb.waterLvl < 0.15]);
     if ((hb.dirt || []).length >= 3) out.push([`🧹 ${hb.dirt.length} itens de sujeira (fezes e restos de comida).`, 'Enviar tratador', send('clean', hb.id, 'Limpar o habitat'), hb.clean < 0.4]);
@@ -356,7 +364,7 @@ export class UI {
       if (P.agua < 0.95) { if (S.agua && I.water < S.agua) out.push([`💧 ${nome} precisa de pelo menos ${S.agua} blocos de água.`, 'Criar lago', tool('terreno', { terrain: 'w' }), 0]);
         if (S.aguaFunda && I.deep < S.aguaFunda) out.push([`🌊 ${nome} quer ${S.aguaFunda} blocos de água funda para o banho.`, 'Aprofundar lago', tool('relevo', { relevo: 'baixar' }), 0]); }
       if (climber(S, an.find(a => a.sp === sp)) && !Object.values(I.tall).reduce((x, y) => x + y, 0)) out.push([`🐒 Sem árvore alta: ${nome.toLowerCase()} não tem onde subir nem dormir no alto.`, 'Plantar árvore', tool('planta', { plant: Object.entries(C.plants).find(([, v]) => v.bioma === hb.biome && v.alta)?.[0] || Object.entries(C.plants).find(([, v]) => v.alta)?.[0] }), 0]);
-      if (S.rotina?.dormeEm === 'toca' && !tocasDe(s, hb.id).length && !out.some(o => o[4] === 'toca')) out.push([`🏠 Sem toca: ${nome.toLowerCase()} não tem abrigo para descansar e dormir (e não dá para recolher os animais antes de uma visita).`, 'Construir toca', tool('habitat', { habMode: 'toca' }), 0, 'toca']);
+      if (S.rotina?.dormeEm === 'toca' && !tocasDe(s, hb.id).length && !out.some(o => o[4] === 'toca')) out.push([`🏠 Sem toca: ${nome.toLowerCase()} não tem abrigo para descansar e dormir (e, sem toca, o veterinário precisa sedá-los antes de cada serviço).`, 'Construir toca', tool('habitat', { habMode: 'toca' }), 0, 'toca']);
       if (P.cerca < 0.95) { const F = C.fences[hb.fence]; out.push([F.fosso ? `🏊 ${nome} sabe nadar: a ilha não segura 100%.` : `🧱 Barreira fraca para ${nome.toLowerCase()} (precisa ${S.barreira.altura} m de altura e resistência ${S.barreira.resistencia}; tem ${F.altura} m e ${F.resistencia}).`, 'Transferir', move(sp), 1]); }
       if (P.grupo < 0.95) out.push(n < S.social.min ? [`👥 Grupo pequeno: ${nome.toLowerCase()} vive em grupos de ${S.social.min} a ${S.social.max} (tem ${n}).`, 'Comprar mais', tool('animal', { sp }), 0] : [`👥 Grupo grande demais (máx. ${S.social.max}).`, 'Transferir um', move(sp), 0]);
       if (P.convivencia < 0.95) out.push([`⚠ Há um predador junto: ${nome.toLowerCase()} fica estressado.`, 'Transferir', move(sp), 1]);
@@ -433,11 +441,12 @@ export class UI {
       const a = s.animals.find(a => a.id === id); if (!a) return this.closeSheet(); const S = C.species[a.sp], hb = habById(s, a.hab);
       if (!S) { this.closeSheet(); return this.toast('Este animal é de uma expansão desinstalada: reinstale a DLC para vê-lo.', 'ruim'); }
       this.g.world.showSelection(a.x, a.z, S ? Math.max(0.8, (['elefante', 'hipopotamo', 'rinoceronte'].includes(a.sp) || (S.raio ?? 0) >= 1.1 ? 2 : 1.2)) : 1);
-      body = [h('h3', {}, `${a.name} · ${S?.nome}`), h('div', { class: 'muted' }, `${a.sex === 'M' ? 'Macho' : 'Fêmea'} · ${Math.floor(a.age)} dias · ${hb?.name || ''} · ${ST_NOME[a.st] || a.st}`),
-        h('div', {}, a.sick ? h('span', { class: 'tag ruim' }, 'Doente') : null, a.escaped ? h('span', { class: 'tag ruim' }, 'Fugiu!') : null, a.age < S.vida.adulto ? h('span', { class: 'tag bom' }, 'Filhote') : null),
+      const fi = a.internado ? s.facilities.find(f => f.id === a.internado) : null, faltam = fi ? Math.max(0, a.intAte - s.clock.min) : 0;
+      body = [h('h3', {}, `${a.name} · ${S?.nome}`), h('div', { class: 'muted' }, `${a.sex === 'M' ? 'Macho' : 'Fêmea'} · ${Math.floor(a.age)} dias · ${fi ? 'Clínica veterinária' : hb?.name || ''} · ${fi ? 'Internado(a)' : a.sedAte ? 'Sedado(a)' : ST_NOME[a.st] || a.st}`),
+        h('div', {}, fi ? h('span', { class: 'tag' }, `🏥 Internado(a): alta em ${Math.floor(faltam / 1440) ? Math.floor(faltam / 1440) + ' d ' : ''}${Math.floor((faltam % 1440) / 60)} h de jogo`) : null, a.sick ? h('span', { class: 'tag ruim' }, a.health < 0.4 ? 'Doente (grave)' : 'Doente') : null, a.escaped ? h('span', { class: 'tag ruim' }, 'Fugiu!') : null, a.age < S.vida.adulto ? h('span', { class: 'tag bom' }, 'Filhote') : null),
         h('div', { class: 'kv' }, ...[['Bem-estar', a.welfare], ['Saúde', a.health], ['Energia', a.energy]].flatMap(([n, v]) => [n, meter(v), pct(v)]),
           ...[['Fome', a.hunger], ['Sede', a.thirst], ['Estresse', a.stress]].flatMap(([n, v]) => [n, meter(v, true), pct(v)])),
-        h('div', {}, h('button', { class: 'btn sec sm', onclick: () => { if (hb) this.select('hab', hb.id); } }, 'Ver habitat'), ' ',
+        h('div', {}, h('button', { class: 'btn sec sm', onclick: () => { const x = hb || habById(s, a.habOrig); if (x) this.select('hab', x.id); } }, 'Ver habitat'), ' ',
           h('button', { class: 'btn sm', onclick: () => this.startMove(a.id) }, '🚚 Mover'), ' ',
           h('button', { class: 'btn sec sm', onclick: () => this.askText(`Novo nome para ${a.name}`, a.name, n => { a.name = n.slice(0, 24); this.renderSheet(); this.toast(`Agora se chama ${a.name}!`, 'bom'); }) }, '✏️ Nome'), ' ',
           h('button', { class: 'btn sec sm', onclick: () => this.openZoopedia(a.sp) }, '📖 Zoopédia'), ' ',
@@ -447,13 +456,13 @@ export class UI {
       const c = tileToWorld(hb.x + hb.w / 2 - 0.5, hb.y + hb.h / 2 - 0.5); this.g.world.showSelection(c.x, c.z, Math.max(hb.w, hb.h) * 0.75);
       const an = s.animals.filter(a => a.hab === hb.id), sps = [...new Set(an.map(a => a.sp))];
       const LBL = { bioma: 'Bioma certo', espaco: 'Espaço', terreno: 'Terreno do bioma', plantas: 'Plantas', agua: 'Água (e água funda)', cerca: 'Barreira adequada', grupo: 'Tamanho do grupo', convivencia: 'Convivência' };
-      const nt = tocasDe(s, hb.id).length, per = V.perigosos(s, hb), presos = an.filter(a => a.preso).length, esp = V.emEspera(s, hb), PR = hb.preparo;
-      const visita = h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, '🚪 Visita ao recinto (AO VIVO)'), h('span', { class: 'muted' }, `${nt} toca${nt === 1 ? '' : 's'}`)),
-        h('div', { class: 'muted' }, esp > 0 ? `Fechado para visita por mais ${esp} min de jogo (depois do susto).` : PR && per.length ? `Recolhendo os animais: ${presos} de ${PR.total} nas tocas. Deixe o tempo correr.` : PR ? '✅ Visita liberada: os animais perigosos estão nas tocas.' : per.length && s.settings.selvagem !== false ? `⚠ ${per.length} animal(is) perigoso(s) solto(s). Entrar assim é arriscado: prepare a visita antes.` : 'Entre pelo portão para ver os animais de perto.'),
-        h('div', { style: 'margin-top:6px' },
-          h('button', { class: 'btn sm', disabled: esp > 0, onclick: () => { this.closeSheet(); this.g.visitar(hb); } }, '🚪 Visitar'), ' ',
-          PR ? h('button', { class: 'btn sec sm', onclick: () => { soltarTocas(s, hb); this.toast('Animais soltos das tocas.', 'bom'); this.renderSheet(); } }, '🔓 Soltar animais')
-            : per.length ? h('button', { class: 'btn sec sm', onclick: () => { const r = V.prepararVisita(s, hb); this.toast(r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok && !s.clock.speed) this.toast('O jogo está pausado: solte o tempo para os tratadores trabalharem.', 'info'); if (r.semToca) { this.opts.habMode = 'toca'; } this.renderSheet(); } }, '🛡 Preparar visita') : null));
+      const nt = tocasDe(s, hb.id).length, per = V.perigosos(s, hb), presos = an.filter(a => a.preso).length, sed = an.filter(a => a.sedAte).length, nInt = s.animals.filter(a => a.habOrig === hb.id && a.internado).length;
+      const visita = h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, '👻 Visita ao recinto (AO VIVO)'), h('span', { class: 'muted' }, `${nt} toca${nt === 1 ? '' : 's'}`)),
+        h('div', { class: 'muted' }, 'Entre pelo portão como observador: os animais não percebem você. Bom para ver a equipe trabalhando e testar as cercas.'),
+        per.length && s.settings.selvagem !== false ? h('div', { class: 'muted' }, `⚠ ${per.length} animal(is) perigoso(s) solto(s): antes de cada serviço a equipe recolhe nas tocas${nt ? '' : ' (não há toca: o veterinário seda)'}.`) : null,
+        presos || sed ? h('div', { class: 'muted' }, `🔒 ${presos ? presos + ' recolhido(s) nas tocas' : ''}${presos && sed ? ' · ' : ''}${sed ? sed + ' sedado(s)' : ''} enquanto a equipe trabalha.`) : null,
+        nInt ? h('div', { class: 'muted' }, `🏥 ${nInt} internado(s) na clínica.`) : null,
+        h('div', { style: 'margin-top:6px' }, h('button', { class: 'btn sm', onclick: () => { this.closeSheet(); this.g.visitar(hb); } }, '🚪 Visitar')));
       body = [h('h3', {}, hb.name), h('div', { class: 'muted' }, `${C.biomes[hb.biome].nome} · ${hb.cells.length} blocos · ${F.nome} · ${F.fosso ? 'ponte' : 'portão'} ${hb.gateOpen ? 'ABERTO' : 'fechado'}`),
         hb.breaches?.length ? h('div', { class: 'card', style: 'border-left:4px solid #e53935' }, `🧱 Cerca rompida em ${hb.breaches.length} ponto(s). Envie um segurança!`) : null,
         h('div', { class: 'kv' }, ...[['Comida', hb.food], ['Água', hb.waterLvl], ['Limpeza', hb.clean], ['Cerca', hb.fenceHp]].flatMap(([n, v]) => [n, meter(v), pct(v)])),
@@ -468,7 +477,10 @@ export class UI {
       body = this.personCard(st, true);
     } else if (kind === 'fac') {
       const f = s.facilities.find(x => x.id === id); if (!f) return this.closeSheet(); const D = C.facilities[f.type];
-      body = [h('h3', {}, D.nome), f.type === 'banheiro' ? h('div', { class: 'kv' }, 'Sujeira', meter(f.dirty || 0, true), pct(f.dirty || 0)) : null,
+      const cli = isClinica(s, f) ? internados(s, f) : null;
+      body = [h('h3', {}, D.nome), D.desc ? h('div', { class: 'muted' }, D.desc) : null, f.type === 'banheiro' ? h('div', { class: 'kv' }, 'Sujeira', meter(f.dirty || 0, true), pct(f.dirty || 0)) : null,
+        cli ? h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, '🏥 Internados'), h('span', { class: 'muted' }, `${cli.length} de ${capClinica(s, f)} vagas`)),
+          ...(cli.length ? cli.map(a => { const r = Math.max(0, a.intAte - s.clock.min); return h('div', { class: 'row', onclick: () => this.select('animal', a.id) }, `${a.name} (${C.species[a.sp]?.nome || '?'})`, h('span', { class: 'muted' }, `saúde ${pct(a.health)} · alta em ${Math.floor(r / 1440) ? Math.floor(r / 1440) + ' d ' : ''}${Math.floor((r % 1440) / 60)} h`)); }) : [h('div', { class: 'muted' }, 'Nenhum animal internado.')])) : null,
         f.type === 'entrada' ? h('div', {}, `Ingresso: ${money(s.ticket)} (ajuste em Gerência > Finanças)`) : h('div', { class: 'muted' }, `Manutenção: R$ ${D.manut}/dia`)];
     }
     this.el.sheet.replaceChildren(close, ...body.filter(Boolean));
@@ -479,6 +491,7 @@ export class UI {
       h('div', {}, ...Object.entries(p.attrs).map(([k, v]) => h('span', { class: 'tag' }, `${ATTR_NOME[k]} `, h('span', { class: 'stars' }, starStr(v))))),
       h('div', {}, ...(p.traits.length ? p.traits.map(t => h('span', { class: 'tag ' + (T[t].bom ? 'bom' : 'ruim') }, `${T[t].nome}: ${T[t].desc}`)) : [h('span', { class: 'muted' }, 'Sem traços especiais.')])),
       h('div', { class: 'kv' }, 'Energia', meter(p.energy), pct(p.energy), 'Satisfação', meter(p.sat), pct(p.sat)),
+      p.ferido ? h('div', { class: 'card', style: 'border-left:4px solid #e53935' }, `🤕 Ferido(a) por um animal: afastado(a) por mais ${Math.max(1, Math.round((p.ferido - s.clock.min) / 60))} h de jogo (o salário continua).`) : null,
       !isMgr ? h('div', { class: 'muted' }, 'Fazendo: ' + taskName(p.task)) : null,
       h('div', { class: 'row' }, h('span', {}, `Salário ${money(p.salary)}/dia (esperado ${money(p.expected)})`),
         h('span', {}, h('button', { class: 'btn sec sm', onclick: () => { setSalary(s, p.id, 0.9); this.refresh(); } }, '−10%'), ' ', h('button', { class: 'btn sm', onclick: () => { setSalary(s, p.id, 1.1); this.refresh(); } }, '+10%'))),
@@ -617,7 +630,7 @@ export class UI {
         h('span', { style: 'display:flex;gap:4px' }, ...['baixo', 'alto', 'ultra'].map(q => h('button', { class: 'btn sm ' + (s.settings.quality === q ? '' : 'sec'), onclick: () => { g.setQuality(q); this.renderModal(); } }, { baixo: 'Baixo', alto: 'Alto', ultra: 'Ultra' }[q])))),
       tg('autoQualidade', 'Ajuste automático', 'Se o jogo ficar lento, reduz a resolução e passa para o gráfico Baixo.'),
       tg('subSoFechado', 'Subgerente só com o jogo fechado', 'Ligado: com o jogo aberto os alertas ficam para você resolver; o subgerente só age enquanto o app está fechado ou o celular bloqueado (e ao avançar o relógio). Desligado: ele age também com o jogo aberto.'),
-      tg('selvagem', 'Modo selvagem', 'No AO VIVO, entrar num recinto com animal perigoso solto dá aviso e, se você chegar perto demais, ataque (só um susto: ninguém morre e a visita acaba). No Modo Tranquilo o animal só ameaça e para a 1 m. Desligado: os animais ignoram você.'),
+      tg('selvagem', 'Modo selvagem', 'Os animais perigosos (leão, hipopótamo, rinoceronte, elefante, gorila) podem atacar quem entra no recinto sem recolhê-los antes nas tocas ou sedá-los. O funcionário fica ferido e 1 dia afastado; ninguém morre. No Modo Tranquilo o animal só ameaça e o serviço atrasa. Desligado: nenhum ataque e os serviços não precisam recolher ninguém. No AO VIVO você é um observador: os animais nunca atacam você.'),
       tg('pausaAlerta', 'Pausar quando surgir alerta', 'Pausa o jogo quando aparece um alerta novo (doença, fome, cerca, portão, fuga), para você ler e decidir. Não pausa no modo AO VIVO.'),
       tg('economia', 'Economia de calor e bateria', 'Limita o jogo a 30 quadros por segundo e usa uma resolução um pouco menor nos gráficos Alto e Ultra. O celular esquenta menos. Desligue para 60 FPS.', () => g.applyEco()),
       tg('telaLigada', 'Manter a tela ligada', 'Evita que a tela apague sozinha com o jogo aberto. Gasta um pouco mais de bateria.', () => g.wakeSync()),
@@ -697,13 +710,13 @@ export class UI {
   }
   updateWorkBars() {
     const s = this.s, W = this.g.world, seen = new Set(); this.workEls ||= new Map();
-    const ICO = { feed: '🍖', water: '💧', clean: '🧹', wc: '🧽', litter: '🧹', repair: '🔧', close: '🚪', treat: '🩺', checkup: '🩺', recapture: '🎯', patrol: '👮' };
+    const ICO = { feed: '🍖', water: '💧', clean: '🧹', wc: '🧽', litter: '🧹', repair: '🔧', close: '🚪', treat: '🩺', checkup: '🩺', recapture: '🎯', patrol: '👮', sedar: '💉' };
     for (const st of s.staff) {
-      const t = st.task; if (!t || !ICO[t.type] || !['work', 'sedate', 'load', 'release'].includes(t.phase) || !t.work0) continue;
+      const t = st.task; if (!t || !ICO[t.type] || !['work', 'sedate', 'load', 'release', 'recolher', 'sedar'].includes(t.phase) || !t.work0) continue;
       seen.add(st.id); let el = this.workEls.get(st.id);
       if (!el) { el = h('div', { class: 'wbar' }, h('span'), h('div', { class: 'meter' }, h('i'))); this.el.alerts.append(el); this.workEls.set(st.id, el); }
       const prog = Math.max(0, Math.min(1, 1 - t.work / t.work0));
-      const lab = t.type === 'recapture' ? { sedate: '🎯 dardo', load: '📦 carregando', release: '🔓 soltando' }[t.phase] : t.type === 'clean' ? `🧹 ${(s.habitats.find(x => x.id === t.target)?.dirt || []).length}` : ICO[t.type];
+      const lab = t.phase === 'recolher' ? '🏠 recolhendo' : t.phase === 'sedar' || t.type === 'sedar' ? '💉 sedando' : t.type === 'recapture' || t.modo === 'internar' ? { sedate: '🎯 dardo', load: '📦 carregando', release: t.modo === 'internar' ? '🏥 internando' : '🔓 soltando' }[t.phase] : t.type === 'treat' ? '🎯 remédio' : t.type === 'clean' ? `🧹 ${(s.habitats.find(x => x.id === t.target)?.dirt || []).length}` : ICO[t.type];
       if (el.firstChild.textContent !== lab) el.firstChild.textContent = lab;
       el.lastChild.firstChild.style.width = (prog * 100).toFixed(0) + '%';
       const p = W.project(st.x, 2.3, st.z); el.style.display = p.vis && !this.g.live ? '' : 'none'; el.style.left = p.x + 'px'; el.style.top = p.y + 'px';
@@ -737,13 +750,9 @@ export class UI {
       const pd = V.pontoDentro(hb), dg = Math.hypot(pd.x - L.x, pd.z - L.z); if (dg < 1.5) bt = '🚪 Sair do recinto';
       // seta para a saída, relativa a para onde o jogador olha
       const ang = Math.atan2(pd.x - L.x, pd.z - L.z) - Math.atan2(-Math.sin(L.yaw), -Math.cos(L.yaw)), seta = ['↑', '↖', '←', '↙', '↓', '↘', '→', '↗'][((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8];
-      const saida = dg < 1.5 ? '' : ` · saída ${seta} ${Math.round(dg)} m`, r = s.settings.selvagem !== false ? riscoVisita(s, { x: L.x, z: L.z, hab: hb.id }) : null;
-      if (r) { const S = content(s).species[r.a.sp], quem = `${r.a.name} (${S.nome})`;
-        if (r.nivel === 3) { mt = `‼ ${quem} está avançando!`; cls = 'perigo'; }
-        else if (r.nivel === 2) { mt = `⚠ ${quem} está agitado a ${Math.round(r.d)} m — saia devagar${saida}`; cls = 'perigo'; }
-        else { mt = `⚠ ${hb.name}: ${r.soltos} animal(is) perigoso(s) solto(s) · ${quem} a ${Math.round(r.d)} m${saida}`; cls = 'aviso'; } }
-      else mt = `🚶 ${hb.name}${saida}`;
-    } else { const p = g.portaoPerto(); if (p) { bt = '🚪 Entrar'; const e = V.emEspera(s, p); mt = e > 0 ? `${p.name}: fechado para visita por mais ${e} min de jogo` : `Portão do ${p.name}`; } }
+      const saida = dg < 1.5 ? '' : ` · saída ${seta} ${Math.round(dg)} m`;
+      mt = `👻 ${hb.name} (observador)${saida}`;
+    } else { const p = g.portaoPerto(); if (p) { bt = '🚪 Entrar'; mt = `Portão do ${p.name}`; } }
     if (bt !== this._vb) { this._vb = bt; b.classList.toggle('hidden', !bt); if (bt) b.textContent = bt; }
     const key = mt + '|' + cls; if (key !== this._vm) { this._vm = key; m.classList.toggle('hidden', !mt); m.className = 'visitmsg' + (mt ? '' : ' hidden') + (cls ? ' ' + cls : ''); if (mt) m.textContent = mt; }
   }

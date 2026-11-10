@@ -73,8 +73,8 @@ urso_polar: { nome:'Urso-polar', custo:22000, bioma:'artico', dieta:'Carnívoro'
 - `bioma` precisa existir (base ou a própria DLC).
 
 **facilities** `{ nome, w, h, custo, cor, manut, venda?, custoVenda?, parecido, comportamento }`
-- `parecido`: id de instalação do base cujo desenho será reaproveitado (`lanchonete`, `banheiro`, `loja`, `mesas`, `playground`, `placa`, `centro`).
-- `comportamento`: `comida` (como lanchonete, usa `venda`/`custoVenda` dela) | `compras` (como loja) | `banheiro` | `lazer` (como playground) | `mesas` | `descanso` (como banco). Sem `comportamento` = só decoração.
+- `parecido`: id de instalação do base cujo desenho será reaproveitado (`lanchonete`, `banheiro`, `loja`, `mesas`, `playground`, `placa`, `centro`, `clinica`).
+- `comportamento`: `comida` (como lanchonete, usa `venda`/`custoVenda` dela) | `compras` (como loja) | `banheiro` | `lazer` (como playground) | `mesas` | `descanso` (como banco) | `clinica` (desde a 1.7.2c: interna os casos graves; use `vagas`, padrão 2). Sem `comportamento` = só decoração.
 
 **roles** `{ nome, salario, cor }` — só função que repete o trabalho de uma do base. Profissão com trabalho novo = seção 8.
 
@@ -96,7 +96,7 @@ O núcleo (desde a 1.7.2a) lê estes campos do pacote; sem eles a espécie nova 
 | `pele` | rugas da pele no Ultra (0–0.35) | `SKIN` em `src/render/ultra.js` |
 
 Opcionais: `dimorfismo: true` (macho e fêmea com modelo diferente; o JSON precisa de variantes `M` e `F`), `filtrador: true` (come filtrando na água rasa, como o flamingo), `banhoMin` (profundidade mínima do banho, m), `caminhao: true` (captura com caminhão; sem o campo, vale `raio >= 0.9`).
-Desde a 1.7.2b (vida selvagem), também opcionais: `perigo` (0 a 5, modo selvagem; sem o campo vale 3 se `tracos.perigoso`, senão 0; leão 4, elefante 3, zebra 1, flamingo 0), `rotina: { acorda, dorme, janelas: [[início, fim, atividade]], dormeEm, descanso }` (horas do jogo; atividade `pastar | descanso | banho | social | filtrar`; `dormeEm` `toca | arvore | agua`; `descanso` `deitado | empe | umaperna`; sem o campo a espécie dorme das 20 h às 6 h, como antes), `poeira: true` (toma banho de poeira na janela `banho`) e `alto: true` (tocas do habitat ficam mais altas, como para a girafa). Tocas (`estruturas`) são mecânica do núcleo: DLC não cria estrutura nova.
+Desde a 1.7.2b (vida selvagem), também opcionais: `perigo` (0 a 5, modo selvagem; desde a 1.7.2c vale para os funcionários: a partir de 3 o animal é recolhido na toca ou sedado antes dos serviços e pode atacar quem entra; abaixo de 3 se afasta da equipe; sem o campo vale 3 se `tracos.perigoso`, senão 0; leão 4, elefante 3, zebra 1, flamingo 0), `rotina: { acorda, dorme, janelas: [[início, fim, atividade]], dormeEm, descanso }` (horas do jogo; atividade `pastar | descanso | banho | social | filtrar`; `dormeEm` `toca | arvore | agua`; `descanso` `deitado | empe | umaperna`; sem o campo a espécie dorme das 20 h às 6 h, como antes), `poeira: true` (toma banho de poeira na janela `banho`) e `alto: true` (tocas do habitat ficam mais altas, como para a girafa). Tocas (`estruturas`) são mecânica do núcleo: DLC não cria estrutura nova.
 `baixo`: medidas iguais ao `DEF` de `models.js`, mais `dark` (cor escura), `tex: 'listras' | 'manchas'` e `ave: true` (usa o corpo de ave do flamingo).
 
 ## 6. Zoopédia e modelos

@@ -4,6 +4,15 @@ import { content } from '../content/registry.js';
 
 // Migrações: cada função leva o save da versão N para N+1.
 export const MIGRATIONS = {
+  // v8 -> v9 (versão 1.7.2c): o perigo passa a valer para os funcionários; Clínica veterinária; AO VIVO "fantasma"
+  8: s => {
+    for (const st of s.staff || []) { st.ferido = st.ferido || 0; if (st.task?.type === 'guardar') st.task = null; }
+    for (const a of s.animals || []) { a.preso = false; a.guard = false; a.internado = a.internado || null; a.sedAte = 0; }
+    for (const h of s.habitats || []) { delete h.preparo; delete h.visitaAte; delete h.visitaRisco; h.visitOpen = false; h.seg = []; }
+    for (const t of s.tocas || []) t.fechada = false;
+    s.alerts = (s.alerts || []).filter(a => a.type !== 'visita');
+    delete s.player; s.schemaVersion = 9; return s;
+  },
   // v7 -> v8 (versão 1.7.2b): tocas com vidro, visita aos recintos e modo selvagem
   7: s => { s.tocas = s.tocas || []; s.player = s.player || { lesoes: 0 }; for (const h of s.habitats || []) { h.visitOpen = false; h.preparo = null; } s.settings = { selvagem: true, ...(s.settings || {}) }; s.schemaVersion = 8; return s; },
   // v6 -> v7 (versão 1.7): habitats com formato livre (lista de blocos); brechas passam a apontar para o bloco da borda
@@ -48,15 +57,17 @@ export function deserialize(o) {
   s.terrain = typeof s.terrain === 'string' ? s.terrain.split('') : s.terrain;
   s.visitors = [];
   for (const st of s.staff) if (st.task) st.task.route = null;
-  s.tocas = s.tocas || []; s.player = s.player || { lesoes: 0 };
+  s.tocas = s.tocas || [];
   // ninguém fica preso numa visita ao reabrir; quem estava a caminho de uma toca volta a decidir; toca que sumiu solta o animal
-  for (const h of s.habitats) h.visitOpen = false;
+  for (const h of s.habitats) { h.visitOpen = false; h.seg = h.seg || []; }
+  for (const st of s.staff) st.ferido = st.ferido || 0;
   for (const a of s.animals) {
     a.tgt = null; a.wp = null;
     if (a.toca != null) { const t = s.tocas.find(t => t.id === a.toca && t.hab === a.hab);
       if (!t || a.st === 'toca_go' || a.st === 'toca_out') { a.toca = null; a.preso = false; if (['toca_go', 'toca_in', 'in_toca', 'toca_out'].includes(a.st)) { a.st = 'idle'; a.stT = 1; } }
       else if (a.st === 'toca_in') a.st = 'in_toca'; }
-    if (a.st === 'investida' || a.st === 'ameaca') { a.st = 'idle'; a.stT = 1; }
+    if (a.st === 'investida' || a.st === 'ameaca' || a.st === 'medo') { a.st = 'idle'; a.stT = 1; }
+    if (a.internado && !s.facilities.some(f => f.id === a.internado)) a.intAte = 0; // clínica sumiu: alta no próximo passo
   }
   s.furn = s.furn || []; s.vstock = [];
   rebuildOcc(s);
