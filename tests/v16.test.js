@@ -29,7 +29,7 @@ const now = Date.now();
   ok(inObs === 0, 'animais não atravessam plantas, comedouro e bebedouro');
   ok(minR > 0.85, `animais não se sobrepõem (menor razão ${minR.toFixed(2)})`);
   ok(outside === 0, 'animais ficam dentro do habitat');
-  ok(s.animals.some(a => a.st === 'eat' || a.st === 'drink' || a.st === 'walk' || a.st === 'idle'), 'animais continuam vivos e ativos');
+  ok(s.animals.some(a => ['eat', 'drink', 'walk', 'idle', 'pastar', 'pastar_go', 'descanso', 'descanso_pe', 'eat_go', 'drink_go'].includes(a.st)), `animais continuam vivos e ativos (${s.animals.map(a => a.st)})`); // 1.7.2b: a rotina trouxe pastar e descanso
 }
 
 // ---- limite de 100 visitantes desenhados, contador total ----
