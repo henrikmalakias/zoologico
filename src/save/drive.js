@@ -1,7 +1,7 @@
 // Sincronia do save com o Google Drive do jogador (pasta oculta do app: escopo drive.appdata).
 // O jogo roda 100% offline; isto só funciona quando há internet e o ID de cliente OAuth foi informado.
 // Modo automático: abre o save mais recente, envia alterações a cada poucos minutos e ao sair, e pergunta em caso de conflito.
-import { getPref, setPref } from './save.js';
+import { getPref, setPref, contentHash, backupRaw } from './save.js';
 
 export const CLIENT_ID_PADRAO = ''; // opcional: cole aqui o ID de cliente OAuth para já vir pronto no site
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata', NOME = 'zoologico-save.json';
@@ -10,7 +10,6 @@ const GIS = 'https://accounts.google.com/gsi/client';
 export const LOCAIS = ['quality', 'autoQualidade', 'mostrarFps', 'telaLigada', 'economia', 'som', 'volume', 'ambiente'];
 
 let tok = null, tokExp = 0, tc = null, fileId = null;
-const hash = str => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return h; };
 const espera = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('Tempo esgotado.')), ms))]);
 
 function carregaGis() {
@@ -19,7 +18,7 @@ function carregaGis() {
 }
 
 export class DriveSync {
-  constructor(game) { this.g = game; this.clientId = CLIENT_ID_PADRAO; this.on = false; this.status = ''; this.lastSync = 0; this.busy = false; this.lastHash = null; this.timer = null; }
+  constructor(game) { this.g = game; this.clientId = CLIENT_ID_PADRAO; this.on = false; this.status = ''; this.lastSync = 0; this.busy = false; this.escolhendo = 0; this.preHash = null; this.timer = null; }
   get configurado() { return !!this.clientId; }
   get ativo() { return this.on && this.configurado; }
   async init() {
@@ -51,19 +50,29 @@ export class DriveSync {
     if (!r.ok) throw new Error('Drive respondeu ' + r.status);
     return r;
   }
+  // Identidade de cada versão no Drive: "rev" (contador gravado por quem envia) e aparelho. Não usamos o relógio
+  // dos aparelhos para decidir quem é mais novo (o relógio do iPad e o do celular podem estar diferentes).
   async meta() {
+    const F = 'id,modifiedTime,appProperties,trashed';
+    if (!fileId) fileId = (await getPref('driveFileId', null)) || null;
+    if (fileId) { // pelo id guardado: não depende da listagem (que pode vir atrasada/vazia)
+      try { const f = await (await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=${F}`)).json(); if (f && !f.trashed) return this.lerMeta(f); }
+      catch (e) { if (!/ 404$/.test(e.message)) throw e; }
+      fileId = null;
+    }
     const q = encodeURIComponent(`name='${NOME}'`);
-    const r = await (await this.api(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,modifiedTime,appProperties)&orderBy=modifiedTime%20desc`)).json();
-    const f = r.files?.[0]; if (!f) { fileId = null; return null; }
-    fileId = f.id; return { id: f.id, savedAt: +(f.appProperties?.savedAt || 0) || Date.parse(f.modifiedTime) };
+    const r = await (await this.api(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(${F})&orderBy=modifiedTime%20desc`)).json();
+    const f = r.files?.[0]; if (!f) return null;
+    return this.lerMeta(f);
   }
+  lerMeta(f) { fileId = f.id; setPref('driveFileId', f.id); const p = f.appProperties || {}; return { id: f.id, savedAt: +(p.savedAt || 0) || Date.parse(f.modifiedTime), rev: +(p.rev || 0), dev: p.dev || '' }; }
   async baixar() { return (await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`)).text(); }
-  async enviar(texto, savedAt) {
-    const meta = { name: NOME, appProperties: { savedAt: String(savedAt) } }; if (!fileId) meta.parents = ['appDataFolder'];
+  async enviar(texto, savedAt, rev) {
+    const meta = { name: NOME, appProperties: { savedAt: String(savedAt), rev: String(rev), dev: this.dev || '' } }; if (!fileId) meta.parents = ['appDataFolder'];
     const b = '----zoo' + Math.random().toString(36).slice(2), corpo = `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${texto}\r\n--${b}--`;
     const url = fileId ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id` : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
     const r = await (await this.api(url, { method: fileId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body: corpo })).json();
-    fileId = r.id;
+    fileId = r.id; await setPref('driveFileId', fileId);
   }
   // ---------- ligar / desligar ----------
   async conectar() { // chamado por um toque do jogador (precisa de gesto para abrir a janela do Google)
@@ -75,48 +84,83 @@ export class DriveSync {
   fala(t) { this.status = t; if (this.g.ui?.modal && this.g.ui.modalName) this.g.ui.renderModal?.(); }
   agenda() { clearInterval(this.timer); this.timer = setInterval(() => { if (!document.hidden) this.sync('periodico'); }, 3 * 60e3); }
   // ---------- sincronia ----------
+  // "base" = a versão do Drive com que este aparelho combinou por último (chave da rev) e o conteúdo dela (hash).
+  // Drive mudou  = chave do Drive diferente da base (outro aparelho enviou).
+  // Local mudou  = conteúdo local diferente do hash da base (este aparelho jogou desde então).
   snap() { const st = this.g.currentSave(); return { texto: JSON.stringify(st), savedAt: st.savedAt }; }
-  conteudo(texto) { return hash(texto.replace(/"savedAt":\d+/, '').replace(/"lastRealTs":\d+/, '')); }
-  async marca(savedAt, texto) { this.lastHash = this.conteudo(texto); await setPref('driveBase', savedAt); this.lastSync = Date.now(); await setPref('driveLastSync', this.lastSync); }
-  // aberto: true quando é a abertura do jogo (decide pelo horário do último save local, antes de simular o tempo fora)
-  async sync(motivo, manual = false, localSavedAt = 0) {
-    if (this.busy || !this.ativo) return; this.busy = true;
+  conteudo(texto) { return contentHash(texto); }
+  // o jogo chama antes de simular o tempo fora (abrir/voltar): assim "jogou desde a última sincronia" não conta o tempo simulado
+  antesDeSimular(h) { this.preHash = h; }
+  guardaCopia(obj) { return backupRaw('drive-substituido', obj); }
+  async base() {
+    const b = await getPref('driveBase', 0), key = typeof b === 'string' ? b : b ? 's' + b : '';
+    return { key, hash: await getPref('driveBaseHash', null) };
+  }
+  async marca(m, texto) { await setPref('driveBase', chave(m)); await setPref('driveBaseHash', this.conteudo(texto)); this.lastSync = Date.now(); await setPref('driveLastSync', this.lastSync); }
+  async envia(loc, m) { const rev = (m?.rev || 0) + 1; await this.enviar(loc.texto, loc.savedAt, rev); await this.marca({ rev }, loc.texto); this.fala('Enviado ao Drive.'); }
+  async sync(motivo, manual = false) {
+    if (this.escolhendo && Date.now() - this.escolhendo > 5 * 60e3) this.escolhendo = 0; // pergunta fechada sem resposta
+    if (this.busy || this.escolhendo || !this.ativo) { if (manual && this.escolhendo) this.g.ui.toast('Responda primeiro a pergunta do Drive.', 'ruim'); return; }
+    this.busy = true;
+    const pre = (motivo === 'abrir' || motivo === 'volta') ? this.preHash : null; this.preHash = null;
     try {
-      const base = await getPref('driveBase', 0), m = await this.meta(), loc = this.snap();
-      if (!m) { await this.enviar(loc.texto, loc.savedAt); await this.marca(loc.savedAt, loc.texto); this.fala('Enviado ao Drive.'); return; }
-      if (m.savedAt === base) { // o Drive não mudou desde o último contato: só envia se houve alteração
-        if (this.lastHash === null || this.lastHash !== this.conteudo(loc.texto) || manual) { await this.enviar(loc.texto, loc.savedAt); await this.marca(loc.savedAt, loc.texto); this.fala('Enviado ao Drive.'); }
-        else this.fala('Em dia.');
+      if (!this.dev) { this.dev = await getPref('driveDev', '') || Math.random().toString(36).slice(2, 10); await setPref('driveDev', this.dev); }
+      const base = await this.base(), m = await this.meta(), loc = this.snap();
+      const hLocal = pre != null ? pre : this.conteudo(loc.texto);
+      const localMudou = base.hash == null || hLocal !== base.hash;
+      if (!m) {
+        // já combinou com um save no Drive e agora ele não aparece: não cria outro arquivo sozinho
+        if (base.key && !manual) { this.fala('O save não apareceu no Drive agora. Toque em "Sincronizar agora" para enviar de novo.'); return; }
+        await this.envia(loc, null); return;
+      }
+      if (chave(m) === base.key) { // o Drive não mudou desde o último contato: só envia se este aparelho mudou
+        if (localMudou || manual) await this.envia(loc, m); else this.fala('Em dia.');
         return;
       }
-      if (m.savedAt < base) { await this.enviar(loc.texto, loc.savedAt); await this.marca(loc.savedAt, loc.texto); this.fala('Enviado ao Drive.'); return; }
-      // o Drive tem uma versão mais nova (outro aparelho jogou)
-      const semMudar = motivo === 'abrir' && base && localSavedAt && localSavedAt <= base + 2 * 60e3;
-      if (semMudar) { await this.usarDrive('abrir'); return; }
+      // o Drive mudou (outro aparelho enviou)
+      if (!localMudou) { await this.usarDrive(motivo); return; }
+      if (motivo === 'periodico' || motivo === 'sair') { // no meio do jogo não abre pergunta sozinho
+        this.fala('Conflito: outro aparelho também jogou. Toque em "Sincronizar agora" para escolher.');
+        if (!this.avisouConflito) { this.avisouConflito = true; this.g.ui.toast('☁ Drive: outro aparelho também jogou. Escolha em Menu > Salvar.', 'ruim'); }
+        return;
+      }
       await this.conflito(m, loc);
     } catch (e) { this.fala('Sem sincronia agora: ' + e.message); if (manual) this.g.ui.toast('Drive: ' + e.message, 'ruim'); }
     finally { this.busy = false; }
   }
+  // baixa e aplica; a base marca exatamente a versão baixada (lê a identidade antes e depois do download)
   async usarDrive(motivo) {
-    const texto = await this.baixar(), m = await this.meta();
+    let m = await this.meta(), texto = null;
+    for (let i = 0; i < 3; i++) {
+      texto = await this.baixar(); const m2 = await this.meta();
+      if (m2 && chave(m2) === chave(m)) break;
+      if (i === 2) throw new Error('o save do Drive está mudando agora; tente de novo.');
+      m = m2;
+    }
     await this.g.aplicaRemoto(texto, motivo);
-    await this.marca(m.savedAt, texto); this.fala('Baixado do Drive.');
+    await this.marca(m, texto); this.avisouConflito = false; this.fala('Baixado do Drive.');
   }
   conflito(m, loc) {
     const f = t => new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    this.busy = false;
-    this.g.ui.askChoice(`O Drive tem um zoológico mais novo (${f(m.savedAt)}) que o deste aparelho (${f(loc.savedAt)}). Qual manter?`, [
-      ['☁ Usar o do Drive', async () => { this.busy = true; try { await this.g.backup('antes-drive'); await this.usarDrive('conflito'); } catch (e) { this.fala('Falhou: ' + e.message); } finally { this.busy = false; } }],
-      ['📱 Manter este aparelho', async () => { this.busy = true; try { const l = this.snap(); await this.enviar(l.texto, l.savedAt); await this.marca(l.savedAt, l.texto); this.fala('Enviado ao Drive.'); } catch (e) { this.fala('Falhou: ' + e.message); } finally { this.busy = false; } }],
-      ['Decidir depois', () => this.fala('Conflito: decida em Menu > Salvar.')],
+    this.escolhendo = Date.now();
+    const fim = () => { this.escolhendo = 0; };
+    this.g.ui.askChoice(`Este aparelho e outro aparelho jogaram desde a última sincronia. Drive: salvo em ${f(m.savedAt)} (horário do outro aparelho). Este aparelho: ${f(loc.savedAt)}. Qual manter? O que for substituído fica numa cópia de segurança.`, [
+      ['☁ Usar o do Drive', async () => { fim(); this.busy = true; try { await this.g.backup('antes-drive'); await this.usarDrive('conflito'); } catch (e) { this.fala('Falhou: ' + e.message); } finally { this.busy = false; } }],
+      ['📱 Manter este aparelho', async () => { fim(); this.busy = true; try {
+        const m2 = await this.meta(); // cópia do save do Drive antes de substituir
+        if (m2) { try { await this.guardaCopia(JSON.parse(await this.baixar())); } catch (e) { throw new Error('não consegui guardar a cópia do Drive (' + e.message + ')'); } }
+        await this.envia(this.snap(), m2); this.avisouConflito = false;
+      } catch (e) { this.fala('Falhou: ' + e.message); } finally { this.busy = false; } }],
+      ['Decidir depois', () => { fim(); this.fala('Conflito: decida em Menu > Salvar > Sincronizar agora.'); }],
     ]);
   }
   // ao abrir o jogo: tenta reconectar sem janela; se o Google exigir toque, avisa
-  async abrir(localSavedAt) {
+  async abrir(hashCarregado) {
     if (!this.ativo) return;
     try { await this.token(false); } catch (e) { this.fala('Toque em "Sincronizar agora" (Menu > Salvar) para reconectar.'); return; }
-    await this.sync('abrir', false, localSavedAt); this.agenda();
+    this.preHash = hashCarregado ?? null; await this.sync('abrir'); this.agenda();
   }
-  // ao esconder o app: envia o que mudou (melhor esforço)
-  async aoSair() { if (!this.ativo || !tok || this.busy || Date.now() >= tokExp) return; this.busy = true; try { const m = await this.meta(), base = await getPref('driveBase', 0); if (!m || m.savedAt === base) { const l = this.snap(); if (this.lastHash !== this.conteudo(l.texto)) { await this.enviar(l.texto, l.savedAt); await this.marca(l.savedAt, l.texto); } } } catch (e) {} finally { this.busy = false; } }
+  // ao esconder o app: envia o que mudou (melhor esforço; nunca pergunta)
+  async aoSair() { if (!this.ativo || !tok || Date.now() >= tokExp) return; return this.sync('sair'); }
 }
+const chave = m => m.rev ? 'r' + m.rev : 's' + m.savedAt;

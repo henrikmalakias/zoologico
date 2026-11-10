@@ -95,10 +95,10 @@ export class World {
   }
   setQuality(q, s) { if (q === this.q) return; this.dispose(); this.build(q); if (s) this.update(s, 0); }
   dispose() {
-    this.renderer.dispose(); this.renderer.domElement.remove(); this.kit.lamp?.dispose(); this.kit.dispose(); this.ttex.dispose();
+    this.renderer.forceContextLoss?.(); this.renderer.dispose(); this.renderer.domElement.remove(); // libera a memória da GPU do contexto antigo this.kit.lamp?.dispose(); this.kit.dispose(); this.ttex.dispose();
     this.usky?.dispose(); this.grass?.dispose(); this.tarr?.cor.dispose(); this.tarr?.nor.dispose(); this.tdata?.dispose(); this.waterMat.normalMap?.dispose(); this.lakeMat?.dispose(); this.lakeMat = null;
     this.usky = this.grass = this.tarr = this.tdata = null;
-    this.scene.traverse(o => { if (o.isInstancedMesh || o === this.ground) o.geometry.dispose(); });
+    this.scene.traverse(o => { if (o.isInstancedMesh || o === this.ground || o.userData?.merged) o.geometry.dispose(); });
   }
   pixelRatio() { return this.hi ? Math.min(devicePixelRatio, this.eco ? 1.5 : 2) : Math.min(devicePixelRatio, 1); }
   setEco(on) { if (!!on === !!this.eco) return; this.eco = !!on; this.renderer.setPixelRatio(this.pixelRatio() * (this.pxScale ?? 1)); this.resize(); }
@@ -192,7 +192,7 @@ export class World {
   // ---------- habitats ----------
   habKey(h, s) {
     let hs = 0, pv = 0; for (const e of edges(h)) { if (s.height) hs += (heightAt(s, e.ax, e.az) + heightAt(s, e.mx, e.mz) * 0.5) * ((e.c % 97) + 1); if (h.fence === 'muro' && isPath(s, e.out[0], e.out[1])) pv += (e.c % 13) + 1; }
-    return [h.cells.length, h.cells[0], h.cells[h.cells.length - 1], h.x, h.y, h.w, h.h, h.fence, h.gateOpen, h.gateOut.join(), h.feed.join(), h.water.join(), Math.round(h.fenceHp * 5), Math.round(h.food * 4), Math.round(h.waterLvl * 4), (h.breaches || []).map(b => b.side + b.k).join(), hs.toFixed(1), pv].join('|');
+    return [h.cells.length, h.cells[0], h.cells[h.cells.length - 1], h.x, h.y, h.w, h.h, h.fence, h.gateOpen, h.gateOut.join(), h.feed.join(), h.water.join(), Math.round(h.fenceHp * 5), (h.breaches || []).map(b => b.side + b.k).join(), hs.toFixed(1), pv].join('|');
   }
   buildHabitat(s, h) {
     const k = this.kit, g = new THREE.Group(), C = content(s), F = C.fences[h.fence] || {}, Y = (x, z) => heightAt(s, x, z);
@@ -273,12 +273,12 @@ export class World {
     if (isTela) { // rede por cima (viveiro), só sobre os blocos do habitat
       let top = -9; for (const e of E) top = Math.max(top, Y(e.ax, e.az));
       const net = k.tex('rede', () => { const c = document.createElement('canvas'); c.width = c.height = 64; const q = c.getContext('2d'); q.strokeStyle = 'rgba(40,48,44,0.9)'; q.lineWidth = 2; for (let i = 0; i <= 64; i += 8) { q.beginPath(); q.moveTo(i, 0); q.lineTo(i, 64); q.stroke(); q.beginPath(); q.moveTo(0, i); q.lineTo(64, i); q.stroke(); } return c; });
-      const nm = new THREE.MeshStandardMaterial({ map: net, transparent: true, side: THREE.DoubleSide, depthWrite: false, alphaTest: 0.05 });
+      const nm = k._netMat || (k._netMat = new THREE.MeshStandardMaterial({ map: net, transparent: true, side: THREE.DoubleSide, depthWrite: false, alphaTest: 0.05 })); // um material só para todos os viveiros
       const pos = [], uv = [], yy = top + H;
       for (const i of h.cells) { const cx = (i % MAP) * TILE - HALF, cz = ((i / MAP) | 0) * TILE - HALF;
         for (const [a, b] of [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]]) { pos.push(cx + a * TILE, yy, cz + b * TILE); uv.push((cx + a * TILE) / TILE, (cz + b * TILE) / TILE); } }
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.computeVertexNormals();
-      g.add(new THREE.Mesh(geo, nm));
+      const nmesh = new THREE.Mesh(geo, nm); nmesh.userData.merged = true; g.add(nmesh); // geometria própria: liberada ao refazer o habitat
     }
     if (isFosso) { // ponte sobre o fosso e portão na beira da ilha
       const bt = bridgeTiles(h), a0 = tileToWorld(h.gateOut[0], h.gateOut[1]), a1 = tileToWorld(h.gateIn[0], h.gateIn[1]);
@@ -292,11 +292,18 @@ export class World {
     // comedouro e bebedouro
     const fp = tileToWorld(h.feed[0], h.feed[1]), wp = tileToWorld(h.water[0], h.water[1]), fy = Y(fp.x, fp.z), wy = Y(wp.x, wp.z);
     add(k.box(1.4, 0.4, 0.6), k.mat('#7a5230'), fp.x, fy + 0.2, fp.z);
-    if (h.food > 0.05) add(k.box(1.2, 0.12, 0.45), k.mat('#9bb34a'), fp.x, fy + 0.32 + 0.06 * h.food, fp.z);
+    // comida e água mudam o tempo todo: ficam fora da junção e são só movidas (sem refazer o habitat)
+    const fd = add(k.box(1.2, 0.12, 0.45), k.mat('#9bb34a'), fp.x, fy + 0.32, fp.z);
     add(k.cyl(0.6, 0.65, 0.4), k.mat('#9a948a'), wp.x, wy + 0.2, wp.z);
-    if (h.waterLvl > 0.05) { const wv = k.mesh(k.cyl(0.52, 0.52, 0.05), this.waterMat, false); wv.position.set(wp.x, wy + 0.2 + 0.18 * h.waterLvl, wp.z); g.add(wv); }
-    g.userData = { kind: 'hab', id: h.id };
-    return mergeStatic(g);
+    const wv = k.mesh(k.cyl(0.52, 0.52, 0.05), this.waterMat, false); wv.position.set(wp.x, wy + 0.2, wp.z); g.add(wv);
+    g.userData = { kind: 'hab', id: h.id, lv: { fd, wv, fy, wy, f: -1, w: -1 } };
+    mergeStatic(g, new Set([fd, wv])); this.habLevels(g, h); return g;
+  }
+  habLevels(g, h) {
+    const L = g.userData.lv; if (!L) return;
+    const f = Math.round(h.food * 20), w = Math.round(h.waterLvl * 20); if (f === L.f && w === L.w) return;
+    L.f = f; L.w = w; L.fd.visible = h.food > 0.05; L.fd.position.y = L.fy + 0.32 + 0.06 * h.food;
+    L.wv.visible = h.waterLvl > 0.05; L.wv.position.y = L.wy + 0.2 + 0.18 * h.waterLvl; this.dirty = true;
   }
 
   // ---------- sincronização ----------
@@ -329,7 +336,7 @@ export class World {
     const by = {}; for (const o of list) (by[o.type] ||= []).push(o);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
     for (const type in by) {
-      const arr = by[type], parts = (this._plantParts[type] ||= groupParts(buildPlant(this.kit, type)));
+      const arr = by[type], parts = (this._plantParts[type] ||= groupParts(buildPlant(this.kit, C.plants[type].parecido || type, C.plants[type].cor)));
       for (const { geo, mat } of parts) {
         const im = new THREE.InstancedMesh(geo, mat, arr.length);
         arr.forEach((o, i) => { const p = tileToWorld(o.tx, o.ty); pos.set(p.x, heightAt(s, p.x, p.z), p.z); q.setFromAxisAngle(up, o.rot || 0); sc.setScalar(o.sc || 1); m4.compose(pos, q, sc); im.setMatrixAt(i, m4); });
@@ -346,18 +353,19 @@ export class World {
         seen.add(e.id); const k = key(e), cur = map.get(e.id);
         if (cur && cur.k === k) continue;
         if (cur) { layer.remove(cur.o); freeMerged(cur.o); }
-        const o = make(e); if (!o) continue; layer.add(o); map.set(e.id, { o, k }); this.dirty = true;
+        const o = make(e); if (!o) { map.delete(e.id); continue; } layer.add(o); map.set(e.id, { o, k }); this.dirty = true;
       }
       for (const [id, v] of map) if (!seen.has(id)) { layer.remove(v.o); freeMerged(v.o); map.delete(id); }
     };
     syncSet(this.maps.habs, this.layers.habs, s.habitats, h => this.habKey(h, s), h => this.buildHabitat(s, h));
+    for (const h of s.habitats) { const e = this.maps.habs.get(h.id); if (e) this.habLevels(e.o, h); }
     syncSet(this.maps.facs, this.layers.facs, s.facilities.filter(f => C.facilities[f.type]), f => f.type + f.tx + ',' + f.ty + ':' + (f.dir ?? '-') + ':' + heightAt(s, ...Object.values(tileToWorld(f.tx, f.ty))).toFixed(1), f => {
-      const D = C.facilities[f.type], o = buildFacility(this.kit, f.type, D);
+      const D = C.facilities[f.type], o = buildFacility(this.kit, D.parecido || f.type, D);
       const p = tileToWorld(f.tx, f.ty); o.position.set(p.x - TILE / 2 + D.w, heightAt(s, p.x - TILE / 2 + D.w, p.z - TILE / 2 + D.h), p.z - TILE / 2 + D.h);
       o.rotation.y = f.type === 'entrada' || f.dir == null ? 0 : DIR_ROT[f.dir]; o.userData = { kind: 'fac', id: f.id }; return mergeStatic(o); });
     this.syncFurn(s);
     if (!this.ultra) this.syncPlants(s); else syncSet(this.maps.objs, this.layers.objs, s.objects.filter(o => C.plants[o.type]), o => o.type + o.tx + ',' + o.ty + ':' + heightAt(s, ...Object.values(tileToWorld(o.tx, o.ty))).toFixed(1), o => {
-      const m = buildPlant(this.kit, o.type), p = tileToWorld(o.tx, o.ty); m.position.set(p.x, heightAt(s, p.x, p.z), p.z); m.rotation.y = o.rot || 0; m.scale.setScalar(o.sc || 1); return m; });
+      const m = buildPlant(this.kit, C.plants[o.type].parecido || o.type, C.plants[o.type].cor), p = tileToWorld(o.tx, o.ty); m.position.set(p.x, heightAt(s, p.x, p.z), p.z); m.rotation.y = o.rot || 0; m.scale.setScalar(o.sc || 1); return m; });
   }
   update(s, dt) {
     this.t += dt; this._s = s;
@@ -369,18 +377,18 @@ export class World {
     const L = this.hi ? library() : null, seen = new Set();
     for (const a of s.animals) {
       if (!C.species[a.sp]) continue; seen.add(a.id);
-      const vkey = a.sp === 'leao' || a.sp === 'gorila' ? a.sp + ':' + a.sex : a.sp + ':F';
-      let tpl = null; if (L) { L.request(vkey); tpl = L.get(vkey); if (tpl && this.ultra && !tpl.userData.ultra) { tpl.userData.ultra = true; tpl.userData.baseMat = tpl.children[0].material; addFur(tpl, a.sp); addSkinDetail(tpl, a.sp); tpl.userData.skinMat = tpl.children[0].material; tpl.userData.farMat = gradeMaterial(tpl.userData.baseMat.clone()); tpl.children[0].material = tpl.userData.baseMat; } }
+      const vkey = a.sp === 'leao' || a.sp === 'gorila' || C.species[a.sp].dimorfismo ? a.sp + ':' + a.sex : a.sp + ':F';
+      let tpl = null; if (L) { L.request(vkey); tpl = L.get(vkey); if (tpl && this.ultra && !tpl.userData.ultra) { tpl.userData.ultra = true; tpl.userData.baseMat = tpl.children[0].material; addFur(tpl, a.sp, C.species[a.sp]); addSkinDetail(tpl, a.sp, C.species[a.sp]); tpl.userData.skinMat = tpl.children[0].material; tpl.userData.farMat = gradeMaterial(tpl.userData.baseMat.clone()); tpl.children[0].material = tpl.userData.baseMat; } }
       const kind = tpl ? 'sdf' : 'proc';
       let e = this.maps.animals.get(a.id);
       if (e && e.kind !== kind) { this.layers.animals.remove(e.o); freeMerged(e.o); e = null; }
-      if (!e) { const o = tpl ? sdfInstance(tpl) : mergeRig(buildAnimal(this.kit, a.sp, a.sex === 'M')); o.userData.kind = 'animal'; o.userData.id = a.id; o.position.set(a.x, 0, a.z); this.layers.animals.add(o); e = { o, px: a.x, pz: a.z, kind }; this.maps.animals.set(a.id, e); }
+      if (!e) { const o = tpl ? sdfInstance(tpl) : mergeRig(buildAnimal(this.kit, a.sp, a.sex === 'M', C.species[a.sp])); o.userData.kind = 'animal'; o.userData.id = a.id; o.position.set(a.x, 0, a.z); this.layers.animals.add(o); e = { o, px: a.x, pz: a.z, kind }; this.maps.animals.set(a.id, e); }
       const o = e.o, climbing = a.st === 'climb_up' || a.st === 'climb_down', moving = (Math.hypot(a.x - e.px, a.z - e.pz) > 0.002 || climbing) && dt > 0 && !a.carriedBy;
       e.px = a.x; e.pz = a.z;
       const S = C.species[a.sp]; let sc = a.age < S.vida.adulto ? 0.5 + 0.5 * (a.age / S.vida.adulto) : 1;
       let x = a.x, z = a.z, rot = a.rot || 0, y = walkY(s, x, z) + (a.jy || 0) + (a.cy || 0);
       // na água funda o corpo boia na linha d'água (hipopótamo: só olhos e narinas de fora)
-      if (!a.cy && s.height) { const fl = WATER_Y - (DRAFT[a.sp] ?? 1) * sc; if (fl > y && a._nada) y = fl; }
+      if (!a.cy && s.height) { const fl = WATER_Y - (C.species[a.sp].calado ?? DRAFT[a.sp] ?? 1) * sc; if (fl > y && a._nada) y = fl; }
       if (a.carriedBy) { const v = this.maps.staff.get(a.carriedBy)?.veh; if (v) { const r = v.rotation.y; x = v.position.x - Math.sin(r) * (-v.userData.bedZ); z = v.position.z - Math.cos(r) * (-v.userData.bedZ); y = v.position.y + v.userData.bedY; rot = r + Math.PI / 2; } }
       // subindo/descendo o tronco: corpo na vertical, de frente para a árvore
       e.pitch = (e.pitch || 0) + ((climbing ? -1.3 : 0) - (e.pitch || 0)) * Math.min(1, dt * 6);
@@ -477,7 +485,7 @@ export class World {
   }
   fxSparks(id, person, dt) {
     let p = this.fx.sparks.get(id);
-    if (!person) { if (p) { this.scene.remove(p.pts); p.pts.geometry.dispose(); this.fx.sparks.delete(id); } return; }
+    if (!person) { if (p) { this.scene.remove(p.pts); p.pts.geometry.dispose(); p.pts.material.dispose(); this.fx.sparks.delete(id); } return; }
     if (!p) {
       const N = 40, g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
       const pts = new THREE.Points(g, new THREE.PointsMaterial({ color: '#ffb347', size: 0.09, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -500,9 +508,9 @@ export class World {
   }
   fxDart(id, e, a, dt) {
     let d = this.fx.darts.get(id);
-    if (!e || !a) { if (d) { this.scene.remove(d); this.fx.darts.delete(id); } return; }
+    if (!e || !a) { if (d) { this.scene.remove(d); d.geometry.dispose(); d.material.dispose(); this.fx.darts.delete(id); } return; }
     e.dart += dt; const T = 0.5;
-    if (e.dart > T + 0.2) { if (d) { this.scene.remove(d); this.fx.darts.delete(id); } return; }
+    if (e.dart > T + 0.2) { if (d) { this.scene.remove(d); d.geometry.dispose(); d.material.dispose(); this.fx.darts.delete(id); } return; }
     if (!d) { d = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.25, 5).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ff3d71' })); this.scene.add(d); this.fx.darts.set(id, d); }
     const f = Math.min(1, e.dart / T), sx = e.o.position.x, sz = e.o.position.z;
     const by = e.o.position.y; d.position.set(sx + (a.x - sx) * f, by + 1.4 - 0.5 * f, sz + (a.z - sz) * f); d.lookAt(a.x, by + 0.9, a.z);

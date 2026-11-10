@@ -1,6 +1,6 @@
 import { content } from '../content/registry.js';
 import { clamp, rnd, uid, log } from './util.js';
-import { MAP, idx, inMap, inArea, rebuildOcc, isPath, isPathT, accessTile, orientFacility, CW, ci, tileCorners, tileSlope, WATER_Y, worldToTile, fixShore } from './grid.js';
+import { MAP, idx, inMap, inArea, rebuildOcc, isPath, isPathT, accessTile, orientFacility, CW, ci, tileCorners, tileSlope, WATER_Y, worldToTile, fixShore, refreshAfterPaint } from './grid.js';
 import { removeFurnAt, addFurnNear } from './furn.js';
 import { newAnimal, habById } from './animals.js';
 import { spend, earn } from './staff.js';
@@ -231,7 +231,7 @@ export function paintTerrain(s, tx, ty, t) {
   if (hid) { const h = habById(s, hid); if (t === 'w' && ((tx === h.gateIn[0] && ty === h.gateIn[1]) || (tx === h.feed[0] && ty === h.feed[1]))) return R(false, 'Deixe o portão e o comedouro livres.'); }
   for (const h of s.habitats) if (t === 'w' && tx === h.gateOut[0] && ty === h.gateOut[1]) return R(false, 'Deixe a frente do portão livre.');
   const cost = paintCost(s, t); if (s.money < cost) return R(false, 'Dinheiro insuficiente.');
-  if (t === 'w' || isP) s.objects = s.objects.filter(o => !(o.tx === tx && o.ty === ty));
+  const nObj = s.objects.length; if (t === 'w' || isP) s.objects = s.objects.filter(o => !(o.tx === tx && o.ty === ty));
   if (!isP && s.litter[i]) delete s.litter[i];
   if (!isP) removeFurnAt(s, tx, ty);
   const was = s.terrain[i];
@@ -244,7 +244,7 @@ export function paintTerrain(s, tx, ty, t) {
     }
     s._hver = (s._hver || 0) + 1;
   }
-  rebuildOcc(s);
+  refreshAfterPaint(s, i, was, s.objects.length !== nObj);
   reorientAround(s, tx, ty);
   return R(true, '', { changed: true });
 }

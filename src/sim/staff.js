@@ -1,4 +1,4 @@
-import { content } from '../content/registry.js';
+import { content, papel } from '../content/registry.js';
 import { centerCell, perimeter, routeInside } from './habshape.js';
 import { clamp, rnd, uid, log, dist, hourOf } from './util.js';
 import { MAP, tileToWorld, worldToTile, astar, staffPassable, accessTile, idx, isPathT } from './grid.js';
@@ -58,7 +58,7 @@ export function startTask(s, st, type, target, alertId = null) {
   if (type === 'recapture') { const a = s.animals.find(a => a.id === target); const S = a && content(s).species[a.sp]; if (S?.tracos.perigoso) work = 40; }
   const d = dist(st, dest);
   st.task = { type, target, alertId, phase: 'travel', dest, work, work0: work, travelLeft: (d * 1.25) / 3.5 + (st.inHab ? 2 : 0), route: null };
-  if (type === 'recapture' || type === 'transfer') { const a = s.animals.find(a => a.id === target); st.task.vehKind = a && ['elefante', 'girafa', 'hipopotamo', 'rinoceronte'].includes(a.sp) ? 'caminhao' : 'jipe'; if (d > 12) { st.veh = st.task.vehKind; st.task.travelLeft = (d * 1.25) / 10; } }
+  if (type === 'recapture' || type === 'transfer') { const a = s.animals.find(a => a.id === target); const SA = a && content(s).species[a.sp]; st.task.vehKind = a && (['elefante', 'girafa', 'hipopotamo', 'rinoceronte'].includes(a.sp) || SA?.caminhao || (SA?.raio ?? 0) >= 0.9) ? 'caminhao' : 'jipe'; if (d > 12) { st.veh = st.task.vehKind; st.task.travelLeft = (d * 1.25) / 10; } }
   return true;
 }
 function buildRoute(s, st, dest) {
@@ -68,6 +68,7 @@ function buildRoute(s, st, dest) {
   const goal = H ? { tx: H.gateOut[0], ty: H.gateOut[1] } : worldToTile(dest.x, dest.z);
   const path = astar(s, cur.tx, cur.ty, goal.tx, goal.ty, (x, y) => staffPassable(s, x, y), (x, y) => (isPathT(s.terrain[idx(x, y)]) ? 1 : 1.4));
   if (path) for (const [x, y] of path) pts.push(tileToWorld(x, y));
+  else if (staffPassable(s, cur.tx, cur.ty) && staffPassable(s, goal.tx, goal.ty)) return null; // destino isolado (sem caminho): não atravessa cercas
   if (H) { const gi = tileToWorld(H.gateIn[0], H.gateIn[1]); pts.push(gi); if (H.fence !== 'fosso') { pts.push(...routeInside(H, gi, dest, 0.2)); return pts; } }
   pts.push({ x: dest.x, z: dest.z });
   return pts;
@@ -84,6 +85,7 @@ export function dispatch(s, alertId, staffId, by = 'você') {
   const a = s.alerts.find(a => a.id === alertId), st = s.staff.find(x => x.id === staffId);
   if (!a || !st) return false;
   const type = { doenca: 'treat', fome: 'feed', cerca: 'repair', brecha: 'repair', portao: 'close', fuga: 'recapture' }[a.type];
+  if (!type || !destFor(s, type, a.target)) return false; // sem destino: não cancela o que a pessoa já fazia
   const prev = s.staff.find(x => x.id === a.assigned); if (prev && prev !== st) cancelTask(s, prev);
   cancelTask(s, st);
   if (!startTask(s, st, type, a.target, a.id)) return false;
@@ -129,7 +131,7 @@ function pickRoutine(s, st) {
   if (st.role === 'veterinario') { const day = Math.floor(s.clock.min / 1440);
     for (const h of habs) if (h.checkupDay !== day && s.animals.some(a => a.hab === h.id && a.health < 0.97)) cands.push(['checkup', h.id, 0.5 / (1 + dist(st, tileToWorld(h.gateOut[0], h.gateOut[1])) / 40)]); }
   if (st.role === 'faxineiro') {
-    for (const f of s.facilities) if (f.type === 'banheiro' && f.dirty > 0.5) cands.push(['wc', f.id, f.dirty * 1.2 / (1 + dist(st, tileToWorld(f.tx, f.ty)) / 40)]);
+    for (const f of s.facilities) if (papel(content(s), f.type) === 'banheiro' && f.dirty > 0.5) cands.push(['wc', f.id, f.dirty * 1.2 / (1 + dist(st, tileToWorld(f.tx, f.ty)) / 40)]);
     let best = null, bd = 1e9;
     for (const k of Object.keys(s.litter)) { const i = +k, p = tileToWorld(i % MAP, (i / MAP) | 0), d = dist(st, p); if (d < bd && !reserved(s, 'litter', i, st)) { bd = d; best = i; } }
     if (best !== null) cands.push(['litter', best, 0.6 / (1 + bd / 40)]);
@@ -201,7 +203,7 @@ export function updateStaff(s, gameMin, ctx) {
         t.travelLeft -= gameMin;
         if (t.travelLeft <= 0) { st.x = t.dest.x; st.z = t.dest.z; st.inHab = t.dest.hab; t.route = null; arrive(s, st, t); }
       } else {
-        if (!t.route) t.route = buildRoute(s, st, t.dest);
+        if (!t.route) { t.route = buildRoute(s, st, t.dest); if (!t.route) { log(s, `${st.name} não encontrou caminho até o destino e voltou ao trabalho normal. Ligue o local a um caminho.`, 'ruim'); cancelTask(s, st); continue; } }
         if ((t.type === 'recapture' || t.type === 'transfer') && t.phase === 'travel' && t.route.length) t.route[t.route.length - 1] = { x: t.dest.x, z: t.dest.z };
         const sp = (st.veh ? 7 : 1.5 * (0.8 + 0.1 * st.attrs.rapidez) * (t.alertId ? 1.4 : 1)) * ctx.moveMul;
         let left = sp * ctx.realDt;

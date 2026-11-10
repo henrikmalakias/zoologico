@@ -235,8 +235,8 @@ export function gradeMaterial(m) {
 }
 export const FUR = { leao: { len: 0.022, den: 260 }, macaco: { len: 0.016, den: 320 }, gorila: { len: 0.026, den: 240 }, hipopotamo: null };
 export const SKIN = { elefante: 0.3, rinoceronte: 0.28, hipopotamo: 0.35, tartaruga: 0.3 };
-export function addFur(group, sp) {
-  const F = FUR[sp]; const base = group.children[0]; if (!F || !base?.isSkinnedMesh) return;
+export function addFur(group, sp, S) {
+  const F = S && 'pelo' in S ? S.pelo : FUR[sp]; const base = group.children[0]; if (!F || !base?.isSkinnedMesh) return;
   const L = 5, src = base.geometry, n = src.attributes.position.count, g = new THREE.BufferGeometry();
   for (const name of ['position', 'normal', 'color', 'skinIndex', 'skinWeight']) {
     const a = src.attributes[name], arr = new a.array.constructor(a.array.length * L);
@@ -263,8 +263,8 @@ export function addFur(group, sp) {
   fur.bind(base.skeleton, base.bindMatrix); fur.userData.fur = true; group.add(fur);
 }
 // relevo fino na pele (rugas) sem textura: ruído 3D na posição do modelo
-export function addSkinDetail(group, sp) {
-  const amt = SKIN[sp]; const base = group.children[0]; if (!amt || !base) return;
+export function addSkinDetail(group, sp, S) {
+  const amt = S?.pele ?? SKIN[sp]; const base = group.children[0]; if (!amt || !base) return;
   const mat = base.material.clone(); base.material = mat;
   mat.onBeforeCompile = s2 => {
     s2.uniforms.uAmt = { value: amt };

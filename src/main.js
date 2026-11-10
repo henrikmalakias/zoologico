@@ -2,7 +2,7 @@ import './ui/style.css';
 import { APP_VERSION, AVAILABLE_PACKS } from './content/registry.js';
 import { newGame, step, catchUp, advanceTo, hiringTick, SPEEDS, timeFactor, seedCrowd } from './sim/core.js';
 import { tileToWorld, accessTile } from './sim/grid.js';
-import { saveGame, loadGame, backup, exportFile, importFile, getPref, setPref, serialize, deserialize } from './save/save.js';
+import { saveGame, loadGame, backup, exportFile, importFile, getPref, setPref, serialize, deserialize, contentHash } from './save/save.js';
 import { World } from './render/world.js';
 import { Controls } from './ui/controls.js';
 import { UI } from './ui/ui.js';
@@ -21,7 +21,7 @@ class Game {
     const app = document.getElementById('app');
     let s = null;
     try { s = await loadGame(); } catch (e) { console.warn(e); }
-    const localSavedAt = s?.savedAt || 0; let report = null;
+    const hashCarregado = s?._hashCarregado ?? null; let report = null;
     if (s) report = catchUp(s, Date.now()); else s = newGame(Date.now());
     this.state = s; this.live = false;
     this.world = new World(app, s.settings.quality); this.world.setEco(s.settings.economia !== false);
@@ -41,7 +41,7 @@ class Game {
     this.registerSW(); setTimeout(() => this.checkUpdate(false), 2500); setInterval(() => { if (!document.hidden) this.checkUpdate(false); }, 20 * 60e3);
     document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - (this.lastUpdCheck || 0) > 10 * 60e3) this.checkUpdate(false); });
     document.getElementById('boot')?.remove();
-    this.drive = await new DriveSync(this).init(); this.drive.abrir(localSavedAt);
+    this.drive = await new DriveSync(this).init(); this.drive.abrir(hashCarregado);
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.drive.aoSair(); else if (this.drive.ativo) this.drive.sync('volta'); });
     addEventListener('pagehide', () => this.drive.aoSair());
   }
@@ -101,7 +101,8 @@ class Game {
     this.world.cache.hver = -1; this.ui.closeSheet(); this.ui.hideConfirm(); if (!this.ui.el.drawer.classList.contains('hidden')) this.ui.renderDrawer();
     sound.undo(); this.ui.toast(`Desfeito: ${u.label}.`, 'bom');
   }
-  async save() { try { this.state.clock.lastRealTs = Date.now(); this.saveWhere = await saveGame(this.state); this.lastSave = Date.now(); } catch (e) { console.warn('save', e); } }
+  async save() { try { if (!document.hidden) this.state.clock.lastRealTs = Date.now(); // escondido: mantém a hora em que saiu (o tempo fora é simulado ao voltar)
+ this.saveWhere = await saveGame(this.state); this.lastSave = Date.now(); } catch (e) { console.warn('save', e); } }
   // mantém a tela acesa enquanto o jogo está aberto (Screen Wake Lock); some sozinho ao sair do app
   async wakeSync() {
     try {
@@ -113,13 +114,14 @@ class Game {
     } catch (e) { this.wake = null; }
   }
   onVisibility() {
-    if (document.hidden) { this.save(); this.hiddenAt = Date.now(); this.wake = null; return; }
+    if (document.hidden) { this.state.clock.lastRealTs = Date.now(); this.save(); this.hiddenAt = Date.now(); this.wake = null; return; }
     this.wakeSync();
+    if (this.drive?.ativo) this.drive.antesDeSimular(contentHash(JSON.stringify(serialize(this.state))));
     const rep = catchUp(this.state, Date.now()); this.last = performance.now();
     if (rep && rep.minutos > 10) this.ui.showReport(rep, '📰 Enquanto você esteve fora');
   }
   // ---------- Google Drive ----------
-  currentSave() { this.state.clock.lastRealTs = Date.now(); return serialize(this.state); }
+  currentSave() { if (!document.hidden) this.state.clock.lastRealTs = Date.now(); return serialize(this.state); }
   backup(label) { return backup(this.state, label); }
   syncDrive() { return this.drive.sync('manual', true); }
   // aplica o save vindo do Drive: mantém os ajustes do aparelho e simula o tempo que passou

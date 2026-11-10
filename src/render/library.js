@@ -32,7 +32,7 @@ export class ModelLibrary {
   }
   finish(key, m) {
     const id = key.split(':')[0];
-    this.tpl.set(key, makeTemplate(m, { rough: id === 'elefante' || id === 'rinoceronte' || id === 'hipopotamo' ? 0.95 : id === 'tartaruga' ? 0.7 : id === 'humano' ? 0.8 : 0.86 }));
+    this.tpl.set(key, makeTemplate(m, { rough: spec(id)?.aspereza ?? (id === 'elefante' || id === 'rinoceronte' || id === 'hipopotamo' ? 0.95 : id === 'tartaruga' ? 0.7 : id === 'humano' ? 0.8 : 0.86) }));
     this.pending.delete(key); this.onReady?.(key);
   }
   get loading() { return this.pending.size; }

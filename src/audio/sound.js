@@ -4,7 +4,7 @@ let ctx = null, master = null, amb = null, noiseBuf = null;
 const S = { on: true, vol: 0.7, ambiente: true };
 
 function ensure() {
-  if (ctx) { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); return !!ctx; }
+  if (ctx) { if (ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {}); return !!ctx; } // iPad: 'interrupted' depois de ligação/bloqueio
   try {
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
     ctx = new AC(); master = ctx.createGain(); master.gain.value = S.on ? S.vol : 0; master.connect(ctx.destination);
@@ -14,6 +14,7 @@ function ensure() {
   } catch (e) { ctx = null; return false; }
 }
 export function unlock() { ensure(); }
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!document.hidden && ctx) ensure(); });
 export function configure({ som, volume, ambiente }) {
   S.on = som ?? S.on; S.vol = volume ?? S.vol; S.ambiente = ambiente ?? S.ambiente;
   if (master) master.gain.setTargetAtTime(S.on ? S.vol : 0, ctx.currentTime, 0.05);
@@ -125,13 +126,18 @@ function renderBuf(dur, fn) {
   try { const lim = oc.createDynamicsCompressor(); lim.connect(oc.destination); fn(lim); } finally { X = null; }
   return oc.startRendering().catch(() => null);
 }
+// vozes de espécies de DLC: parâmetros "voz" do pacote, gerados pela mesma função voz()
+const VOZ_DLC = {};
+export function vozDLC(sp, p) { if (p && !VOZ[sp]) VOZ_DLC[sp] = p; }
+const fnVoz = sp => VOZ[sp] || (VOZ_DLC[sp] && (o => voz({ ...VOZ_DLC[sp], out: o })));
 function garanteVoz(sp) {
-  if (vozBuf[sp] || vozPend[sp] || !VOZ[sp] || !ctx) return;
-  vozPend[sp] = renderBuf(DURA[sp] || 2, o => VOZ[sp](o)).then(b => { vozBuf[sp] = b; });
+  const f = fnVoz(sp); if (vozBuf[sp] || vozPend[sp] || !f || !ctx) return;
+  vozPend[sp] = renderBuf(DURA[sp] || VOZ_DLC[sp]?.dur || 2, f).then(b => { vozBuf[sp] = b; });
 }
 // x: -1 (esquerda) .. 1 (direita); dist: metros até a câmera
-export function animal(sp, x, dist) {
-  if (!ready() || !VOZ[sp]) return;
+export function animal(sp, x, dist, S) {
+  if (S?.voz) vozDLC(sp, S.voz);
+  if (!ready() || !fnVoz(sp)) return;
   const vol = Math.min(1, 25 / Math.max(10, dist)) ** 1.3; if (vol < 0.06) return;
   const b = vozBuf[sp]; if (!b) { garanteVoz(sp); return; } // na 1ª vez gera e toca da próxima
   const n = ctx.createBufferSource(); n.buffer = b; n.playbackRate.value = 0.93 + Math.random() * 0.14;

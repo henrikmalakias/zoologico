@@ -1,5 +1,5 @@
-import { content, APP_VERSION, DLC_CATALOG, CHANGELOG } from '../content/registry.js';
-import { TRACOS_EQUIPE, TRACOS_GERENTE, ZOOPEDIA } from '../content/base.js';
+import { content, APP_VERSION, DLC_CATALOG, CHANGELOG, ZOOPEDIA } from '../content/registry.js';
+import { TRACOS_EQUIPE, TRACOS_GERENTE } from '../content/base.js';
 import * as sound from '../audio/sound.js';
 import { Tutorial } from './tutorial.js';
 import { money, fmtClock, clamp, hourOf } from '../sim/util.js';
@@ -89,7 +89,8 @@ export class UI {
   }
   nextAlert() {
     const s = this.s, list = [...s.alerts].sort((a, b) => (ALERT_INFO[b.type].sev - ALERT_INFO[a.type].sev) || (a.created - b.created)); if (!list.length) return;
-    this.alertIdx = ((this.alertIdx ?? -1) + 1) % list.length; const a = list[this.alertIdx], p = alertPos(s, a);
+    const free = list.filter(x => !x.assigned), pool = free.length ? free : list; // o botão conta os livres: percorre os livres (mais grave primeiro)
+    const i = pool.findIndex(x => x.id === this.alertId); const a = pool[(i + 1) % pool.length], p = alertPos(s, a); this.alertId = a.id;
     if (p && !this.g.live) this.g.controls.centerOn(p.x, p.z, Math.min(this.g.controls.cam.dist, 30));
     this.openAlert(a.id);
   }
@@ -166,7 +167,7 @@ export class UI {
       h('h3', { style: 'margin-top:8px' }, 'Quem enviar?'),
       el.length ? el.map(({ st, d, busyAlert }) => h('div', { class: 'card' }, h('div', { class: 'top' },
         h('div', {}, h('b', {}, st.name), ' · ' + content(s).roles[st.role].nome, h('div', { class: 'muted' }, `${Math.round(d)} m · energia ${pct(st.energy)} · ${taskName(st.task)}${busyAlert ? ' (em outra emergência)' : ''}`)),
-        h('button', { class: 'btn sm', onclick: () => { dispatch(s, a.id, st.id); this.closeModal(); this.toast(`${st.name} foi enviado(a).`, 'bom'); } }, a.assigned === st.id ? 'Enviado' : 'Enviar'))))
+        h('button', { class: 'btn sm', onclick: () => { if (!dispatch(s, a.id, st.id)) return this.toast(`Não deu para enviar ${st.name} agora (sem destino para este alerta).`, 'ruim'); this.closeModal(); this.toast(`${st.name} foi enviado(a).`, 'bom'); } }, a.assigned === st.id ? 'Enviado' : 'Enviar'))))
         : h('div', { class: 'card' }, `Nenhum funcionário adequado. Contrate um ${roles} em Equipe > Currículos.`),
       s.managers.length ? h('div', { class: 'muted' }, `Seu subgerente ${s.managers[0].name} despacha sozinho se você não agir.`) : h('div', { class: 'muted' }, 'Sem subgerente, ninguém atende este alerta até você enviar alguém.'),
       h('div', { style: 'margin-top:8px' }, h('button', { class: 'btn sec', onclick: () => { const p = alertPos(s, a); if (p) this.g.controls.centerOn(p.x, p.z, 40); this.closeModal(); } }, '📍 Ir até lá'))));
@@ -188,8 +189,8 @@ export class UI {
     if (this.cat === 'habitat') {
       const mode = o.habMode || 'novo';
       const modes = h('div', { class: 'items' }, ...[['novo', '➕ Novo'], ['ampliar', '↔ Ampliar'], ['recortar', '✂ Recortar'], ['mover', '✋ Mover objetos']].map(([k, n]) => item(mode === k, n, null, () => { o.habMode = k; this.moveSel = null; this.g.world.hidePreview(); this.renderDrawer(); })));
-      body = mode !== 'novo' ? [modes] : [modes, h('div', { class: 'items' }, ...Object.entries(C.biomes).map(([k, b]) => item(o.biome === k, b.nome, 'Bioma', set('biome', k))),
-        ...Object.entries(C.fences).map(([k, f]) => item(o.fence === k, f.nome, `R$ ${f.custo}/bloco · alt ${f.altura} m · res ${f.resistencia}`, set('fence', k))))];
+      body = mode !== 'novo' ? [modes] : [modes, h('div', { class: 'items' }, ...Object.entries(C.biomes).filter(([, b]) => !b.inativo).map(([k, b]) => item(o.biome === k, b.nome, 'Bioma', set('biome', k))),
+        ...Object.entries(C.fences).filter(([, f]) => !f.inativo).map(([k, f]) => item(o.fence === k, f.nome, `R$ ${f.custo}/bloco · alt ${f.altura} m · res ${f.resistencia}`, set('fence', k))))];
       hint = mode === 'ampliar' ? 'Arraste um retângulo encostado no habitat: os blocos livres ligados a ele entram (verde). Instalações, caminhos e a folga de 1 bloco de outros habitats ficam de fora. A cerca é refeita no novo contorno.' : mode === 'recortar' ? 'Arraste sobre a parte do habitat que quer tirar (laranja). Portão, comedouro e bebedouro ficam; o habitat não pode ficar dividido. Sem reembolso.' : mode === 'mover' ? (this.moveSel ? `Toque no novo lugar do(a) ${this.moveSel.nome.toLowerCase()} dentro do mesmo habitat.` : 'Toque em uma planta, no comedouro ou no bebedouro de um habitat e depois no novo lugar.') : o.fence === 'fosso' ? 'Ilha pronta: arraste para desenhar (mín. 8 x 8, retângulo inteiro livre). Um fosso de água funda de 2 blocos vira a barreira, com ponte e portão. Ótima para macacos e leões; elefantes nadam, então ainda podem fugir.' : 'Arraste para desenhar (mín. 4 x 4). O habitat contorna sozinho o que já está construído (instalações, caminhos e a folga de 1 bloco de outros habitats) e a cerca segue o formato.' + (o.fence === 'tela' ? ' Viveiro: rede por cima, ideal para macacos, que escalam; fraco contra animais fortes.' : '');
     } else if (this.cat === 'caminho') {
       const PRE = { p: { poste: 3, lixeira: 3, banco: 3 }, q: { poste: 0, lixeira: 0, banco: 0 }, c: { poste: 5, lixeira: 5, banco: 5 }, k: { poste: 5, lixeira: 5, banco: 5 } };
@@ -334,11 +335,11 @@ export class UI {
       if (P.espaco < 0.95) { let need = 0; for (const [k, c] of Object.entries(I.count)) need += c * (C.species[k]?.espaco || 10); out.push([`📏 Pouco espaço: precisa de ~${need} blocos de chão, tem ${Math.round(I.land + 0.5 * I.water)}.`, 'Transferir um', move(sp), P.espaco < 0.6]); }
       if (P.terreno < 0.95) { const pref = C.biomes[S.bioma].terreno; let best = null, gap = 0; for (const [t, p] of Object.entries(pref)) { const g = p - (I.terr[t] || 0) / Math.max(1, I.land); if (g > gap) { gap = g; best = t; } }
         if (best) out.push([`🎨 Falta ${C.terrains[best].nome.toLowerCase()} (ideal ${pct(pref[best])} do chão).`, 'Pintar terreno', tool('terreno', { terrain: best }), 0]); }
-      if (P.plantas < 0.95) { const have = S.plantasAltas ? (I.tall[S.bioma] || 0) : (I.plants[S.bioma] || 0), plant = Object.entries(C.plants).find(([, v]) => v.bioma === S.bioma && (!S.plantasAltas || v.alta))[0];
-        out.push([`🌳 Faltam ${S.plantas - have} planta(s) ${S.plantasAltas ? 'altas ' : ''}de ${C.biomes[S.bioma].nome.toLowerCase()}.`, 'Plantar', tool('planta', { plant }), 0]); }
+      if (P.plantas < 0.95) { const have = S.plantasAltas ? (I.tall[S.bioma] || 0) : (I.plants[S.bioma] || 0), plant = Object.entries(C.plants).find(([, v]) => v.bioma === S.bioma && (!S.plantasAltas || v.alta))?.[0];
+        if (plant) out.push([`🌳 Faltam ${S.plantas - have} planta(s) ${S.plantasAltas ? 'altas ' : ''}de ${C.biomes[S.bioma].nome.toLowerCase()}.`, 'Plantar', tool('planta', { plant }), 0]); }
       if (P.agua < 0.95) { if (S.agua && I.water < S.agua) out.push([`💧 ${nome} precisa de pelo menos ${S.agua} blocos de água.`, 'Criar lago', tool('terreno', { terrain: 'w' }), 0]);
         if (S.aguaFunda && I.deep < S.aguaFunda) out.push([`🌊 ${nome} quer ${S.aguaFunda} blocos de água funda para o banho.`, 'Aprofundar lago', tool('relevo', { relevo: 'baixar' }), 0]); }
-      if (climber(S, an.find(a => a.sp === sp)) && !Object.values(I.tall).reduce((x, y) => x + y, 0)) out.push([`🐒 Sem árvore alta: ${nome.toLowerCase()} não tem onde subir nem dormir no alto.`, 'Plantar árvore', tool('planta', { plant: Object.entries(C.plants).find(([, v]) => v.bioma === hb.biome && v.alta)?.[0] || Object.entries(C.plants).find(([, v]) => v.alta)[0] }), 0]);
+      if (climber(S, an.find(a => a.sp === sp)) && !Object.values(I.tall).reduce((x, y) => x + y, 0)) out.push([`🐒 Sem árvore alta: ${nome.toLowerCase()} não tem onde subir nem dormir no alto.`, 'Plantar árvore', tool('planta', { plant: Object.entries(C.plants).find(([, v]) => v.bioma === hb.biome && v.alta)?.[0] || Object.entries(C.plants).find(([, v]) => v.alta)?.[0] }), 0]);
       if (P.cerca < 0.95) { const F = C.fences[hb.fence]; out.push([F.fosso ? `🏊 ${nome} sabe nadar: a ilha não segura 100%.` : `🧱 Barreira fraca para ${nome.toLowerCase()} (precisa ${S.barreira.altura} m de altura e resistência ${S.barreira.resistencia}; tem ${F.altura} m e ${F.resistencia}).`, 'Transferir', move(sp), 1]); }
       if (P.grupo < 0.95) out.push(n < S.social.min ? [`👥 Grupo pequeno: ${nome.toLowerCase()} vive em grupos de ${S.social.min} a ${S.social.max} (tem ${n}).`, 'Comprar mais', tool('animal', { sp }), 0] : [`👥 Grupo grande demais (máx. ${S.social.max}).`, 'Transferir um', move(sp), 0]);
       if (P.convivencia < 0.95) out.push([`⚠ Há um predador junto: ${nome.toLowerCase()} fica estressado.`, 'Transferir', move(sp), 1]);
@@ -413,7 +414,8 @@ export class UI {
     const close = h('button', { class: 'close', onclick: () => this.closeSheet() }, '×');
     if (kind === 'animal') {
       const a = s.animals.find(a => a.id === id); if (!a) return this.closeSheet(); const S = C.species[a.sp], hb = habById(s, a.hab);
-      this.g.world.showSelection(a.x, a.z, S ? Math.max(0.8, (['elefante', 'hipopotamo', 'rinoceronte'].includes(a.sp) ? 2 : 1.2)) : 1);
+      if (!S) { this.closeSheet(); return this.toast('Este animal é de uma expansão desinstalada: reinstale a DLC para vê-lo.', 'ruim'); }
+      this.g.world.showSelection(a.x, a.z, S ? Math.max(0.8, (['elefante', 'hipopotamo', 'rinoceronte'].includes(a.sp) || (S.raio ?? 0) >= 1.1 ? 2 : 1.2)) : 1);
       body = [h('h3', {}, `${a.name} · ${S?.nome}`), h('div', { class: 'muted' }, `${a.sex === 'M' ? 'Macho' : 'Fêmea'} · ${Math.floor(a.age)} dias · ${hb?.name || ''} · ${ST_NOME[a.st] || a.st}`),
         h('div', {}, a.sick ? h('span', { class: 'tag ruim' }, 'Doente') : null, a.escaped ? h('span', { class: 'tag ruim' }, 'Fugiu!') : null, a.age < S.vida.adulto ? h('span', { class: 'tag bom' }, 'Filhote') : null),
         h('div', { class: 'kv' }, ...[['Bem-estar', a.welfare], ['Saúde', a.health], ['Energia', a.energy]].flatMap(([n, v]) => [n, meter(v), pct(v)]),
@@ -527,7 +529,7 @@ export class UI {
     const s = this.s, C = content(s), ids = Object.keys(C.species); const sel = this.zpSel && C.species[this.zpSel] ? this.zpSel : ids[0];
     const S = C.species[sel], Z = ZOOPEDIA[sel] || {}, mine = s.animals.filter(a => a.sp === sel);
     const grid = h('div', { class: 'zp-grid' }, ...ids.map(k => h('button', { class: k === sel ? 'on' : '', onclick: () => { this.zpSel = k; this.renderModal(); } }, C.species[k].nome, h('small', {}, `${s.animals.filter(a => a.sp === k).length} no parque`))));
-    const B = C.biomes[S.bioma].nome, F = Object.values(C.fences).filter(f => f.altura >= S.barreira.altura && f.resistencia >= S.barreira.resistencia).map(f => f.nome);
+    const B = C.biomes[S.bioma].nome, F = Object.values(C.fences).filter(f => !f.inativo && f.altura >= S.barreira.altura && f.resistencia >= S.barreira.resistencia).map(f => f.nome);
     return [grid,
       h('div', { class: 'card' }, h('div', { class: 'top' }, h('h3', {}, S.nome), Z.status ? h('span', { class: 'tag zp-status', style: `background:${STATUS_COR[Z.status] || '#555'}` }, Z.status) : null),
         Z.cientifico ? h('div', { class: 'muted', style: 'font-style:italic' }, Z.cientifico) : null,
@@ -696,7 +698,7 @@ export class UI {
     this.voiceT -= dt; if (this.voiceT > 0) return; this.voiceT = 4 + Math.random() * 6;
     const an = this.s.animals.filter(a => !a.sedated && a.st !== 'sleep'); if (!an.length) return;
     const a = an[Math.floor(Math.random() * an.length)], p = this.g.world.project(a.x, 1, a.z); if (!p.vis) return;
-    sound.animal(a.sp, (p.x / innerWidth) * 2 - 1, Math.hypot(cam.position.x - a.x, cam.position.y, cam.position.z - a.z));
+    sound.animal(a.sp, (p.x / innerWidth) * 2 - 1, Math.hypot(cam.position.x - a.x, cam.position.y, cam.position.z - a.z), content(this.s).species[a.sp]);
   }
   slowTick() { this.renderSheet(); if (this.modal && this.modalName) this.renderModal(); }
 }

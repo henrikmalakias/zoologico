@@ -76,9 +76,13 @@ export async function saveGame(s, slot = 'slot1') { return put(slot, serialize(s
 export async function loadGame(slot = 'slot1') {
   const o = await get(slot); if (!o) return null;
   if (o.schemaVersion < SCHEMA) await put('backup-schema-' + o.schemaVersion, o); // cópia antes de migrar
-  return deserialize(o);
+  const h = contentHash(JSON.stringify(o)); // antes de deserialize (que altera o objeto)
+  const s = deserialize(o); s._hashCarregado = h; return s;
 }
 export async function backup(s, label) { return put('backup-' + label, serialize(s)); }
+export async function backupRaw(label, obj) { return put('backup-' + label, obj); }
+// "impressão digital" do conteúdo de um save, sem os carimbos de hora (savedAt, lastRealTs)
+export function contentHash(texto) { const t = texto.replace(/"savedAt":\d+/, '').replace(/"lastRealTs":\d+/, ''); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return h; }
 export function exportFile(s) {
   const blob = new Blob([JSON.stringify(serialize(s))], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);

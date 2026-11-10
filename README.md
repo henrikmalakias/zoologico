@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.7.2
+# Projeto Zoológico — v1.7.2a
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -31,6 +31,10 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `src/render/ultra.js`: céu 360° por hora (Poly Haven, CC0), luz do ambiente, terreno com texturas (array de texturas), capim instanciado, água com ondas, copas de folhas, pelo em camadas e rugas.
 - `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
 - Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.
+
+## Correções e expansões (1.7.2a)
+- Rodada de bugs do Deepseek (B01–B20): sincronia com o Drive por "rev" (contador gravado no Drive) e conteúdo, nunca pelo relógio dos aparelhos; cópia do save do Drive antes de substituir; tempo fora do jogo; avisos; alertas; memória.
+- Expansões: pacotes em `src/content/dlc/<id>/pack.js`, registrados em `src/content/dlc/index.js` (o catálogo vira "Disponível" sozinho). Campos de DLC por espécie: `velocidade`, `raio`, `calado`, `fezes`, `baixo`, `voz`, `pelo`, `pele`, `dimorfismo`, `filtrador`, `banhoMin`, `caminhao`; instalações com `parecido` e `comportamento`; plantas com `parecido` e `cor`; modelo realista com `aspereza`. DLC nunca sobrescreve id do jogo base. Biomas e cercas de DLC desinstalada ficam inativos (habitats prontos não quebram).
 
 ## Árvores, água e macacos (1.7.2 = etapa 1.7.2a)
 - Árvores altas (`alta: true` em `src/content/base.js`) têm `tronco` (raio sólido), `galho` (altura onde os macacos sentam) e `copa`. Em `habObstacles` só elas são sólidas; `collide` empurra para fora do tronco e `detour` desvia as rotas.

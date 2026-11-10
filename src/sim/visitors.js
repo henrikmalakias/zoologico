@@ -1,4 +1,4 @@
-import { content } from '../content/registry.js';
+import { content, papel } from '../content/registry.js';
 import { clamp, rnd, pick, uid, dist, hourOf } from './util.js';
 import { MAP, idx, tileToWorld, worldToTile, astar, isPath, isPathT, accessTile, viewTiles } from './grid.js';
 import { earn } from './staff.js';
@@ -52,12 +52,13 @@ export function seedCrowd(s) {
 }
 const binCover = s => { const bins = s.furn.reduce((n, f) => n + (f.type === 'lixeira'), 0); return clamp((bins / Math.max(1, (s._pathN || 1) / 12)) * 0.7, 0, 0.85); };
 const has = (s, type) => s.furn.some(f => f.type === type);
-const F2 = (s, t) => s.facilities.filter(f => f.type === t);
+const F2 = (s, t) => { const C = content(s); return s.facilities.filter(f => papel(C, f.type) === t); };
 function virtualVisit(s) {
-  const C = content(s), fac = t => s.facilities.filter(f => f.type === t);
+  const C = content(s), fac = t => s.facilities.filter(f => papel(C, f.type) === t);
   const L = fac('lanchonete'), W = fac('banheiro'), J = fac('loja');
-  if (L.length) earn(s, 'lanches', 0.7 * (C.facilities.lanchonete.venda - C.facilities.lanchonete.custoVenda));
-  if (J.length) earn(s, 'loja', 0.35 * (C.facilities.loja.venda - C.facilities.loja.custoVenda));
+  const lucro = list => { const D = C.facilities[list[0].type]; return (D.venda || 0) - (D.custoVenda || 0); };
+  if (L.length) earn(s, 'lanches', 0.7 * lucro(L));
+  if (J.length) earn(s, 'loja', 0.35 * lucro(J));
   if (W.length) { const w = pick(s, W); w.dirty = clamp((w.dirty || 0) + 0.02); }
   if (L.length && rnd(s) < 0.2 * (1 - binCover(s))) dropLitterRandom(s);
   const r = s.stats.rep;
@@ -81,7 +82,7 @@ function routeTo(s, v, tx, ty) {
 }
 
 function chooseGoal(s, v) {
-  const C = content(s), F = t => s.facilities.filter(f => f.type === t);
+  const C = content(s), F = t => s.facilities.filter(f => papel(C, f.type) === t);
   const go = (type, fac) => { const t = accessTile(s, fac); if (t && routeTo(s, v, t[0], t[1])) { v.goal = { type, id: fac.id }; return true; } return false; };
   const nearest = list => list.sort((a, b) => dist(v, tileToWorld(a.tx, a.ty)) - dist(v, tileToWorld(b.tx, b.ty)));
   if (v.trash && !v.panic) { // lixo na mão: vai até a lixeira mais próxima; sem lixeira por perto, joga no chão
@@ -124,14 +125,14 @@ function applyGoal(s, v) {
   const C = content(s), g = v.goal; v.goal = null;
   if (!g) return;
   const f = g.id && s.facilities.find(x => x.id === g.id);
-  if (g.type === 'food' && f) { const D = C.facilities.lanchonete; earn(s, 'lanches', D.venda - D.custoVenda); v.hunger = 0; v.sat += 0.05; v.trash = true;
+  if (g.type === 'food' && f) { const D = C.facilities[f.type] || C.facilities.lanchonete; earn(s, 'lanches', D.venda - D.custoVenda); v.hunger = 0; v.sat += 0.05; v.trash = true;
     const m = F2(s, 'mesas'); if (m.length && rnd(s) < 0.6) v.next = 'mesas'; }
   else if (g.type === 'sit' && f) { v.energy = clamp(v.energy + 0.3); v.sat += 0.06; }
   else if (g.type === 'bin') { v.sat += 0.01; }
   else if (g.type === 'wc' && f) { v.bath = 0; f.dirty = clamp((f.dirty || 0) + 0.04); v.sat += f.dirty > 0.7 ? -0.12 : 0.03; }
-  else if (g.type === 'loja' && f) { const D = C.facilities.loja; earn(s, 'loja', D.venda - D.custoVenda); v.sat += 0.05; }
+  else if (g.type === 'loja' && f) { const D = C.facilities[f.type] || C.facilities.loja; earn(s, 'loja', D.venda - D.custoVenda); v.sat += 0.05; }
   else if (g.type === 'rest' && g.furn) { v.energy = clamp(v.energy + 0.5); v.sat += 0.04; }
-  else if (g.type === 'rest' && f) { v.energy = clamp(v.energy + 0.5); v.sat += f.type === 'playground' ? 0.07 : 0.03; }
+  else if (g.type === 'rest' && f) { v.energy = clamp(v.energy + 0.5); v.sat += papel(C, f.type) === 'playground' ? 0.07 : 0.03; }
   else if (g.type === 'view') {
     const an = s.animals.filter(a => a.hab === g.id && !a.escaped && C.species[a.sp]);
     if (an.length) { const w = an.reduce((t, a) => t + a.welfare, 0) / an.length, ap = an.reduce((t, a) => t + C.species[a.sp].apelo, 0) / an.length;

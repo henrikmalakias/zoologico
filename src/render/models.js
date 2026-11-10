@@ -28,7 +28,7 @@ export class Kit {
     return this.tex('bark' + kind, null, () => { const t = new THREE.TextureLoader().load(`./ultra/casca/${kind}_cor.jpg`); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 3); return t; });
   }
   mesh(geo, mat, shadow = true) { const m = new THREE.Mesh(geo, mat); if (this.hi && shadow) { m.castShadow = true; m.receiveShadow = true; } return m; }
-  dispose() { for (const m of this.mats.values()) m.dispose(); for (const g of this.geos.values()) g.dispose(); for (const t of this.texs.values()) t.dispose(); }
+  dispose() { this._netMat?.dispose(); for (const m of this.mats.values()) m.dispose(); for (const g of this.geos.values()) g.dispose(); for (const t of this.texs.values()) t.dispose(); }
 }
 
 const canvas = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return c; };
@@ -71,9 +71,9 @@ function buildBird(kit) {
   root.userData = { sp: 'flamingo', bird: true, legs, neck, head, tail, trunk: null, rig, d: { legH: 0.98 }, phase: Math.random() * 6 };
   return root;
 }
-export function buildAnimal(kit, sp, male) {
-  if (sp === 'flamingo') return buildBird(kit);
-  const d = DEF[sp] || DEF.zebra;
+export function buildAnimal(kit, sp, male, S) {
+  if (sp === 'flamingo' || S?.baixo?.ave) return buildBird(kit);
+  const d = DEF[sp] || (S?.baixo ? { ...DEF.zebra, ...S.baixo, tex: S.baixo.tex === 'listras' ? 'stripes' : S.baixo.tex === 'manchas' ? 'spots' : null } : DEF.zebra);
   const map = d.tex === 'stripes' ? kit.tex('stripes', stripes) : d.tex === 'spots' ? kit.tex('spots', spots) : null;
   const body = kit.mat(map ? '#ffffff' : d.color, { map });
   const dark = kit.mat(d.dark || (sp === 'elefante' ? '#77736f' : sp === 'zebra' ? '#1b1b1b' : sp === 'girafa' ? '#9c6a3a' : sp === 'leao' ? '#a8782f' : '#4a3222'));
@@ -156,9 +156,9 @@ export function buildPerson(kit, color, hat) {
 }
 
 // ---------- plantas ----------
-export function buildPlant(kit, type) {
+export function buildPlant(kit, type, cor) { // cor: folhagem de planta de DLC que reaproveita o desenho de outra
   const g = new THREE.Group();
-  const trunk = kit.ultra ? kit.mat('#d8cfc4', { map: kit.bark(type === 'acacia' || type === 'baoba' ? 'acacia' : 'floresta'), rough: 0.95 }) : kit.mat('#6b4b2e'), leaf = c => kit.mat(c);
+  const trunk = kit.ultra ? kit.mat('#d8cfc4', { map: kit.bark(type === 'acacia' || type === 'baoba' ? 'acacia' : 'floresta'), rough: 0.95 }) : kit.mat('#6b4b2e'), leaf = c => kit.mat(cor || c);
   const add = (geo, m, x, y, z, sx = 1, sy = 1, sz = 1) => {
     if (kit.ultra && geo === kit.sphere(1) && m !== trunk) { // copa realista: cartões de folhas em volta de um miolo escuro
       const hex = '#' + m.color.getHexString(), key = `can${type}${sx},${sy},${sz}`;

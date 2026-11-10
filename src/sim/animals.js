@@ -9,7 +9,12 @@ export const SPEED = { leao: 1.6, zebra: 1.5, elefante: 1.1, girafa: 1.3, macaco
 export const habById = (s, id) => s.habitats.find(h => h.id === id);
 // raio do corpo (m) para não sobrepor outros animais nem atravessar plantas e comedouros
 export const RADIUS = { leao: 0.8, zebra: 0.8, elefante: 1.4, girafa: 0.9, macaco: 0.35, hipopotamo: 1.2, rinoceronte: 1.2, flamingo: 0.3, gorila: 0.55, tartaruga: 0.45 };
-const radiusOf = (s, a) => { const S = content(s).species[a.sp]; const f = S && a.age < S.vida.adulto ? 0.5 + 0.5 * (a.age / S.vida.adulto) : 1; return (RADIUS[a.sp] || 0.7) * f; };
+// valores por espécie: o campo do pacote (DLC) vale primeiro; as tabelas acima guardam os do jogo base
+const spv = (s, sp, campo, tbl, def) => content(s).species[sp]?.[campo] ?? tbl[sp] ?? def;
+export const speedOf = (s, sp) => spv(s, sp, 'velocidade', SPEED, 1.3);
+export const raioOf = (s, sp) => spv(s, sp, 'raio', RADIUS, 0.7);
+export const caladoOf = (s, sp) => spv(s, sp, 'calado', DRAFT, 1);
+const radiusOf = (s, a) => { const S = content(s).species[a.sp]; const f = S && a.age < S.vida.adulto ? 0.5 + 0.5 * (a.age / S.vida.adulto) : 1; return raioOf(s, a.sp) * f; };
 // obstáculos fixos do habitat: plantas, comedouro e bebedouro (cache até a próxima construção)
 export function habObstacles(s, h) {
   if (h._obs && h._obsV === s._ver) return h._obs;
@@ -53,7 +58,7 @@ function waterSpot(s, h, min, max) {
 // ---------- árvores (1.7.2a): quem sobe ----------
 const TREE_ST = new Set(['climb_up', 'tree', 'tree_move', 'salto', 'tree_sleep', 'climb_down']);
 export const aloft = a => TREE_ST.has(a.st) || (a.cy || 0) > 0.01;
-export const climber = (S, a) => !!S?.tracos?.escala && ((RADIUS[a.sp] || 0.7) <= 0.4 || a.age < S.vida.adulto);
+export const climber = (S, a) => !!S?.tracos?.escala && ((S.raio ?? RADIUS[a.sp] ?? 0.7) <= 0.4 || a.age < S.vida.adulto);
 const treesOf = (s, h) => habObstacles(s, h).filter(o => o.tree);
 function branchSpot(s, o) {
   const ang = rnd(s) * 6.283, r0 = o.r + 0.15, rr = r0 + rnd(s) * Math.max(0.15, o.copa * 0.75 - r0);
@@ -155,7 +160,7 @@ export function newAnimal(s, sp, h, adult = true) {
 }
 // ponto livre dentro do habitat: fora dos troncos e sem água mais funda que a espécie aceita
 export function randomInside(s, h, margin = 0.6, sp, a) {
-  const S = sp && content(s).species[sp], R = (RADIUS[sp] || 0.7) * 0.7 + 0.15, obs = habObstacles(s, h), r = () => rnd(s);
+  const S = sp && content(s).species[sp], R = (sp ? raioOf(s, sp) : 0.7) * 0.7 + 0.15, obs = habObstacles(s, h), r = () => rnd(s);
   const mx = a ? maxDepth(s, a) : sp ? waterRule(S).max : 0.3;
   let p;
   for (let k = 0; k < 16; k++) {
@@ -260,7 +265,7 @@ function visualBehavior(s, a, h, S, ctx) {
   // preso (obstáculo ou outro animal no caminho): desiste do destino e escolhe outro
   if (a.tgt && !a.sedated) {
     const moved = Math.hypot(a.x - px, a.z - pz);
-    if (moved < (SPEED[a.sp] || 1.3) * dt * 0.12) a.stk = (a.stk || 0) + dt; else a.stk = Math.max(0, (a.stk || 0) - dt);
+    if (moved < speedOf(s, a.sp) * dt * 0.12) a.stk = (a.stk || 0) + dt; else a.stk = Math.max(0, (a.stk || 0) - dt);
     if (a.stk > 2) { a.stk = 0; a.tgt = null; a.wp = null; a.st = 'idle'; a.stT = 1 + rnd(s) * 2; }
   } else a.stk = 0;
 }
@@ -268,12 +273,12 @@ function visualBehavior(s, a, h, S, ctx) {
 function waterFlags(s, a, S, dt) {
   if (!s.height || a.carriedBy || aloft(a)) { a._nada = false; if (a._wet) a._wet = Math.max(0, a._wet - dt / 45); return; }
   const d = depthAt(s, a.x, a.z);
-  a._nada = d > (DRAFT[a.sp] ?? 1) * ageF(S, a);
+  a._nada = d > caladoOf(s, a.sp) * ageF(S, a);
   if (d > 0.22) a._wet = 1; else if (a._wet) a._wet = Math.max(0, a._wet - dt / 45);
 }
 function behave(s, a, h, S, ctx) {
   const dt = ctx.realDt * ctx.moveMul; if (dt <= 0) return;
-  const sp = (SPEED[a.sp] || 1.3) * (a.age < S.vida.adulto ? 0.8 : 1);
+  const sp = speedOf(s, a.sp) * (a.age < S.vida.adulto ? 0.8 : 1);
   if (a.sedated) { a.st = 'sedado'; a.asleep = true; a.tgt = null; if (a.cy) a.cy = Math.max(0, a.cy - dt * 3); a.jy = 0; return; }
   if (a.escaping) { escapeAnim(s, a, h, dt, sp); return; }
   if (a.escaped) {
@@ -295,7 +300,7 @@ function behave(s, a, h, S, ctx) {
       a.tgt = null; a.wp = null;
       if (a.st === 'eat_go') { a.st = 'eat'; a.stT = 5; }
       else if (a.st === 'drink_go') { a.st = 'drink'; a.stT = 3; }
-      else if (a.st === 'bath_go') { a.st = 'bath'; a.stT = (a.sp === 'hipopotamo' ? 20 : 8) + rnd(s) * 10; a.stress = clamp(a.stress - 0.05); a.thirst = clamp(a.thirst - 0.3); }
+      else if (a.st === 'bath_go') { a.st = 'bath'; a.stT = (S.aguaModo === 'anfibio' ? 20 : 8) + rnd(s) * 10; a.stress = clamp(a.stress - 0.05); a.thirst = clamp(a.thirst - 0.3); }
       else if (a.st === 'filtrar_go') { a.st = 'filtrar'; a.stT = 10 + rnd(s) * 10; }
       else { a.st = 'idle'; a.stT = 2 + rnd(s) * 4; }
     }
@@ -315,7 +320,7 @@ function behave(s, a, h, S, ctx) {
     ['wander', 0.4 + r() * 0.4],
     ['idle', 0.3 + r() * 0.4],
     ['social', 0.25 + r() * 0.3],
-    ['bath', wet && day ? (a.sp === 'hipopotamo' ? 0.6 + r() * 0.4 : a.sp === 'flamingo' ? 0.35 + r() * 0.3 : 0.3 + r() * 0.35 + a.thirst * 0.3) : 0],
+    ['bath', wet && day ? (W.modo === 'anfibio' ? 0.6 + r() * 0.4 : S.filtrador || a.sp === 'flamingo' ? 0.35 + r() * 0.3 : 0.3 + r() * 0.35 + a.thirst * 0.3) : 0],
     ['climb', trees.length && day ? 0.45 + r() * 0.45 : 0],
   ];
   opts.sort((x, y) => y[1] - x[1]);
@@ -327,8 +332,8 @@ function behave(s, a, h, S, ctx) {
   else if (c === 'drink') { a.st = 'drink_go'; go(s, h, a, ringPoint(s, a, h, habObstacles(s, h).find(o => o.water)), true); }
   else if (c === 'wander') { a.st = 'walk'; const anf = W.modo === 'anfibio' && day && r() < 0.7; go(s, h, a, (anf && waterSpot(s, h, 0.3, 99)) || randomInside(s, h, 0.6, a.sp, a)); }
   else if (c === 'bath') {
-    const mx = maxDepth(s, a), fl = a.sp === 'flamingo';
-    a.st = fl ? 'filtrar_go' : 'bath_go'; go(s, h, a, waterSpot(s, h, fl ? 0.08 : BATH_MIN[a.sp] ?? 0.05, Math.min(mx, fl ? 0.5 : 99)));
+    const mx = maxDepth(s, a), fl = !!S.filtrador || a.sp === 'flamingo';
+    a.st = fl ? 'filtrar_go' : 'bath_go'; go(s, h, a, waterSpot(s, h, fl ? 0.08 : S.banhoMin ?? BATH_MIN[a.sp] ?? 0.05, Math.min(mx, fl ? 0.5 : 99)));
     if (!a.tgt) { a.st = 'idle'; a.stT = 2; }
   }
   else if (c === 'social') {
@@ -409,7 +414,7 @@ export function hourlyAnimals(s) {
   for (const a of s.animals) {
     const S = C.species[a.sp]; if (!S || a.escaped) continue;
     const h = habById(s, a.hab); if (!h) continue;
-    if (rnd(s) < (POOP[a.sp] ?? 0.15)) addDirt(s, h, a.x + (rnd(s) - 0.5) * 0.6, a.z + (rnd(s) - 0.5) * 0.6, 0);
+    if (rnd(s) < spv(s, a.sp, 'fezes', POOP, 0.15)) addDirt(s, h, a.x + (rnd(s) - 0.5) * 0.6, a.z + (rnd(s) - 0.5) * 0.6, 0);
     if (!s.settings.fugas || s.settings.tranquilo) continue;
     if (a.sedated || a.carriedBy || a.escaping) continue;
     const F = C.fences[h.fence];

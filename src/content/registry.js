@@ -1,10 +1,12 @@
-import { BASE_PACK } from './base.js';
+import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
+import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.7.2';
-export const AVAILABLE_PACKS = { base: BASE_PACK };
+export const APP_VERSION = '1.7.2a';
+export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
+export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
 // Catálogo de expansões. "em_breve" = ainda não publicada.
-export const DLC_CATALOG = [
+export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/index.js (aí vira 'disponivel' sozinho)
   { id: 'aquario', nome: 'Aquário', desc: 'Tanques com vidro, filtragem, salinidade e temperatura, equipe de mergulho e túnel de vidro.', tamanho: '~30 MB', estado: 'em_breve' },
   { id: 'hoteis', nome: 'Hotéis', desc: 'Visitantes que passam a noite, diárias e noites ao vivo no parque.', tamanho: '~15 MB', estado: 'em_breve' },
   { id: 'pesquisa', nome: 'Centro de Pesquisa', desc: 'Pontos de pesquisa que liberam melhorias de veterinária, reprodução e espécies.', tamanho: '~10 MB', estado: 'em_breve' },
@@ -16,9 +18,22 @@ export const DLC_CATALOG = [
   { id: 'fachadas', nome: 'Fachadas', desc: 'Entrada nova com bilheterias e catracas, portal temático e estacionamento pago para gerar mais receita.', tamanho: '~12 MB', estado: 'em_breve' },
   { id: 'biomas', nome: 'Biomas', desc: 'Deserto, floresta tropical, ártico, montanha, Pantanal e litoral, com espécies novas e domos imersivos: paisagem 360° por dentro, habitat com animais e tela de LED por fora.', tamanho: '~60 MB', estado: 'em_breve' },
   { id: 'clima', nome: 'Clima e Estações', desc: 'Estações do ano e clima mudando o ambiente e as necessidades.', tamanho: '~8 MB', estado: 'em_breve' },
-];
+].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.7.2a', data: '09/11/2026', titulo: 'Versão 1.7.2a: correções e preparação para expansões', itens: [
+    'Sincronia com o Drive mais segura: não decide mais pelo relógio dos aparelhos, nunca envia por cima sem perguntar, guarda uma cópia do save do Drive antes de substituir e não cria save duplicado',
+    'A pergunta "qual zoológico manter" só aparece ao abrir o jogo, ao voltar ao app ou em Sincronizar agora (no meio do jogo vira um aviso)',
+    'Tempo fora do jogo: o app em segundo plano não "come" mais o tempo que passou; o relatório "Enquanto você esteve fora" fica certo',
+    'Avisos (toasts) aparecem por cima das janelas, e o balão de alerta no mapa fica no lugar certo',
+    'Enviar funcionário a um alerta sem destino não cancela mais o que ele fazia e mostra o aviso certo',
+    'Funcionário sem caminho até o destino não atravessa mais cercas: desiste e avisa',
+    'Botão de próximo alerta percorre só os alertas livres, sem pular nenhum',
+    'Som volta sozinho no iPad depois de ligação ou bloqueio de tela',
+    'Mais leve: comedouro e bebedouro mudam sem redesenhar o habitat inteiro; viveiros, faíscas, dardos e troca de gráfico liberam memória; arrastar caminho longo ficou leve',
+    'Painéis de animal e habitat não travam o jogo com itens de expansão desinstalada',
+    'Preparação para expansões (DLCs): o jogo já sabe ler espécies, plantas e instalações novas vindas dos pacotes',
+  ] },
   { versao: '1.7.2', data: '09/11/2026', titulo: 'Versão 1.7.2 (etapa 1.7.2a): árvores, água e macacos nas árvores', itens: [
     'Árvores sólidas: os animais não atravessam mais troncos (o do baobá é bem grosso) e desviam deles no caminho; arbustos, capim e samambaia continuam atravessáveis',
     'Água por espécie: hipopótamo passa o dia na água e boia com só olhos e narinas de fora; elefante entra até a barriga e toma banho com a tromba; rinoceronte e tartaruga só no raso; flamingo filtra comida na água rasa; leão, zebra, girafa, macaco e gorila desviam da água funda',
@@ -124,15 +139,24 @@ export const CHANGELOG = [
 // Conteúdo combinado dos pacotes instalados
 let merged = null, mergedKey = '';
 export function content(state) {
-  const ids = Object.keys(state?.packs || { base: 1 }).filter(id => AVAILABLE_PACKS[id]).sort();
+  const ids = Object.keys(state?.packs || { base: 1 }).filter(id => AVAILABLE_PACKS[id]).sort((a, b) => (b === 'base') - (a === 'base') || a.localeCompare(b));
   const key = ids.join(',');
   if (merged && key === mergedKey) return merged;
   const out = { terrains: {}, biomes: {}, plants: {}, fences: {}, species: {}, facilities: {}, roles: {}, furniture: {} };
   for (const id of ids) {
     const p = AVAILABLE_PACKS[id];
-    for (const k of Object.keys(out)) for (const [kk, v] of Object.entries(p[k] || {})) out[k][kk] = { ...v, pack: id };
+    for (const k of Object.keys(out)) for (const [kk, v] of Object.entries(p[k] || {})) {
+      if (out[k][kk] && id !== 'base') { console.warn(`DLC ${id}: id repetido ${k}.${kk} ignorado`); continue; } // DLC nunca sobrescreve o base
+      out[k][kk] = { ...v, pack: id };
+    }
   }
+  // biomas e cercas de expansões desinstaladas continuam conhecidos (inativos) para os habitats já construídos não quebrarem
+  for (const id of Object.keys(AVAILABLE_PACKS)) if (!ids.includes(id)) for (const k of ['biomes', 'fences'])
+    for (const [kk, v] of Object.entries(AVAILABLE_PACKS[id][k] || {})) if (!out[k][kk]) out[k][kk] = { ...v, pack: id, inativo: true };
   out.tempo = ids.map(id => AVAILABLE_PACKS[id].tempo).filter(Boolean).pop();
   merged = out; mergedKey = key; return out;
 }
+// papel de uma instalação para os visitantes: as do base pelo próprio tipo; as de DLC pelo "comportamento"
+const PAPEL = { comida: 'lanchonete', compras: 'loja', banheiro: 'banheiro', lazer: 'playground', mesas: 'mesas', descanso: 'banco' };
+export const papel = (C, t) => { const D = C.facilities[t]; return !D ? null : D.comportamento ? (PAPEL[D.comportamento] || null) : t; };
 export const has = (state, kind, id) => !!content(state)[kind][id];

@@ -30,6 +30,14 @@ export function rebuildOcc(s) {
   rebuildBridges(s);
   fixShore(s);
 }
+// pintar terreno/caminho não muda habitats nem instalações: atualiza só o necessário (arrastar um caminho longo fica leve)
+export function refreshAfterPaint(s, i, was, objsRemoved) {
+  if (!s._occ) return rebuildOcc(s);
+  if (objsRemoved) { const obj = new Int32Array(MAP * MAP); for (const o of s.objects) obj[idx(o.tx, o.ty)] = o.id; s._occ.obj = obj; }
+  s._pathN = (s._pathN || 0) + (isPathT(s.terrain[i]) ? 1 : 0) - (isPathT(was) ? 1 : 0);
+  s._ver = (s._ver || 0) + 1;
+  fixShore(s);
+}
 export const habAt = (s, x, y) => (inMap(x, y) ? s._occ.hab[idx(x, y)] : 0);
 
 // A* em grade (4 vizinhos)
