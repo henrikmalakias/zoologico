@@ -98,8 +98,9 @@ export class World {
   }
   setQuality(q, s) { if (q === this.q) return; this.dispose(); this.build(q); if (s) this.update(s, 0); }
   dispose() {
-    this.renderer.forceContextLoss?.(); this.renderer.dispose(); this.renderer.domElement.remove(); // libera a memória da GPU do contexto antigo this.kit.lamp?.dispose(); this.kit.dispose(); this.ttex.dispose();
-    this.glassMat?.dispose();
+    this.renderer.forceContextLoss?.(); this.renderer.dispose(); this.renderer.domElement.remove(); // libera a memória da GPU do contexto antigo
+    this.kit.lamp?.dispose(); this.kit.dispose(); this.ttex.dispose(); // 1.7.2d: estas três chamadas estavam dentro do comentário da linha acima
+    this.glassMat?.dispose(); this.waterMat?.dispose(); this.ground?.material?.dispose?.();
     this.usky?.dispose(); this.grass?.dispose(); this.tarr?.cor.dispose(); this.tarr?.nor.dispose(); this.tdata?.dispose(); this.waterMat.normalMap?.dispose(); this.lakeMat?.dispose(); this.lakeMat = null;
     this.usky = this.grass = this.tarr = this.tdata = null;
     this.scene.traverse(o => { if (o.isInstancedMesh || o === this.ground || o.userData?.merged) o.geometry.dispose(); });

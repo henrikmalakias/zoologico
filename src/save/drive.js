@@ -53,7 +53,7 @@ export class DriveSync {
   // Identidade de cada versão no Drive: "rev" (contador gravado por quem envia) e aparelho. Não usamos o relógio
   // dos aparelhos para decidir quem é mais novo (o relógio do iPad e o do celular podem estar diferentes).
   async meta() {
-    const F = 'id,modifiedTime,appProperties,trashed';
+    const F = 'id,modifiedTime,appProperties,trashed,etag'; // 1.7.2d: o etag permite escrever só sobre a versão que foi lida
     if (!fileId) fileId = (await getPref('driveFileId', null)) || null;
     if (fileId) { // pelo id guardado: não depende da listagem (que pode vir atrasada/vazia)
       try { const f = await (await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=${F}`)).json(); if (f && !f.trashed) return this.lerMeta(f); }
@@ -65,13 +65,15 @@ export class DriveSync {
     const f = r.files?.[0]; if (!f) return null;
     return this.lerMeta(f);
   }
-  lerMeta(f) { fileId = f.id; setPref('driveFileId', f.id); const p = f.appProperties || {}; return { id: f.id, savedAt: +(p.savedAt || 0) || Date.parse(f.modifiedTime), rev: +(p.rev || 0), dev: p.dev || '' }; }
+  lerMeta(f) { fileId = f.id; setPref('driveFileId', f.id); const p = f.appProperties || {}; return { id: f.id, savedAt: +(p.savedAt || 0) || Date.parse(f.modifiedTime), rev: +(p.rev || 0), dev: p.dev || '', etag: f.etag || null }; }
   async baixar() { return (await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`)).text(); }
-  async enviar(texto, savedAt, rev) {
+  // etag = versão lida no meta(): o Drive devolve 412 se outro aparelho gravou no meio (aí o sync pergunta em vez de sobrescrever)
+  async enviar(texto, savedAt, rev, etag) {
     const meta = { name: NOME, appProperties: { savedAt: String(savedAt), rev: String(rev), dev: this.dev || '' } }; if (!fileId) meta.parents = ['appDataFolder'];
     const b = '----zoo' + Math.random().toString(36).slice(2), corpo = `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${texto}\r\n--${b}--`;
     const url = fileId ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id` : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
-    const r = await (await this.api(url, { method: fileId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body: corpo })).json();
+    const headers = { 'Content-Type': 'multipart/related; boundary=' + b }; if (fileId && etag) headers['If-Match'] = etag;
+    const r = await (await this.api(url, { method: fileId ? 'PATCH' : 'POST', headers, body: corpo })).json();
     fileId = r.id; await setPref('driveFileId', fileId);
   }
   // ---------- ligar / desligar ----------
@@ -97,8 +99,8 @@ export class DriveSync {
     return { key, hash: await getPref('driveBaseHash', null) };
   }
   async marca(m, texto) { await setPref('driveBase', chave(m)); await setPref('driveBaseHash', this.conteudo(texto)); this.lastSync = Date.now(); await setPref('driveLastSync', this.lastSync); }
-  async envia(loc, m) { const rev = (m?.rev || 0) + 1; await this.enviar(loc.texto, loc.savedAt, rev); await this.marca({ rev }, loc.texto); this.fala('Enviado ao Drive.'); }
-  async sync(motivo, manual = false) {
+  async envia(loc, m) { const rev = (m?.rev || 0) + 1; await this.enviar(loc.texto, loc.savedAt, rev, m?.etag); await this.marca({ rev }, loc.texto); this.fala('Enviado ao Drive.'); }
+  async sync(motivo, manual = false, retry = false) {
     if (this.escolhendo && Date.now() - this.escolhendo > 5 * 60e3) this.escolhendo = 0; // pergunta fechada sem resposta
     if (this.busy || this.escolhendo || !this.ativo) { if (manual && this.escolhendo) this.g.ui.toast('Responda primeiro a pergunta do Drive.', 'ruim'); return; }
     this.busy = true;
@@ -125,7 +127,12 @@ export class DriveSync {
         return;
       }
       await this.conflito(m, loc);
-    } catch (e) { this.fala('Sem sincronia agora: ' + e.message); if (manual) this.g.ui.toast('Drive: ' + e.message, 'ruim'); }
+    } catch (e) {
+      // 412 = outro aparelho gravou entre a leitura e a escrita: recomeça a decisão com o Drive atualizado (uma vez), sem sobrescrever
+      if (!retry && / 412$/.test(e.message)) { this.busy = false; return this.sync(motivo, manual, true); }
+      if (/ 412$/.test(e.message)) { this.fala('O Drive mudou no meio do envio. Toque em "Sincronizar agora".'); if (manual) this.g.ui.toast('Drive: outro aparelho gravou no mesmo instante. Tente de novo.', 'ruim'); return; }
+      this.fala('Sem sincronia agora: ' + e.message); if (manual) this.g.ui.toast('Drive: ' + e.message, 'ruim');
+    }
     finally { this.busy = false; }
   }
   // baixa e aplica; a base marca exatamente a versão baixada (lê a identidade antes e depois do download)

@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.7.2c
+# Projeto Zoológico — v1.7.2d
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -32,6 +32,14 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
 - Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.
 
+## Correções da revisão (1.7.2d)
+- World.dispose() volta a liberar o Kit (materiais, geometrias e texturas), a textura do terreno (	tex), o material do chão e o waterMat a cada troca de gráfico; as três chamadas tinham ficado dentro de um comentário na 1.7.2a.
+- checkShrink recusa o recorte que pega os 2 blocos do vidro (dir) ou os da entrada (porta) de uma toca, não só os 4 blocos dela — antes a toca ficava sem acesso e todo serviço caía na sedação.
+- 	ocaVagas: espécie com lto: true (girafa) também fica sozinha na toca, como as de aio >= 1,1 m. Máximo continua 6 tocas por habitat e 2 animais por toca (decisão da 1.7.2b).
+- DLC_CATALOG ganhou obras ("Obras e Construções", em_breve); comunicacoes saiu do contrato (vira parte da 1.9).
+- Drive: meta() pede etag e enviar() manda If-Match; 412 significa que outro aparelho gravou no meio, então o sync refaz a decisão uma vez e pergunta em vez de sobrescrever.
+- Changelog da 1.7.2b corrigido (o AO VIVO é observador desde a 1.7.2c). Testes: 	ests/v172b.test.js, 	ests/v172c.test.js, 	ests/v1721.test.js, 	ests/v171.test.js.
+
 ## Animais e funcionários (1.7.2c)
 - O perigo vale para a equipe (`perigoDe`, `PERIGOSO`, `wildBehave` em `src/sim/animals.js`, alvo = funcionários dentro do recinto, `equipeDentro`). Os mansos se afastam ~4 m (`MEDO`, estado `medo`).
 - Serviços que entram no recinto (feed, water, clean, checkup; transferência e internação também): `startTask` manda primeiro ao portão (`t.pre`); `noPortao` (staff.js) usa `planoServico` (quem cabe nas tocas e quem sobra). Fases: `recolher` (chama de fora para as tocas, `h.seg` segura enquanto alguém está lá dentro) → `espera`/`sedar` (veterinário seda no lugar: `sedarNoLugar`, `SED_MIN` 60 min, R$ 100) → entra. Ataque: sem toca e sem veterinário, traço `distraido` (30% esquece) ou sedativo que acaba. Ferido: `st.ferido` (1 dia), tarefa `ferido`, alerta `ferido` (segurança confere). App fechado: `preAbstrato` (tempo extra + chance de ataque).
@@ -43,7 +51,7 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - Tocas com vidro (`s.tocas`, `src/sim/tocas.js`): 2 x 2 blocos dentro do habitat, vidro no lado `dir` e entrada no lado `porta`; colocadas em Construir > Habitat > Toca com vidro e movidas em Mover objetos. Cada toca abriga 2 animais da mesma espécie (1 dos bem grandes); até 6 por habitat.
 - Rotina por espécie (`rotina` em `src/content/base.js`): hora de acordar/dormir, janelas de atividade (pastar, descanso, banho, social, filtrar), onde dorme (toca, árvore, água). Vale também no modo abstrato (app fechado).
 - Visita no AO VIVO (`src/sim/visita.js`, `Controls.blocked`): botão Entrar no portão, ponte da ilha andável, `h.visitOpen` (não é `gateOpen`: não gera alerta).
-- Modo selvagem (`perigoDe`, `wildBehave` em `src/sim/animals.js`): aviso, encarar e investida; sem mortes. `Preparar visita` cria a tarefa `guardar` (tratador recolhe os perigosos nas tocas). Opção em Configurações; no Modo Tranquilo o animal para a 1 m.
+- Modo selvagem (`perigoDe`, `wildBehave` em `src/sim/animals.js`): na 1.7.2b o alvo era o jogador (encarar e investida, sem mortes); desde a 1.7.2c o alvo é a equipe e o AO VIVO é observador — veja a seção "Animais e funcionários (1.7.2c)".
 - Save: `SCHEMA 8` (migração 7 → 8 cria `tocas`, `player` e o ajuste `selvagem`). Testes: `tests/v172b.test.js`.
 
 ## Correções e expansões (1.7.2a)

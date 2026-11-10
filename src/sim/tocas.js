@@ -18,9 +18,9 @@ export function ladoTiles(t, dir) {
 }
 // ponto do lado de fora da entrada, a "folga" metros da parede
 export function portaPonto(t, folga = 1) { const c = tocaCenter(t), [dx, dz] = DIRV[t.porta ?? ((t.dir + 2) % 4)]; return { x: c.x + dx * (TILE + folga), z: c.z + dz * (TILE + folga) }; }
-// quantos animais cabem: os bem grandes ficam sozinhos, os demais dividem em dupla
-export function tocaVagas(s, sp) { const S = content(s).species[sp], r = S?.raio ?? RAIO_REF[sp] ?? 0.7; return r >= 1.1 ? 1 : 2; }
-const RAIO_REF = { elefante: 1.4, hipopotamo: 1.2, rinoceronte: 1.2 };
+// quantos animais cabem: os bem grandes (raio >= 1,1 m) e os altos (girafa) ficam sozinhos; os demais dividem em dupla
+export function tocaVagas(s, sp) { const S = content(s).species[sp], r = S?.raio ?? RAIO_REF[sp] ?? 0.7; return r >= 1.1 || S?.alto ? 1 : 2; }
+const RAIO_REF = { elefante: 1.4, hipopotamo: 1.2, rinoceronte: 1.2, girafa: 0.9 };
 // lugar de cada animal lá dentro (lado a lado, paralelos ao vidro)
 export function tocaLugar(t, slot, vagas) {
   const c = tocaCenter(t); if (vagas < 2) return c;

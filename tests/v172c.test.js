@@ -8,7 +8,7 @@ import { tratamento, clinicas, vagasClinica, internados, GRAVE } from '../src/si
 import { tocasDe } from '../src/sim/tocas.js';
 import * as V from '../src/sim/visita.js';
 import { serialize, deserialize, MIGRATIONS } from '../src/save/save.js';
-import { content } from '../src/content/registry.js';
+import { content, CHANGELOG } from '../src/content/registry.js';
 import { tileToWorld, accessTile } from '../src/sim/grid.js';
 import { insideAt } from '../src/sim/habshape.js';
 let fails = 0, n = 0; const ok = (c, m) => { n++; console.log((c ? 'ok - ' : 'FALHOU: ') + m); if (!c) fails++; };
@@ -31,6 +31,7 @@ const run = (s, k, fn, ctx = live()) => { for (let i = 0; i < k; i++) { step(s, 
   ok(C.facilities.clinica && C.facilities.clinica.vagas === 2 && C.facilities.clinica.pack === 'base', 'Clínica veterinária no jogo base (2 vagas)');
   ok(ALERT_INFO.ferido && !ALERT_INFO.visita && ALERT_ROLES.ferido.includes('seguranca'), 'alerta "Funcionário ferido" no lugar de "Visitante em risco"');
   ok(ESTADOS.has('medo'), 'estado "medo" é conhecido pelo desenho');
+  ok(CHANGELOG.filter(c => c.versao === '1.7.2b').every(c => c.itens.every(i => !/Preparar visita|Visitante em risco|1 hora de jogo fechado/.test(i))), 'novidades da 1.7.2b não anunciam recursos removidos na 1.7.2c');
   ok(!V.prepararVisita && !V.emEspera && !V.ataqueVisita && !V.visitaLiberada, 'AO VIVO: saem preparar visita, espera e ataque ao jogador');
   // migração 8 -> 9
   const h = leoes(s, 2); const tr = contrata(s, 'tratador'); placeToca(s, 29, 28);

@@ -23,7 +23,7 @@ Integração (importar o pacote em `src/content/dlc/index.js` — o catálogo vi
 
 ## 2. Ids
 
-- `<id>` da DLC = exatamente o id do catálogo: `aquario`, `hoteis`, `pesquisa`, `museu`, `conservacao`, `compras`, `energia`, `noturno`, `fachadas`, `biomas`, `clima`.
+- `<id>` da DLC = exatamente o id do catálogo: `aquario`, `hoteis`, `pesquisa`, `museu`, `conservacao`, `compras`, `energia`, `noturno`, `fachadas`, `biomas`, `clima`, `obras`.
 - Ids de itens: minúsculas, sem acento, `snake_case` (ex.: `urso_polar`, `pinheiro_neve`). Nunca repetir um id que já existe no base nem em outra DLC (o conteúdo é mesclado por id; repetir sobrescreve o base e quebra saves).
 - Referências entre itens só podem apontar para ids do base ou da própria DLC.
 

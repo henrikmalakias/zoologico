@@ -66,4 +66,25 @@ const txt = (n, savedAt) => JSON.stringify({ savedAt, n });
   await f.d.sync('periodico'); t('base antiga reconhecida: envia, sem conflito', f.log[0] === 'enviou' && f.choices.length === 0 && f.remoto.rev === 1); }
 // 11) desligado: não faz nada
 { const f = falso(null); f.d.on = false; await f.d.sync('abrir'); t('desligado não envia', f.log.length === 0); }
+// 12) B02 (1.7.2d): a escrita leva If-Match com o etag da versão lida
+{ await limpa(); await setPref('driveBase', 'r5'); await setPref('driveBaseHash', contentHash(txt(9, 9000)));
+  const f = falso({ texto: txt(7, 5000), savedAt: 5000, rev: 5 }); const headers = [];
+  f.d.lerMeta({ id: 'f', appProperties: {} }); // fixa o id do arquivo (no jogo, o meta() faz isso)
+  f.d.meta = async () => ({ id: 'f', savedAt: 5000, rev: 5, etag: 'etag-1' });
+  delete f.d.enviar;
+  f.d.api = async (url, opt = {}) => { headers.push((opt.headers || {})['If-Match'] || '(sem)'); return { json: async () => ({ id: 'f' }) }; };
+  await f.d.sync('periodico');
+  t('PATCH manda If-Match com o etag lido', headers.length === 1 && headers[0] === 'etag-1');
+  t('e marca a base só depois de gravar', (await getPref('driveBase', 0)) === 'r6'); }
+// 13) B02 (1.7.2d): 412 (outro aparelho gravou no meio) pergunta em vez de sobrescrever
+{ await limpa(); await setPref('driveBase', 'r5'); await setPref('driveBaseHash', contentHash(txt(9, 9000)));
+  const f = falso({ texto: txt(7, 5000), savedAt: 5000, rev: 5 }); const escritas = []; let outro = false;
+  f.d.lerMeta({ id: 'f', appProperties: {} });
+  f.d.meta = async () => ({ id: 'f', savedAt: 5000, rev: outro ? 6 : 5, etag: outro ? 'etag-2' : 'etag-1' });
+  delete f.d.enviar;
+  f.d.api = async (url, opt = {}) => { escritas.push((opt.headers || {})['If-Match'] || '(sem)'); outro = true; const e = new Error('Drive respondeu 412'); throw e; };
+  await f.d.sync('abrir');
+  t('412 não sobrescreve: uma tentativa e pergunta', escritas.length === 1 && f.choices.length === 1);
+  t('412 mantém a base antiga', (await getPref('driveBase', 0)) === 'r5');
+  t('refez a decisão com o Drive atualizado (2ª leitura)', outro === true); }
 console.log(`v171: ${ok} ok, ${bad} falhas`); if (bad) process.exit(1);

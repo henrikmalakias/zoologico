@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.7.2c';
+export const APP_VERSION = '1.7.2d';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -18,9 +18,18 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
   { id: 'fachadas', nome: 'Fachadas', desc: 'Entrada nova com bilheterias e catracas, portal temático e estacionamento pago para gerar mais receita.', tamanho: '~12 MB', estado: 'em_breve' },
   { id: 'biomas', nome: 'Biomas', desc: 'Deserto, floresta tropical, ártico, montanha, Pantanal e litoral, com espécies novas e domos imersivos: paisagem 360° por dentro, habitat com animais e tela de LED por fora.', tamanho: '~60 MB', estado: 'em_breve' },
   { id: 'clima', nome: 'Clima e Estações', desc: 'Estações do ano e clima mudando o ambiente e as necessidades.', tamanho: '~8 MB', estado: 'em_breve' },
+  { id: 'obras', nome: 'Obras e Construções', desc: 'Reformas, terraplanagens e construções passam a levar dias de jogo, com tapumes e barra de progresso na obra.', tamanho: '~6 MB', estado: 'em_breve' },
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.7.2d', data: '10/11/2026', titulo: 'Versão 1.7.2d: correções da revisão', itens: [
+    'Trocar o gráfico (Baixo, Alto, Ultra) agora libera de verdade o que o gráfico antigo usava: dá para alternar sem a memória do aparelho ir acumulando',
+    'O recorte do habitat não pode mais pegar os 2 blocos na frente do vidro nem os da entrada da toca, senão ela ficaria sem acesso (o jogo avisa "Mova a toca antes de recortar")',
+    'A girafa passa a ocupar sozinha cada toca, como o elefante, o hipopótamo e o rinoceronte',
+    'A Central de Expansões mostra a DLC Obras e Construções (ainda em breve): obras com prazo, tapumes e barra de progresso',
+    'Sincronia com o Drive: o envio confere a versão do arquivo antes de gravar. Se outro aparelho gravar no mesmo instante, o jogo pergunta em vez de sobrescrever',
+    'As novidades da 1.7.2b foram corrigidas: no AO VIVO você é observador desde a 1.7.2c (sem ataque ao jogador, sem "Preparar visita" e sem "Visitante em risco")',
+  ] },
   { versao: '1.7.2c', data: '10/11/2026', titulo: 'Versão 1.7.2c: animais e funcionários', itens: [
     'O perigo dos animais agora vale para a equipe: antes de comida, água, limpeza ou checagem, o funcionário para no portão e chama os animais perigosos para as tocas. Faz o serviço e, quando sai, eles são soltos',
     'Sem toca (ou sem vaga): o veterinário vem sedar os perigosos com dardo, de fora da cerca. Cada sedação custa R$ 100 e estressa o animal. A toca compensa',
@@ -36,9 +45,8 @@ export const CHANGELOG = [
     'Mover objetos agora também move as tocas (o animal que estiver dentro vai junto)',
     'Rotina de cada espécie: pastar de manhã e à tarde, descanso no meio do dia (leão deitado, zebra e girafa em pé, flamingo numa perna só), banho de poeira do elefante e do rinoceronte. O hipopótamo dorme de dia dentro da água e sai à noite para pastar. Vale também com o jogo fechado',
     'AO VIVO dentro dos recintos: chegue ao portão e toque em Entrar (ou use Visitar no painel do habitat). Na ilha, a ponte agora é caminho. Lá dentro você anda mais devagar e não atravessa tocas, troncos nem água funda',
-    'Modo selvagem: com animal perigoso solto aparece o aviso; se você chegar perto demais ele encara e depois avança. É só um susto: ninguém morre, a visita acaba e o recinto fica 1 hora de jogo fechado para visita. No Modo Tranquilo o animal para a 1 m. Dá para desligar em Menu > Configurações',
-    'Preparar visita: no painel do habitat, o tratador recolhe os animais perigosos nas tocas e fecha as portas; aí a visita fica liberada. Ao sair, eles são soltos',
-    'Novo alerta Visitante em risco (para o segurança) depois de um ataque. Seu save é convertido sozinho',
+    'Modo selvagem: os animais perigosos reagem a quem entra no recinto. Desde a 1.7.2c isso vale para a equipe, não para você (no AO VIVO você só observa). Dá para desligar em Menu > Configurações',
+    'Seu save é convertido sozinho',
   ] },
   { versao: '1.7.2a', data: '09/11/2026', titulo: 'Versão 1.7.2a: correções e preparação para expansões', itens: [
     'Sincronia com o Drive mais segura: não decide mais pelo relógio dos aparelhos, nunca envia por cima sem perguntar, guarda uma cópia do save do Drive antes de substituir e não cria save duplicado',

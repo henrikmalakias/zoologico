@@ -4,7 +4,7 @@ import { placeHabitat, placeFacility, buyAnimal, placePlant, paintTerrain } from
 import { dispatch } from '../src/sim/staff.js';
 import { speedOf, raioOf, caladoOf, climber } from '../src/sim/animals.js';
 import { serialize, deserialize, contentHash } from '../src/save/save.js';
-import { content, AVAILABLE_PACKS, papel } from '../src/content/registry.js';
+import { content, AVAILABLE_PACKS, papel, DLC_CATALOG } from '../src/content/registry.js';
 import { rebuildOcc, isPathT } from '../src/sim/grid.js';
 let fails = 0; const ok = (c, m) => { console.log((c ? 'ok - ' : 'FALHOU: ') + m); if (!c) fails++; };
 const now = Date.now(), live = { abstract: false, realDt: 0.05, moveMul: 1 };
@@ -65,5 +65,9 @@ AVAILABLE_PACKS.teste = { id: 'teste', versao: '1.0.0', nome: 'Teste',
   s2.packs.teste = '1.0.0'; err = null; try { for (let k = 0; k < 1000; k++) step(s2, 0.05, live); } catch (e) { err = e; }
   ok(!err && s2.animals.filter(a => a.sp === 'urso_t').length === 2, 'reinstalar traz os itens de volta'); }
 delete AVAILABLE_PACKS.teste;
+
+// ---- 1.7.2d: catálogo de DLC ganhou Obras e Construções; comunicações foi cancelada ----
+{ ok(DLC_CATALOG.some(d => d.id === 'obras' && /Obras/.test(d.nome) && d.estado === 'em_breve'), 'catálogo tem a DLC "obras" (em breve)');
+  ok(!DLC_CATALOG.some(d => d.id === 'comunicacoes'), 'catálogo não lista "comunicacoes" (cancelada, vira parte da 1.9)'); }
 
 console.log(fails ? `${fails} FALHA(S)` : 'TODOS OS TESTES DA CORREÇÃO DE BUGS E DLC PASSARAM'); if (fails) process.exit(1);

@@ -180,7 +180,10 @@ export function checkShrink(s, x0, y0, x1, y1) {
   if (!h) return R(false, 'Desenhe sobre a parte do habitat que quer tirar.', { rect: r });
   if (content(s).fences[h.fence]?.fosso) return R(false, 'Ilhas não podem ser recortadas.', { rect: r, hab: h });
   const keep = new Set([idx(...h.gateIn), idx(...h.feed), idx(...h.water)]);
-  if (tocasDe(s, h.id).some(t => tocaCells(t).some(([x, y]) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h))) return R(false, 'Mova a toca antes de recortar o habitat.', { rect: r, hab: h, cells: [] });
+  // 1.7.2d: a toca perde o vidro ou a entrada se o recorte pegar os 2 blocos da frente deles, então esses também ficam de fora
+  const noCorte = (x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+  const perdeToca = t => [...tocaCells(t), ...ladoTiles(t, t.dir), ...ladoTiles(t, t.porta ?? (t.dir + 2) % 4)].some(([x, y]) => noCorte(x, y));
+  if (tocasDe(s, h.id).some(perdeToca)) return R(false, 'Mova a toca antes de recortar o habitat (o vidro e a entrada precisam de 2 blocos livres dentro dele).', { rect: r, hab: h, cells: [] });
   const cut = h.cells.filter(i => { const x = i % MAP, y = (i / MAP) | 0; return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h && !keep.has(i); });
   if (!cut.length) return R(false, 'Nada para tirar aqui (portão, comedouro e bebedouro ficam).', { rect: r, hab: h, cells: [] });
   const cs = new Set(cut), rest = h.cells.filter(i => !cs.has(i));

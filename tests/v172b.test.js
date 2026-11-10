@@ -2,7 +2,7 @@
 import { newGame, step, simulateAbstract, SCHEMA } from '../src/sim/core.js';
 import { placeHabitat, placePlant, buyAnimal, paintTerrain, sculpt, demolish, checkToca, placeToca, movableAt, moveObject, checkShrink } from '../src/sim/build.js';
 import { habObstacles, dormeAgora, rotinaAgora, ESTADOS, perigoDe, aloft, dentro, RADIUS, mandarParaToca, tocaLivre, limites } from '../src/sim/animals.js';
-import { tocasDe, tocaCells, tocaCenter, portaPonto, ocupantes, tocaVagas } from '../src/sim/tocas.js';
+import { tocasDe, tocaCells, tocaCenter, portaPonto, ocupantes, tocaVagas, ladoTiles } from '../src/sim/tocas.js';
 import * as V from '../src/sim/visita.js';
 import { serialize, deserialize, MIGRATIONS } from '../src/save/save.js';
 import { content } from '../src/content/registry.js';
@@ -39,6 +39,8 @@ const naCaixa = (a, t, R) => { const c = tocaCenter(t); return Math.abs(a.x - c.
   { const c2 = checkToca(s, 30, 30); ok(!c2.ok || !tocaCells(c2).some(([x, y]) => x === 30 && y === 30), 'toca nunca fica em cima de planta'); }
   ok(!checkToca(s, h.feed[0], h.feed[1]).ok || !tocaCells(checkToca(s, h.feed[0], h.feed[1])).some(([x, y]) => x === h.feed[0] && y === h.feed[1]), 'toca nunca cobre o comedouro');
   ok(!checkToca(s, 40, 40).ok, 'fora de habitat é recusado');
+  ok(tocaVagas(s, 'zebra') === 2 && tocaVagas(s, 'leao') === 2, 'espécies de porte médio dividem a toca (2 vagas)');
+  ok(tocaVagas(s, 'elefante') === 1 && tocaVagas(s, 'girafa') === 1, 'bem grandes e altos (girafa) ficam sozinhos na toca');
   ok(!checkToca(s, 24, 24).ok || checkToca(s, 24, 24).tx >= 24, 'no canto, só encaixa por dentro do habitat');
   s.money = 100; const semGrana = checkToca(s, 31, 26); ok(!semGrana.ok && /insuficiente/.test(semGrana.msg), 'sem dinheiro: recusa com o custo'); s.money = 9e6;
   const isl = placeHabitat(s, 38, 22, 47, 31, 'savana', 'fosso').hab;
@@ -71,6 +73,12 @@ const naCaixa = (a, t, R) => { const c = tocaCenter(t); return Math.abs(a.x - c.
   ok(habObstacles(s, h).find(o => o.toca).x === c1.x, 'obstáculo acompanha a toca (cache refeito)');
   ok(!moveObject(s, movableAt(s, t.tx, t.ty), 42, 23).ok, 'não muda de habitat');
   const cut = checkShrink(s, t.tx, t.ty, t.tx + 3, 33); ok(!cut.ok && /toca/i.test(cut.msg), 'recortar o habitat por cima da toca é recusado');
+  { // 1.7.2d: o vidro e a entrada da toca também ficam protegidos no recorte
+    const lv = ladoTiles(t, t.dir), lp = ladoTiles(t, t.porta ?? (t.dir + 2) % 4);
+    const rv = checkShrink(s, lv[0][0], lv[0][1], lv[1][0], lv[1][1]), rp = checkShrink(s, lp[0][0], lp[0][1], lp[1][0], lp[1][1]);
+    ok(!rv.ok && /toca/i.test(rv.msg), 'recortar a faixa do vidro é recusado');
+    ok(!rp.ok && /toca/i.test(rp.msg), 'recortar a faixa da entrada do animal é recusado');
+  }
   ok(!demolish(s, t.tx, t.ty).ok, 'demolir com animal dentro é recusado');
   leo.st = 'idle'; leo.toca = null; const md = s.money;
   ok(demolish(s, t.tx, t.ty).ok && tocasDe(s, h.id).length === 0 && s.money - md === 600, 'toca vazia é demolida (devolve 50%)');
