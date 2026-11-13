@@ -337,7 +337,8 @@ export function buildFacility(kit, type, D) {
 // ---------- veículos ----------
 export function buildVehicle(kit, kind) {
   const g = new THREE.Group(), big = kind === 'caminhao';
-  const L = big ? 6.2 : 3.8, W = big ? 2.3 : 1.8, body = kit.mat('#2f6b4a', { rough: 0.4, metal: 0.3 }), dark = kit.mat('#1b1f22', { rough: 0.3 }), glass = kit.mat('#9fc3d8', { rough: 0.05, metal: 0.5 });
+  const L = big ? 5.6 : 3.6, W = big ? 1.6 : 1.4, // 1.7.2e: cabem numa via de 1 bloco (2 m)
+     body = kit.mat('#2f6b4a', { rough: 0.4, metal: 0.3 }), dark = kit.mat('#1b1f22', { rough: 0.3 }), glass = kit.mat('#9fc3d8', { rough: 0.05, metal: 0.5 });
   const add = (geo, m, x, y, z, o) => { const me = kit.mesh(geo, m); me.position.set(x, y, z); if (o) me.rotation.set(...o); g.add(me); return me; };
   add(kit.box(W, 0.5, L), body, 0, 0.75, 0);
   const cabZ = L / 2 - (big ? 1.0 : 0.85);
@@ -356,7 +357,7 @@ export function buildVehicle(kit, kind) {
   const wheels = [];
   const wz = [L / 2 - 0.8, -L / 2 + 0.8].concat(big ? [-L / 2 + 1.9] : []);
   for (const z of wz) for (const sx of [-1, 1]) { const w = add(kit.cyl(0.42, 0.42, 0.3), dark, sx * (W / 2), 0.42, z, [0, 0, Math.PI / 2]); wheels.push(w); add(kit.cyl(0.2, 0.2, 0.31), kit.mat('#8a8f94', { metal: 0.6 }), sx * (W / 2), 0.42, z, [0, 0, Math.PI / 2]); }
-  g.userData = { wheels, bedY: 1.02, bedZ, kind };
+  g.userData = { wheels, bedY: 1.02, bedZ, kind, L };
   return g;
 }
 // ---------- ferramentas ----------

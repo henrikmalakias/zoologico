@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.7.2d
+# Projeto Zoológico — v1.7.2e
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -32,13 +32,20 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
 - Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.
 
+## Caminhos do veículo e animações (1.7.2e)
+- `buildRoute` (src/sim/staff.js): destino fora de via (animal solto atrás de um muro ou dentro de outro habitat) vira o bloco livre mais perto com caminho (`blocoDeAproximo`); a rota nunca mais termina em linha reta por cima de muros. Animal que corre: a rota é refeita (`t.chase`, no máximo a cada ~0,8 s).
+- Veículo: `vehPassable` (não passa por objetos), vias custam 1 e grama 3, cantos chanfrados (`chanfrar`); caminhão 1,6 x 5,6 m e jipe 1,4 x 3,6 m (cabem em 1 bloco de 2 m).
+- Render (src/render/world.js): `giro` (giro suave) para animais, equipe e veículo; carga animada do animal sedado; animal deitado no sentido do veículo.
+- Fuga animada (animals.js): vira para a cerca; pulo com partida e chegada suaves. Teste: `tests/v172e.test.js`.
+
 ## Correções da revisão (1.7.2d)
-- World.dispose() volta a liberar o Kit (materiais, geometrias e texturas), a textura do terreno (	tex), o material do chão e o waterMat a cada troca de gráfico; as três chamadas tinham ficado dentro de um comentário na 1.7.2a.
+- World.dispose() volta a liberar o Kit (materiais, geometrias e texturas), a textura do terreno (ttex), o material do chão e o waterMat a cada troca de gráfico; as três chamadas tinham ficado dentro de um comentário na 1.7.2a.
 - checkShrink recusa o recorte que pega os 2 blocos do vidro (dir) ou os da entrada (porta) de uma toca, não só os 4 blocos dela — antes a toca ficava sem acesso e todo serviço caía na sedação.
-- 	ocaVagas: espécie com lto: true (girafa) também fica sozinha na toca, como as de aio >= 1,1 m. Máximo continua 6 tocas por habitat e 2 animais por toca (decisão da 1.7.2b).
+- tocaVagas: espécie com alto: true (girafa) também fica sozinha na toca, como as de 
+aio >= 1,1 m. Máximo continua 6 tocas por habitat e 2 animais por toca (decisão da 1.7.2b).
 - DLC_CATALOG ganhou obras ("Obras e Construções", em_breve); comunicacoes saiu do contrato (vira parte da 1.9).
 - Drive: meta() pede etag e enviar() manda If-Match; 412 significa que outro aparelho gravou no meio, então o sync refaz a decisão uma vez e pergunta em vez de sobrescrever.
-- Changelog da 1.7.2b corrigido (o AO VIVO é observador desde a 1.7.2c). Testes: 	ests/v172b.test.js, 	ests/v172c.test.js, 	ests/v1721.test.js, 	ests/v171.test.js.
+- Changelog da 1.7.2b corrigido (o AO VIVO é observador desde a 1.7.2c). Testes: tests/v172b.test.js, tests/v172c.test.js, tests/v1721.test.js, tests/v171.test.js.
 
 ## Animais e funcionários (1.7.2c)
 - O perigo vale para a equipe (`perigoDe`, `PERIGOSO`, `wildBehave` em `src/sim/animals.js`, alvo = funcionários dentro do recinto, `equipeDentro`). Os mansos se afastam ~4 m (`MEDO`, estado `medo`).

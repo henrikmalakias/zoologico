@@ -96,6 +96,34 @@ export function startTask(s, st, type, target, alertId = null, opts = {}) {
   if (entraNoRecinto(st.task)) { st.task.hab = st.task.pre || st.task.dest.hab; const h = habById(s, st.task.hab); if (h?.seg?.length) segurar(h, st); }
   return true;
 }
+// 1.7.2e: o veículo também não passa por cima de objetos (tocas, árvores, mobiliário) e prefere as vias (a grama custa mais)
+const vehPassable = (s, x, y) => staffPassable(s, x, y) && !s._occ.obj[idx(x, y)];
+// 1.7.2e: destino fora de qualquer via (animal solto dentro de outro habitat, atrás de um muro, em cima de uma instalação):
+// a rota termina no bloco livre mais perto que tenha caminho, nunca em linha reta por cima de muros e paredes
+function blocoDeAproximo(s, cur, tx, ty, pass, cost) {
+  if (pass(tx, ty)) { const p = astar(s, cur.tx, cur.ty, tx, ty, pass, cost); return p ? { tx, ty, path: p } : null; }
+  const cand = [];
+  for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) if ((dx || dy) && pass(tx + dx, ty + dy)) cand.push([dx * dx + dy * dy, tx + dx, ty + dy]);
+  cand.sort((a, b) => a[0] - b[0]);
+  for (const [, x, y] of cand.slice(0, 10)) { const p = astar(s, cur.tx, cur.ty, x, y, pass, cost); if (p) return { tx: x, ty: y, path: p }; }
+  return null;
+}
+// cantos das vias: o veículo corta o canto dentro do próprio bloco (0,7 m de cada lado) em vez de girar parado no centro
+function chanfrar(pts) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const P = pts[i - 1], C = pts[i], N = pts[i + 1];
+    if (P && N) {
+      const d1 = Math.hypot(C.x - P.x, C.z - P.z), d2 = Math.hypot(N.x - C.x, N.z - C.z);
+      if (d1 > 1.5 && d1 < 2.5 && d2 > 1.5 && d2 < 2.5) {
+        const ax = (C.x - P.x) / d1, az = (C.z - P.z) / d1, bx = (N.x - C.x) / d2, bz = (N.z - C.z) / d2;
+        if (Math.abs(ax * bz - az * bx) > 0.5) { out.push({ x: C.x - ax * 0.7, z: C.z - az * 0.7 }, { x: C.x + bx * 0.7, z: C.z + bz * 0.7 }); continue; }
+      }
+    }
+    out.push(C);
+  }
+  return out;
+}
 function buildRoute(s, st, dest) {
   const pts = []; let cur = worldToTile(st.x, st.z);
   // já está dentro do mesmo recinto: anda por dentro, sem sair e entrar de novo
@@ -103,10 +131,19 @@ function buildRoute(s, st, dest) {
   if (st.inHab) { const h = habById(s, st.inHab); if (h) { const gi = tileToWorld(h.gateIn[0], h.gateIn[1]); pts.push(...(h.fence === 'fosso' ? [gi] : routeInside(h, st, gi, 0.2)), tileToWorld(h.gateOut[0], h.gateOut[1])); cur = { tx: h.gateOut[0], ty: h.gateOut[1] }; } st.inHab = 0; }
   const H = dest.hab ? habById(s, dest.hab) : null;
   const goal = H ? { tx: H.gateOut[0], ty: H.gateOut[1] } : worldToTile(dest.x, dest.z);
-  const path = astar(s, cur.tx, cur.ty, goal.tx, goal.ty, (x, y) => staffPassable(s, x, y), (x, y) => (isPathT(s.terrain[idx(x, y)]) ? 1 : 1.4));
+  const pass = st.veh ? (x, y) => vehPassable(s, x, y) : (x, y) => staffPassable(s, x, y);
+  const cost = st.veh ? (x, y) => (isPathT(s.terrain[idx(x, y)]) ? 1 : 3) : (x, y) => (isPathT(s.terrain[idx(x, y)]) ? 1 : 1.4);
+  if (!H) {
+    // sem recinto: vai até o bloco livre mais perto do destino e para ali
+    const g = blocoDeAproximo(s, cur, goal.tx, goal.ty, pass, cost);
+    if (!g) return null; // destino isolado (sem caminho): não atravessa cercas
+    for (const [x, y] of g.path) pts.push(tileToWorld(x, y));
+    return st.veh ? chanfrar(pts) : pts;
+  }
+  const path = astar(s, cur.tx, cur.ty, goal.tx, goal.ty, pass, cost);
   if (path) for (const [x, y] of path) pts.push(tileToWorld(x, y));
   else if (staffPassable(s, cur.tx, cur.ty) && staffPassable(s, goal.tx, goal.ty)) return null; // destino isolado (sem caminho): não atravessa cercas
-  if (H) { const gi = tileToWorld(H.gateIn[0], H.gateIn[1]); pts.push(gi); if (H.fence !== 'fosso') { pts.push(...routeInside(H, gi, dest, 0.2)); return pts; } }
+  const gi = tileToWorld(H.gateIn[0], H.gateIn[1]); pts.push(gi); if (H.fence !== 'fosso') { pts.push(...routeInside(H, gi, dest, 0.2)); return pts; }
   pts.push({ x: dest.x, z: dest.z });
   return pts;
 }
@@ -258,8 +295,14 @@ export function updateStaff(s, gameMin, ctx) {
         t.travelLeft -= gameMin;
         if (t.travelLeft <= 0) { st.x = t.dest.x; st.z = t.dest.z; st.inHab = t.dest.hab; t.route = null; arrive(s, st, t); }
       } else {
-        if (!t.route) { t.route = buildRoute(s, st, t.dest); if (!t.route) { log(s, `${st.name} não encontrou caminho até o destino e voltou ao trabalho normal. Ligue o local a um caminho.`, 'ruim'); cancelTask(s, st); continue; } }
-        if ((t.type === 'recapture' || ((t.type === 'transfer' || t.modo === 'internar') && !t.pre)) && t.phase === 'travel' && t.route.length) t.route[t.route.length - 1] = { x: t.dest.x, z: t.dest.z };
+        if (!t.route) { t.route = buildRoute(s, st, t.dest); if (t.route && t.route.length > 1 && !t.dest.hab && Math.hypot(t.route[0].x - st.x, t.route[0].z - st.z) < 1) t.route.shift(); if (!t.route) { log(s, `${st.name} não encontrou caminho até o destino e voltou ao trabalho normal. Ligue o local a um caminho.`, 'ruim'); cancelTask(s, st); continue; } }
+        if ((t.type === 'recapture' || ((t.type === 'transfer' || t.modo === 'internar') && !t.pre)) && t.phase === 'travel' && t.route.length) {
+          if (t.dest.hab) t.route[t.route.length - 1] = { x: t.dest.x, z: t.dest.z }; // dentro do próprio recinto (a rota já entrou pelo portão)
+          else { // animal solto: a rota é refeita quando ele se afasta do lugar para onde ela foi traçada (no máximo a cada ~0,8 s)
+            t.chase ||= { x: t.dest.x, z: t.dest.z, t: 0 }; t.chase.t += ctx.realDt;
+            if (t.chase.t > 0.8 && Math.hypot(t.dest.x - t.chase.x, t.dest.z - t.chase.z) > 3) { t.chase = null; t.route = null; continue; }
+          }
+        }
         const sp = (st.veh ? 7 : 1.5 * (0.8 + 0.1 * st.attrs.rapidez) * (t.alertId ? 1.4 : 1)) * ctx.moveMul;
         let left = sp * ctx.realDt;
         while (left > 0 && t.route.length) {

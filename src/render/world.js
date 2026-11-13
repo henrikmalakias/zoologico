@@ -10,6 +10,9 @@ import { edges } from '../sim/habshape.js';
 import { DRAFT } from '../sim/animals.js';
 import { hourOf } from '../sim/util.js';
 import { UltraSky, loadTerrainArrays, terrainData, fillTerrainData, terrainMaterial, waterNormalTexture, Grass, addFur, addSkinDetail, gradeMaterial } from './ultra.js';
+// 1.7.2e: giro suave (menor arco, com velocidade máxima em rad/s) para animais, equipe e veículos não virarem de uma vez
+const giro = (cur, alvo, dt, taxa) => { if (cur === undefined) return alvo; const d = ((alvo - cur + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI, m = taxa * dt; return Math.abs(d) <= m ? alvo : cur + Math.sign(d) * m; };
+const suave = f => f * f * (3 - 2 * f);
 
 const C3 = c => new THREE.Color(c);
 const freeMerged = o => o.traverse(m => { if (m.userData?.merged) m.geometry.dispose(); });
@@ -384,6 +387,8 @@ export class World {
     const C = content(s), m = new THREE.Matrix4(), q = new THREE.Quaternion();
     // animais
     const L = this.hi ? library() : null, seen = new Set();
+    // 1.7.2e: animal sedado sendo carregado sobe na carroceria em vez de aparecer lá de repente
+    const carga = new Map(); for (const st of s.staff) { const t = st.task; if (t && t.phase === 'load' && t.work0 > 0) carga.set(t.target, { id: st.id, f: suave(1 - Math.min(1, Math.max(0, t.work) / t.work0)) }); }
     for (const a of s.animals) {
       if (!C.species[a.sp] || a.internado) continue; seen.add(a.id); // internado: está dentro da Clínica veterinária
       const vkey = a.sp === 'leao' || a.sp === 'gorila' || C.species[a.sp].dimorfismo ? a.sp + ':' + a.sex : a.sp + ':F';
@@ -398,7 +403,9 @@ export class World {
       let x = a.x, z = a.z, rot = a.rot || 0, y = walkY(s, x, z) + (a.jy || 0) + (a.cy || 0) + (a.st === 'in_toca' ? 0.2 : 0);
       // na água funda o corpo boia na linha d'água (hipopótamo: só olhos e narinas de fora)
       if (!a.cy && s.height) { const fl = WATER_Y - (C.species[a.sp].calado ?? DRAFT[a.sp] ?? 1) * sc; if (fl > y && a._nada) y = fl; }
-      if (a.carriedBy) { const v = this.maps.staff.get(a.carriedBy)?.veh; if (v) { const r = v.rotation.y; x = v.position.x - Math.sin(r) * (-v.userData.bedZ); z = v.position.z - Math.cos(r) * (-v.userData.bedZ); y = v.position.y + v.userData.bedY; rot = r + Math.PI / 2; } }
+      if (a.carriedBy) { const v = this.maps.staff.get(a.carriedBy)?.veh; if (v) { const r = v.rotation.y; x = v.position.x - Math.sin(r) * (-v.userData.bedZ); z = v.position.z - Math.cos(r) * (-v.userData.bedZ); y = v.position.y + v.userData.bedY; rot = r; } } // deitado no sentido do veículo: cabe na via de 1 bloco
+      else if (carga.has(a.id)) { const c = carga.get(a.id), v = this.maps.staff.get(c.id)?.veh; if (v) { const r = v.rotation.y, bx = v.position.x - Math.sin(r) * (-v.userData.bedZ), bz = v.position.z - Math.cos(r) * (-v.userData.bedZ); x += (bx - x) * c.f; z += (bz - z) * c.f; y += (v.position.y + v.userData.bedY - y) * c.f + Math.sin(c.f * Math.PI) * 0.9; rot = giro(e.rot, r, 1, 1); } }
+      e.rot = a.carriedBy ? giro(e.rot, rot, dt, 9) : (carga.has(a.id) ? rot : giro(e.rot, rot, dt, a.escaping ? 12 : 7)); rot = e.rot;
       // subindo/descendo o tronco: corpo na vertical, de frente para a árvore
       e.pitch = (e.pitch || 0) + ((climbing ? -1.3 : 0) - (e.pitch || 0)) * Math.min(1, dt * 6);
       o.position.set(x, y, z); o.rotation.order = 'YXZ'; o.rotation.y = rot; o.rotation.x = e.pitch;
@@ -425,13 +432,13 @@ export class World {
       const driving = st.veh && t && (t.phase === 'travel' || t.phase === 'return');
       // veículo
       if (st.veh) {
-        if (!e.veh || e.veh.userData.kind !== st.veh) { if (e.veh) this.layers.staff.remove(e.veh); e.veh = buildVehicle(this.kit, st.veh); e.veh.userData.kind = st.veh; this.layers.staff.add(e.veh); e.veh.position.set(st.x, walkY(s, st.x, st.z), st.z); }
-        if (driving) { e.veh.position.set(st.x, walkY(s, st.x, st.z), st.z); e.veh.rotation.y = st.rot || 0; for (const w of e.veh.userData.wheels) w.rotation.x += mv / 0.42; }
-        else if (!e.parked) { const r = e.veh.rotation.y; e.veh.position.x -= Math.sin(r) * 3.2; e.veh.position.z -= Math.cos(r) * 3.2; e.veh.position.y = walkY(s, e.veh.position.x, e.veh.position.z); e.parked = true; }
+        if (!e.veh || e.veh.userData.kind !== st.veh) { if (e.veh) this.layers.staff.remove(e.veh); e.veh = buildVehicle(this.kit, st.veh); e.veh.userData.kind = st.veh; this.layers.staff.add(e.veh); e.veh.position.set(st.x, walkY(s, st.x, st.z), st.z); e.veh.rotation.y = e.vrot = st.rot || 0; }
+        if (driving) { e.veh.position.set(st.x, walkY(s, st.x, st.z), st.z); e.vrot = giro(e.vrot, st.rot || 0, dt, 4.5); e.veh.rotation.y = e.vrot; for (const w of e.veh.userData.wheels) w.rotation.x += mv / 0.42; }
+        else if (!e.parked) { const r = e.veh.rotation.y; const pk = (e.veh.userData.L || 6) / 2 + 0.6; e.veh.position.x -= Math.sin(r) * pk; e.veh.position.z -= Math.cos(r) * pk; e.veh.position.y = walkY(s, e.veh.position.x, e.veh.position.z); e.parked = true; }
         if (driving) e.parked = false;
       } else if (e.veh) { this.layers.staff.remove(e.veh); e.veh = null; e.parked = false; }
       e.o.visible = !driving;
-      const sy = walkY(s, st.x, st.z); e.o.position.set(st.x, sy, st.z); if (st.rot !== undefined) e.o.rotation.y = st.rot;
+      const sy = walkY(s, st.x, st.z); e.o.position.set(st.x, sy, st.z); if (st.rot !== undefined) { e.rot = giro(e.rot, st.rot, dt, 9); e.o.rotation.y = e.rot; }
       // ação e ferramenta
       const working = t && ['work', 'sedate', 'load', 'release', 'sedar', 'recolher'].includes(t.phase) && !(t.type === 'clean' && t.moving);
       const hab = t && s.habitats.find(h => h.id === t.target);

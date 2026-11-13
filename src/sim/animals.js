@@ -722,13 +722,14 @@ function escapeAnim(s, a, h, dt, sp) {
   if (E.mode === 'pular') {
     const T = 1.3, f = Math.min(1, E.t / T), i = E.pts[0], o = E.out;
     if (!E.from) E.from = { x: a.x, z: a.z };
-    a.x = E.from.x + (o.x - E.from.x) * f; a.z = E.from.z + (o.z - E.from.z) * f;
+    const g = f * f * (3 - 2 * f); // 1.7.2e: sai e chega devagar, de frente para onde vai
+    a.x = E.from.x + (o.x - E.from.x) * g; a.z = E.from.z + (o.z - E.from.z) * g; a.rot = Math.atan2(o.x - E.from.x, o.z - E.from.z);
     a.jy = Math.sin(f * Math.PI) * 3.4; a.st = 'pulando';
     if (f >= 1) { a.jy = 0; a.escaping = null; a.st = 'roam'; }
     return;
   }
   if (E.mode === 'derrubar') {
-    a.st = 'empurrar';
+    a.st = 'empurrar'; if (E.out) a.rot = Math.atan2(E.out.x - a.x, E.out.z - a.z);
     if (E.t > 2.2) { addBreach(s, h, E.side, E.k); log(s, `${a.name} derrubou a cerca! Há uma brecha no ${h.name}.`, 'perigo'); E.mode = 'brecha'; E.pts = [E.out]; E.i = 0; E.t = 0; }
     return;
   }
