@@ -63,5 +63,5 @@ function persegue(s, tr, a, tx, ty, de, parado = true) {
   let dentro = 0; for (let i = 0; i < 8000; i++) { a.tgt = null; step(s, 0.0125, ctx); const t = worldToTile(tr.x, tr.z), k = idx(t.tx, t.ty); if (s._occ.hab[k] || s._occ.fac[k]) dentro++; if (!tr.task) break; }
   ok(dentro === 0, 'quem vai ao animal solto dentro de outro habitat fica do lado de fora');
 }
-ok(APP_VERSION === '1.7.2e' && CHANGELOG[0].versao === '1.7.2e' && CHANGELOG[0].itens.length >= 4, 'versão 1.7.2e com novidades no topo do CHANGELOG');
+ok(CHANGELOG.find(c => c.versao === '1.7.2e')?.itens.length >= 4, 'versão 1.7.2e com novidades no topo do CHANGELOG');
 console.log(fails ? `\n${fails} FALHAS em ${n}` : `\nTODOS OS TESTES DA 1.7.2e PASSARAM (${n})`); process.exit(fails ? 1 : 0);

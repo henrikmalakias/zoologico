@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.7.2e';
+export const APP_VERSION = '1.7.2f';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -22,6 +22,11 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.7.2f', data: '13/11/2026', titulo: 'Versão 1.7.2f: correção do funcionário sem caminho', itens: [
+    'Funcionário ferido (ou descansando) que estava dentro de um recinto quando o jogo foi fechado ou atualizado não fica mais preso repetindo "não encontrou caminho": ele sai pelo portão e vai descansar',
+    'Descanso sem caminho até o Centro de cuidados: o funcionário descansa onde está, sem tentar de novo a cada instante',
+    'O aviso "não encontrou caminho" aparece no máximo uma vez por hora de jogo para cada funcionário',
+  ] },
   { versao: '1.7.2e', data: '13/11/2026', titulo: 'Versão 1.7.2e: caminhos do veículo e animações', itens: [
     'O veículo de captura (e quem vai até um animal solto) não atravessa mais muros, habitats nem instalações: a rota termina no bloco livre mais perto do animal e o dardo é dado dali. Se o animal corre, a rota é refeita no caminho',
     'Caminhão e jipe ficaram mais estreitos e passam numa via de 1 bloco; nas esquinas eles cortam o canto dentro do próprio bloco. O animal vai deitado no sentido do veículo, sem sobrar para o lado',

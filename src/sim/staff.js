@@ -126,6 +126,9 @@ function chanfrar(pts) {
 }
 function buildRoute(s, st, dest) {
   const pts = []; let cur = worldToTile(st.x, st.z);
+  // 1.7.2f: quem está de pé dentro de um recinto sem a marca inHab (rota interrompida por recarregar o jogo, por exemplo)
+  // sai pelo portão; antes a rota falhava a cada passo e o aviso "não encontrou caminho" se repetia sem parar
+  if (!st.inHab && s._occ.hab[idx(cur.tx, cur.ty)] && habById(s, s._occ.hab[idx(cur.tx, cur.ty)])) st.inHab = s._occ.hab[idx(cur.tx, cur.ty)];
   // já está dentro do mesmo recinto: anda por dentro, sem sair e entrar de novo
   if (st.inHab && dest.hab === st.inHab) { const h = habById(s, st.inHab); if (h) return h.fence === 'fosso' ? [{ x: dest.x, z: dest.z }] : routeInside(h, st, dest, 0.2); }
   if (st.inHab) { const h = habById(s, st.inHab); if (h) { const gi = tileToWorld(h.gateIn[0], h.gateIn[1]); pts.push(...(h.fence === 'fosso' ? [gi] : routeInside(h, st, gi, 0.2)), tileToWorld(h.gateOut[0], h.gateOut[1])); cur = { tx: h.gateOut[0], ty: h.gateOut[1] }; } st.inHab = 0; }
@@ -295,7 +298,11 @@ export function updateStaff(s, gameMin, ctx) {
         t.travelLeft -= gameMin;
         if (t.travelLeft <= 0) { st.x = t.dest.x; st.z = t.dest.z; st.inHab = t.dest.hab; t.route = null; arrive(s, st, t); }
       } else {
-        if (!t.route) { t.route = buildRoute(s, st, t.dest); if (t.route && t.route.length > 1 && !t.dest.hab && Math.hypot(t.route[0].x - st.x, t.route[0].z - st.z) < 1) t.route.shift(); if (!t.route) { log(s, `${st.name} não encontrou caminho até o destino e voltou ao trabalho normal. Ligue o local a um caminho.`, 'ruim'); cancelTask(s, st); continue; } }
+        if (!t.route) { t.route = buildRoute(s, st, t.dest); if (t.route && t.route.length > 1 && !t.dest.hab && Math.hypot(t.route[0].x - st.x, t.route[0].z - st.z) < 1) t.route.shift(); if (!t.route) {
+          // 1.7.2f: descanso/afastamento sem rota: fica onde está (não entra num ciclo de tentar de novo a cada passo)
+          if (t.type === 'rest' || t.type === 'ferido' || t.type === 'idle') { t.dest = { hab: st.inHab || 0, x: st.x, z: st.z }; t.route = []; }
+          else { if (!st._semRota || s.clock.min - st._semRota > 60) { st._semRota = s.clock.min; log(s, `${st.name} não encontrou caminho até o destino e voltou ao trabalho normal. Ligue o local a um caminho.`, 'ruim'); } cancelTask(s, st); continue; }
+        } }
         if ((t.type === 'recapture' || ((t.type === 'transfer' || t.modo === 'internar') && !t.pre)) && t.phase === 'travel' && t.route.length) {
           if (t.dest.hab) t.route[t.route.length - 1] = { x: t.dest.x, z: t.dest.z }; // dentro do próprio recinto (a rota já entrou pelo portão)
           else { // animal solto: a rota é refeita quando ele se afasta do lugar para onde ela foi traçada (no máximo a cada ~0,8 s)

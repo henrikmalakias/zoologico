@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.7.2e
+# Projeto Zoológico — v1.7.2f
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -31,6 +31,9 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `src/render/ultra.js`: céu 360° por hora (Poly Haven, CC0), luz do ambiente, terreno com texturas (array de texturas), capim instanciado, água com ondas, copas de folhas, pelo em camadas e rugas.
 - `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
 - Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.
+
+## Funcionário sem caminho (1.7.2f)
+- `buildRoute`: quem está de pé dentro de um recinto sem `inHab` (rota interrompida ao recarregar o save) recebe a marca de volta e sai pelo portão. Descanso/afastamento sem rota fica no lugar; o aviso de caminho tem limite de 1 por hora de jogo por funcionário (`st._semRota`). Teste: `tests/v172f.test.js`.
 
 ## Caminhos do veículo e animações (1.7.2e)
 - `buildRoute` (src/sim/staff.js): destino fora de via (animal solto atrás de um muro ou dentro de outro habitat) vira o bloco livre mais perto com caminho (`blocoDeAproximo`); a rota nunca mais termina em linha reta por cima de muros. Animal que corre: a rota é refeita (`t.chase`, no máximo a cada ~0,8 s).
