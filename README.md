@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.8
+# Projeto Zoológico — v1.8.1
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -96,3 +96,12 @@ aio >= 1,1 m. Máximo continua 6 tocas por habitat e 2 animais por toca (decisã
 3. Credenciais > Criar credenciais > ID do cliente OAuth > Aplicativo da Web; em **Origens JavaScript autorizadas** coloque `https://henrikmalakias.github.io`.
 4. No jogo: Menu > Salvar > Colar ID > Conectar ao Drive (em cada aparelho). Para já vir pronto, cole o ID em `CLIENT_ID_PADRAO` em `src/save/drive.js`.
 Obs.: em modo "Teste" o Google pede para reautorizar a cada 7 dias; publicar o app (escopo não sensível) evita isso.
+
+## Aparência do HUD e dos painéis (1.8.1)
+- Visual "cartum safári" em `src/ui/style.css`: variáveis de cor em `:root` (`--ol` contorno, `--wood`, `--cream`, `--leaf`, `--sun`, `--red`, `--sky`), botões com sombra sólida que afundam no `:active`, painéis creme com contorno grosso. Sem `backdrop-filter` (mais leve no celular).
+- Fontes dentro do jogo em `src/ui/fonts/` (Fredoka nos títulos, números e botões; Nunito no texto; licença OFL ao lado). O Vite empacota os `.woff2` e o service worker guarda no primeiro uso: funciona offline, sem CDN.
+- Ícones SVG coloridos em `src/ui/icons.js` (`icon(nome, tamanho)` devolve elemento, `svg()` devolve texto). Os de controle usam `currentColor`. Alertas no mapa usam o nome do tipo de alerta como ícone.
+- `ui.js`: fichas do HUD com `<span>` trocado só quando muda (`setTxt`), dinheiro que conta (`_mv`) e pulsa (`pulse(el, 'up'|'down'|'bump')`) em mudanças ≥ R$ 500, sol/lua e barra do dia, entrada com mola (`enter()` na ficha e na gaveta, `pop-in` na janela por 380 ms para não repetir nos redesenhos), toasts com ícone e `conquista` (meta, nível, curso, contratação).
+- Economia de calor e bateria: classe `eco` no `#app` (em `updateHud`) corta laços infinitos, quiques, brilho e contagem; entradas ficam curtas. `prefers-reduced-motion` faz o mesmo.
+- Sons em `src/audio/sound.js`: `click` (bolha), `tab`, `open`. Vibração de 8 ms na barra e na velocidade quando o som está ligado.
+- Testes: `tests/v181.test.js` e `tests/v181_browser.py`. Próxima parte (1.8.2): retratos e redesenho das fichas e da Equipe.

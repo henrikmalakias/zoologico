@@ -2,6 +2,7 @@ import { content, APP_VERSION, DLC_CATALOG, CHANGELOG, ZOOPEDIA } from '../conte
 import { TRACOS_EQUIPE, TRACOS_GERENTE } from '../content/base.js';
 import * as sound from '../audio/sound.js';
 import { Tutorial } from './tutorial.js';
+import { icon, svg } from './icons.js';
 import { money, fmtClock, clamp, hourOf } from '../sim/util.js';
 import { worldToTile, tileToWorld, idx, inMap, AREAS, TILE } from '../sim/grid.js';
 import { stars, hire, fireById, expandArea, METAS, VAGAS, SPEEDS, H2, MES, fixedDaily } from '../sim/core.js';
@@ -46,7 +47,7 @@ export class UI {
     sound.configure(game.state.settings);
     // som: destrava o áudio no primeiro toque e faz "clique" nos botões
     root.addEventListener('pointerdown', () => sound.unlock(), true);
-    root.addEventListener('click', e => { if (e.target.closest?.('button') && !e.target.closest('.campad')) sound.click(); }, true);
+    root.addEventListener('click', e => { const b = e.target.closest?.('button'); if (!b || b.closest('.campad')) return; if (b.closest('.tabs')) sound.tab(); else sound.click(); if (this.s.settings.som !== false && (b.closest('.bar') || b.closest('.speed'))) navigator.vibrate?.(8); }, true);
     this.logSeen = game.state.log.length; this.voiceT = 3;
   }
   gesture(k) { this.tut?.gesto(k); }
@@ -56,17 +57,22 @@ export class UI {
   buildHud() {
     const R = this.root;
     this.el = {};
-    this.el.money = h('div', { class: 'chip money' }); this.el.clock = h('div', { class: 'chip' }); this.el.stars = h('div', { class: 'chip stars' }); this.el.vis = h('div', { class: 'chip' }); this.el.fps = h('div', { class: 'chip fps hidden' });
-    this.speedBtns = [0, 1, 2, 3].map(i => h('button', { title: ['Pausar', 'Normal', '2x', '3x'][i], onclick: () => { this.s.clock.speed = i; } }, ['⏸', '▶', '▶▶', '▶▶▶'][i]));
-    this.el.adv = h('button', { title: 'Avançar relógio', onclick: () => this.advanceMenu() }, '⏩');
-    this.el.live = h('button', { class: 'live', title: 'AO VIVO', onclick: () => this.g.toggleLive() }, '👁 AO VIVO');
-    R.append(h('div', { class: 'hud' }, h('div', { class: 'chips' }, this.el.money, this.el.clock, this.el.stars, this.el.vis, this.el.fps), h('div', { class: 'speed' }, ...this.speedBtns, this.el.adv, this.el.live)));
-    const btn = (icon, label, fn) => { const b = h('button', { onclick: fn }, h('b', {}, icon), label); return b; };
-    this.el.bBuild = btn('🏗', 'Construir', () => this.toggleBuild());
-    this.el.bGer = btn('📋', 'Gerência', () => this.openModal('gerencia'));
-    this.el.bEq = btn('👥', 'Equipe', () => this.openModal('equipe'));
-    this.el.bMetas = btn('🎯', 'Metas', () => this.openModal('metas'));
-    this.el.bMenu = btn('⚙', 'Menu', () => this.openModal('menu'));
+    // 1.8.1: fichas com ícone desenhado; o texto fica num <span> que só é trocado quando muda
+    const chip = (cls, ic) => { const t = h('span'); const e = h('div', { class: 'chip ' + cls }, ic ? icon(ic, 24) : null, t); e._t = t; return e; };
+    this.el.money = chip('money', 'coin'); this.el.stars = chip('stars', 'star'); this.el.vis = chip('vis', 'people'); this.el.fps = chip('fps hidden');
+    this.el.sunIc = icon('sun', 24); this.el.moonIc = icon('moon', 24); this.el.moonIc.classList.add('hidden');
+    this.el.clockTxt = h('span'); this.el.dayFill = h('i'); this.el.dayBar = h('div', { class: 'daybar' }, this.el.dayFill);
+    this.el.clock = h('div', { class: 'chip clock' }, this.el.sunIc, this.el.moonIc, h('div', { class: 'clk' }, this.el.clockTxt, this.el.dayBar));
+    this.speedBtns = [0, 1, 2, 3].map(i => h('button', { title: ['Pausar', 'Normal', '2x', '3x'][i], onclick: () => { this.s.clock.speed = i; } }, icon(['pause', 'play', 'ff', 'fff'][i], 18)));
+    this.el.adv = h('button', { title: 'Avançar relógio', onclick: () => this.advanceMenu() }, icon('skip', 18));
+    this.el.live = h('button', { class: 'live', title: 'AO VIVO', onclick: () => this.g.toggleLive(), html: svg('eye', 18) + 'AO VIVO' });
+    R.append(h('div', { class: 'hud' }, h('div', { class: 'chips' }, this.el.money, this.el.clock, this.el.stars, this.el.vis, this.el.fps), h('div', { class: 'speed' }, h('div', { class: 'spd' }, ...this.speedBtns, this.el.adv), this.el.live)));
+    const btn = (ic, label, fn) => { const b = h('button', { onclick: fn }, icon(ic, 32), label); return b; };
+    this.el.bBuild = btn('build', 'Construir', () => this.toggleBuild());
+    this.el.bGer = btn('clip', 'Gerência', () => this.openModal('gerencia'));
+    this.el.bEq = btn('team', 'Equipe', () => this.openModal('equipe'));
+    this.el.bMetas = btn('target', 'Metas', () => this.openModal('metas'));
+    this.el.bMenu = btn('gear', 'Menu', () => this.openModal('menu'));
     this.el.bar = h('div', { class: 'bar' }, this.el.bBuild, this.el.bGer, this.el.bEq, this.el.bMetas, this.el.bMenu);
     this.el.drawer = h('div', { class: 'drawer hidden' });
     this.el.sheet = h('div', { class: 'sheet hidden' });
@@ -75,16 +81,16 @@ export class UI {
     this.el.alerts = h('div', {});
     this.el.joy = h('div', { class: 'joy hidden' }, h('i')); this.el.cross = h('div', { class: 'cross hidden' });
     // botões da câmera (segurar = repetir) e bússola
-    const hb = (txt, kind, title, step) => { const b = h('button', { title }, txt);
+    const hb = (ic, kind, title, step) => { const b = h('button', { title }, icon(ic, 20));
       const stop = () => { this.g.controls.setHold(null); };
       b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture?.(e.pointerId); const c = this.g.controls; step(c); c.setHold(kind); this.tut?.gesto('botao'); sound.click(); });
       b.addEventListener('pointerup', stop); b.addEventListener('pointercancel', stop); b.addEventListener('lostpointercapture', stop); return b; };
     this.el.needle = h('i');
     this.el.camPad = h('div', { class: 'campad' },
       h('button', { class: 'compass', title: 'Bússola: toque para voltar ao norte', onclick: () => { this.g.controls.resetView(); this.tut?.gesto('botao'); } }, h('b', {}, 'N'), this.el.needle),
-      hb('⟲', 'esq', 'Girar para a esquerda', c => { c.cam.yaw += 0.06; }), hb('⟳', 'dir', 'Girar para a direita', c => { c.cam.yaw -= 0.06; }),
-      hb('▲', 'cima', 'Inclinar para cima (visão de cima)', c => c.tilt(0.04)), hb('▼', 'baixo', 'Inclinar para baixo (visão de lado)', c => c.tilt(-0.04)),
-      hb('＋', 'mais', 'Aproximar', c => c.zoom(0.94)), hb('－', 'menos', 'Afastar', c => c.zoom(1.06)));
+      hb('rotl', 'esq', 'Girar para a esquerda', c => { c.cam.yaw += 0.06; }), hb('rotr', 'dir', 'Girar para a direita', c => { c.cam.yaw -= 0.06; }),
+      hb('up', 'cima', 'Inclinar para cima (visão de cima)', c => c.tilt(0.04)), hb('down', 'baixo', 'Inclinar para baixo (visão de lado)', c => c.tilt(-0.04)),
+      hb('plus', 'mais', 'Aproximar', c => c.zoom(0.94)), hb('minus', 'menos', 'Afastar', c => c.zoom(1.06)));
     this.el.undo = h('button', { class: 'undo hidden', onclick: () => this.g.undoLast() }, '↶ Desfazer');
     // próximo alerta: leva a câmera até o alerta seguinte e abre as opções
     this.el.nextAlert = h('button', { class: 'nextalert hidden', title: 'Próximo alerta', onclick: () => this.nextAlert() });
@@ -106,7 +112,7 @@ export class UI {
   }
   updateNextAlert() {
     const n = this.s.alerts.length, b = this.el.nextAlert; b.classList.toggle('hidden', !n || this.g.live || !this.el.drawer.classList.contains('hidden'));
-    if (n) { const open = this.s.alerts.filter(a => !a.assigned).length, txt = `⚠ ${open ? `${open} alerta${open > 1 ? 's' : ''}` : 'a caminho'} ›`; if (b._t !== txt) { b.textContent = txt; b._t = txt; } b.classList.toggle('calm', !open); }
+    if (n) { const open = this.s.alerts.filter(a => !a.assigned).length, txt = `${open ? `${open} alerta${open > 1 ? 's' : ''}` : 'a caminho'} ›`; if (b._t !== txt) { b.innerHTML = svg(open ? 'siren' : 'warn', 22) + txt; b._t = txt; } b.classList.toggle('calm', !open); }
   }
   showUpdateBar(v) {
     if (this.updHidden) return;
@@ -127,30 +133,44 @@ export class UI {
     if (on) { this.toggleBuild(false); this.closeSheet(); this.hideConfirm(); this.closeModal(); }
     this.el.bar.classList.toggle('hidden', on); this.el.camPad.classList.toggle('hidden', on); if (on) this.el.undo.classList.add('hidden');
     this.el.joy.classList.toggle('hidden', !on); this.el.cross.classList.toggle('hidden', !on); this.el.liveBar.classList.toggle('hidden', !on);
-    this.el.live.textContent = on ? '🗺 Gerente' : '👁 AO VIVO';
+    this.el.live.innerHTML = on ? svg('map', 18) + 'Gerente' : svg('eye', 18) + 'AO VIVO';
     if (!on) { this.el.visitMsg.classList.add('hidden'); this.el.visitBtn.classList.add('hidden'); this._vm = this._vb = null; }
   }
   updateHud() {
     const s = this.s;
-    this.el.money.textContent = '💰 ' + money(s.money); this.el.money.classList.toggle('neg', s.money < 0);
-    this.el.clock.textContent = '🕒 ' + fmtClock(s.clock.min) + (this.g.live ? ' · 1:1' : '') + ` · mês ${Math.floor(s.clock.day / MES) + 1}`;
-    const st = stars(s); this.el.stars.textContent = '★ ' + st.toFixed(1);
-    this.el.vis.textContent = '👥 ' + s.stats.visitorsIn;
+    // Economia de calor e bateria: animações reduzidas (classe no app inteiro)
+    const eco = s.settings.economia !== false; if (eco !== this._eco) { this._eco = eco; this.root.classList.toggle('eco', eco); }
+    // dinheiro: o número "conta" até o valor novo e a ficha pulsa nas mudanças grandes (compra, venda, salários)
+    const now = performance.now(), dt = Math.min(0.1, ((now - (this._hudT || now)) / 1000)); this._hudT = now;
+    if (this._mv == null || eco || !isFinite(this._mv)) this._mv = s.money;
+    else { const d = s.money - this._mv; this._mv = Math.abs(d) < 1 ? s.money : this._mv + d * Math.min(1, dt * 9); }
+    if (this._mLast != null && Math.abs(s.money - this._mLast) >= 500 && !eco) this.pulse(this.el.money, s.money > this._mLast ? 'up' : 'down');
+    this._mLast = s.money;
+    this.setTxt(this.el.money._t, money(Math.round(this._mv))); this.el.money.classList.toggle('neg', s.money < 0);
+    const mi = s.clock.min % 1440, noite = mi < 360 || mi >= 1080;
+    this.setTxt(this.el.clockTxt, fmtClock(s.clock.min) + (this.g.live ? ' · 1:1' : '') + ` · mês ${Math.floor(s.clock.day / MES) + 1}`);
+    if (noite !== this._noite) { this._noite = noite; this.el.sunIc.classList.toggle('hidden', noite); this.el.moonIc.classList.toggle('hidden', !noite); this.el.dayBar.classList.toggle('noite', noite); }
+    const w = Math.round(mi / 14.4) + '%'; if (this.el.dayFill.style.width !== w) this.el.dayFill.style.width = w;
+    const st = stars(s); this.setTxt(this.el.stars._t, st.toFixed(1).replace('.', ','));
+    this.setTxt(this.el.vis._t, String(s.stats.visitorsIn));
     this.speedBtns.forEach((b, i) => b.classList.toggle('on', !this.g.live && s.clock.speed === i));
     const nc = s.candidates.length, np = pedidos(s).length; this.badge(this.el.bEq, np ? '💬' + np : nc);
     this.badge(this.el.bMenu, this.g.updateInfo?.available ? '!' : 0);
     this.badge(this.el.bMetas, 0);
     if (this.g.controls) this.el.needle.style.transform = `rotate(${this.g.controls.cam.yaw}rad)`;
     // botões da câmera logo abaixo dos botões de velocidade (que quebram em várias linhas no celular)
-    const sb = this.el.adv.parentElement.getBoundingClientRect().bottom, top = Math.round(sb + 8) + 'px';
+    const sb = this.el.live.parentElement.getBoundingClientRect().bottom, top = Math.round(sb + 8) + 'px';
     if (this.el.camPad.style.top !== top) { this.el.camPad.style.top = top; this.el.undo.style.top = top; }
     this.el.fps.classList.toggle('hidden', !s.settings.mostrarFps);
-    if (s.settings.mostrarFps) this.el.fps.textContent = `${Math.round(this.g.fps || 0)} FPS`;
+    if (s.settings.mostrarFps) this.setTxt(this.el.fps._t, `${Math.round(this.g.fps || 0)} FPS`);
     const u = this.g.undoInfo, ok = u && Date.now() - u.at < 60000 && !this.g.live;
     this.el.undo.classList.toggle('hidden', !ok);
     if (ok) { const t = `↶ Desfazer: ${u.label} (${Math.ceil((60000 - (Date.now() - u.at)) / 1000)} s)`; if (this.el.undo.textContent !== t) this.el.undo.textContent = t; }
   }
-  badge(b, n) { let x = b.querySelector('.badge'); if (!n) { x?.remove(); return; } if (!x) { x = h('span', { class: 'badge' }); b.append(x); } x.textContent = n; }
+  badge(b, n) { let x = b.querySelector('.badge'); if (!n) { x?.remove(); return; } if (!x) { x = h('span', { class: 'badge' }); b.append(x); } const t = String(n); if (x.textContent !== t) { x.textContent = t; this.pulse(x, 'bump'); } }
+  setTxt(el, t) { if (el.textContent !== t) el.textContent = t; }
+  // reinicia uma animação curta de CSS (quique, pulso) sem ficar repetindo
+  pulse(el, cls) { if (this._eco) return; el.classList.remove('up', 'down', 'bump'); void el.offsetWidth; el.classList.add(cls); clearTimeout(el._pt); el._pt = setTimeout(() => el.classList.remove(cls), 600); }
 
   // ---------- alertas no mapa ----------
   updateAlerts() {
@@ -160,7 +180,7 @@ export class UI {
       let el = this.alertEls.get(a.id);
       if (!el) { el = h('button', { class: 'alert', onclick: () => this.openAlert(a.id) }); this.el.alerts.append(el); this.alertEls.set(a.id, el); }
       const as = !!a.assigned; el.className = 'alert' + (as ? ' as' : '');
-      const html = ICON[a.type] + (as ? ' <small>a caminho</small>' : ''); if (el._h !== html) { el.innerHTML = html; el._h = html; }
+      const html = svg(a.type, 24) + (as ? '<small>a caminho</small>' : ''); if (el._h !== html) { el.innerHTML = html; el._h = html; }
       const sp = W.project(p.x, a.type === 'fuga' || a.type === 'doenca' ? 3.2 : 4.2, p.z);
       el.style.display = sp.vis ? '' : 'none'; el.style.left = sp.x + 'px'; el.style.top = sp.y + 'px';
     }
@@ -196,7 +216,7 @@ export class UI {
     const on = force ?? this.el.drawer.classList.contains('hidden');
     this.el.drawer.classList.toggle('hidden', !on); this.el.bBuild.classList.toggle('on', on);
     this.g.world.setGrid(on);
-    if (on) { this.closeSheet(); this.tool = this.cat; this.renderDrawer(); } else { this.tool = null; this.hideConfirm(); this.g.world.hidePreview(); }
+    if (on) { this.closeSheet(); this.tool = this.cat; this.renderDrawer(); this.enter(this.el.drawer); } else { this.tool = null; this.hideConfirm(); this.g.world.hidePreview(); }
   }
   renderDrawer() {
     const s = this.s, C = content(s), o = this.opts;
@@ -433,7 +453,8 @@ export class UI {
   }
 
   // ---------- painel de seleção ----------
-  select(kind, id) { this.sel = { kind, id }; this.el.sheet.classList.remove('hidden'); this.renderSheet(); }
+  select(kind, id) { const sh = this.el.sheet, novo = sh.classList.contains('hidden'); this.sel = { kind, id }; sh.classList.remove('hidden'); this.renderSheet(); if (novo) this.enter(sh); }
+  enter(el) { el.classList.remove('pop-up'); void el.offsetWidth; el.classList.add('pop-up'); clearTimeout(el._et); el._et = setTimeout(() => el.classList.remove('pop-up'), 380); }
   closeSheet() { this.sel = null; this.el.sheet.classList.add('hidden'); this.g.world.hideSelection(); }
   renderSheet() {
     if (!this.sel || this.g.live) return;
@@ -470,7 +491,7 @@ export class UI {
         hb.breaches?.length ? h('div', { class: 'card', style: 'border-left:4px solid #e53935' }, `🧱 Cerca rompida em ${hb.breaches.length} ponto(s). Envie um segurança!`) : null,
         h('div', { class: 'kv' }, ...[['Comida', hb.food], ['Água', hb.waterLvl], ['Limpeza', hb.clean], ['Cerca', hb.fenceHp]].flatMap(([n, v]) => [n, meter(v), pct(v)])),
         visita,
-        ...(() => { const sg = this.habSuggestions(hb); return sg.length ? [h('h3', { style: 'margin-top:6px' }, '💡 Sugestões'), ...sg.map(([t, lab, fn, bad]) => h('div', { class: 'row' }, h('span', { style: bad ? 'color:#ffb4a8' : '' }, t), h('button', { class: 'btn sm', onclick: fn }, lab)))] : [h('div', { class: 'muted', style: 'margin:6px 0' }, '✅ Nenhuma melhoria pendente neste habitat.')]; })(),
+        ...(() => { const sg = this.habSuggestions(hb); return sg.length ? [h('h3', { style: 'margin-top:6px' }, '💡 Sugestões'), ...sg.map(([t, lab, fn, bad]) => h('div', { class: 'row' }, h('span', { class: bad ? 'neg' : '' }, t), h('button', { class: 'btn sm', onclick: fn }, lab)))] : [h('div', { class: 'muted', style: 'margin:6px 0' }, '✅ Nenhuma melhoria pendente neste habitat.')]; })(),
         ...(sps.length ? sps.map(sp => { const su = suitability(s, hb, sp); return h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, `${C.species[sp].nome} (${an.filter(a => a.sp === sp).length})`), h('span', {}, 'Adequação ' + pct(su.total))),
             h('div', {}, ...Object.entries(su.parts).map(([k, v]) => h('span', { class: 'tag ' + (v >= 0.95 ? 'bom' : v < 0.6 ? 'ruim' : '') }, `${v >= 0.95 ? '✓' : '✗'} ${LBL[k]} ${v < 0.95 ? pct(v) : ''}`)))); })
           : [h('div', { class: 'card' }, 'Vazio. Coloque plantas do bioma e compre animais em Construir.')]),
@@ -549,7 +570,7 @@ export class UI {
   refresh() { this.renderSheet(); if (this.modal) this.renderModal(); }
 
   // ---------- modais ----------
-  showModal(fn) { this.closeModal(); this.modalFn = fn; this.modal = h('div', { class: 'modal-bg', onclick: e => { if (e.target === this.modal) this.closeModal(); } }); this.root.append(this.modal); this.renderModal(); }
+  showModal(fn) { this.closeModal(); this.modalFn = fn; const m = this.modal = h('div', { class: 'modal-bg pop-in', onclick: e => { if (e.target === this.modal) this.closeModal(); } }); this.root.append(m); this.renderModal(); sound.open(); setTimeout(() => m.classList.remove('pop-in'), 380); }
   renderModal() {
     if (!this.modal) return;
     const ae = document.activeElement; if (this.modal.contains(ae) && ae.tagName === 'INPUT') return;
@@ -589,8 +610,8 @@ export class UI {
         h('h3', {}, 'Preço do ingresso: ' + money(s.ticket)),
         h('input', { type: 'range', min: 0, max: 100, step: 1, value: s.ticket, oninput: e => { setTicket(s, +e.target.value); e.target.previousSibling.textContent = 'Preço do ingresso: ' + money(s.ticket); } }),
         h('div', { class: 'muted' }, `Chegada estimada agora: ${arrivalRate(s).toFixed(0)} visitantes/hora (parque aberto das 8h às 18h). Preço alto afasta visitantes.`),
-        h('h3', { style: 'margin-top:10px' }, 'Hoje'), ...Object.entries(t.inc).map(([k, v]) => h('div', { class: 'row' }, L[k], h('span', { style: 'color:#7be0a5' }, '+' + money(v)))),
-        ...Object.entries(t.exp).map(([k, v]) => h('div', { class: 'row' }, L[k], h('span', { style: 'color:#ff8a80' }, '−' + money(v)))),
+        h('h3', { style: 'margin-top:10px' }, 'Hoje'), ...Object.entries(t.inc).map(([k, v]) => h('div', { class: 'row' }, L[k], h('span', { class: 'pos' }, '+' + money(v)))),
+        ...Object.entries(t.exp).map(([k, v]) => h('div', { class: 'row' }, L[k], h('span', { class: 'neg' }, '−' + money(v)))),
         h('div', { class: 'row' }, h('b', {}, 'Saldo do dia'), h('b', {}, money(inc - exp))),
         h('h3', { style: 'margin-top:10px' }, 'Meses fechados'), ...((s.fin?.meses || []).length ? s.fin.meses.slice(-6).reverse().map(m => h('div', { class: 'row', onclick: () => this.showMonth(m) }, `Mês ${m.mes}`, h('span', { class: 'muted' }, `${m.visitantes} visitantes`), h('span', { style: `color:${m.saldo >= 0 ? '#7be0a5' : '#ff8a80'}` }, money(m.saldo) + ' ›'))) : [h('div', { class: 'muted' }, 'O primeiro fechamento acontece no fim do mês 1 (dia 30).')]),
         h('h3', { style: 'margin-top:10px' }, 'Últimos dias'), ...(s.stats.history.length ? s.stats.history.slice(-7).reverse().map(d => h('div', { class: 'row' }, `Dia ${d.dia}`, h('span', { class: 'muted' }, `${d.visitantes} visitantes`), h('span', {}, `+${money(d.inc)} / −${money(d.exp)}`))) : [h('div', { class: 'muted' }, 'Ainda sem histórico.')])];
@@ -643,7 +664,7 @@ export class UI {
       const cv = cobertura(s), av = cv.filter(x => !x.ok), resumo = cv.filter(x => x.ok);
       const cob = s.staff.length ? h('div', { class: 'card', style: av.length ? 'border-left:4px solid #f2c230' : '' }, h('b', {}, '🕒 Turnos por setor'),
         ...resumo.map(x => h('div', { class: 'muted' }, `${C.roles[x.role].nome}: ${x.n.dia} das 6h às 18h · ${x.n.tarde} das 18h às 22h · ${x.n.madrugada} das 22h às 6h`)),
-        ...[...new Set(av.map(x => x.role))].map(r => h('div', { style: 'color:#ffcf6b' }, `⚠ ${C.roles[r].nome}: ` + av.filter(x => x.role === r).map(x => `${x.n ? 'só ' + x.n : 'ninguém'} das ${x.faixa.replace('–', ' às ')}`).join('; ') + ' (o ideal são 2)')),
+        ...[...new Set(av.map(x => x.role))].map(r => h('div', { class: 'warnt' }, `⚠ ${C.roles[r].nome}: ` + av.filter(x => x.role === r).map(x => `${x.n ? 'só ' + x.n : 'ninguém'} das ${x.faixa.replace('–', ' às ')}`).join('; ') + ' (o ideal são 2)')),
         h('div', { class: 'muted', style: 'margin-top:4px' }, 'Dia 6h–18h · Noite 18h–6h (+25%) · Integral 6h–22h (+40%). Nos intervalos, pelo menos 2 de cada setor continuam trabalhando.')) : null;
       const ped = pedidos(s);
       const pedCard = ped.length ? h('div', {}, ...ped.map(q => this.pedidoCard(q))) : null;
@@ -761,7 +782,10 @@ export class UI {
       h('button', { class: 'btn', style: 'margin-top:10px', onclick: () => this.closeModal() }, 'Continuar')));
   }
   toast(msg, kind = 'bom') {
-    const t = h('div', { class: 'toast ' + kind }, msg); this.el.toasts.append(t); setTimeout(() => t.remove(), 4600);
+    // 1.8.1: ícone por tipo; conquistas (meta, nível novo, curso concluído, contratação, filhote) ganham faixa dourada com brilho
+    const conq = kind === 'bom' && /^Meta conclu|subiu para|concluiu o curso|foi contratad|^Nasceu/.test(msg);
+    if (conq && !/^Meta conclu|^Nasceu/.test(msg)) sound.good(); // meta e filhote já tocam pelo registro
+    const t = h('div', { class: 'toast ' + (conq ? 'conquista' : kind) }, icon(conq ? 'trophy' : { bom: 'ok', ruim: 'warn', perigo: 'siren', info: 'info' }[kind] || 'info', 24), h('span', {}, msg)); this.el.toasts.append(t); setTimeout(() => t.remove(), 4600);
     while (this.el.toasts.children.length > 4) this.el.toasts.firstChild.remove();
     if (kind === 'perigo') navigator.vibrate?.(200);
   }

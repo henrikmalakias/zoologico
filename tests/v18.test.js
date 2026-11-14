@@ -176,5 +176,5 @@ const efetiva = (s, p) => { p.exp = 0; p.oculto = false; };
   ok(Number.isFinite(s.money), 'caixa válido');
 }
 
-ok(APP_VERSION === '1.8' && CHANGELOG[0].versao === '1.8' && CHANGELOG[0].itens.length >= 6, 'versão 1.8 com novidades no topo do CHANGELOG');
+ok(APP_VERSION >= '1.8' && CHANGELOG.some(c => c.versao === '1.8' && c.itens.length >= 6), 'versão 1.8 com novidades no CHANGELOG');
 console.log(fails ? `\n${fails} FALHAS em ${n}` : `\nTODOS OS TESTES DA 1.8 PASSARAM (${n})`); process.exit(fails ? 1 : 0);

@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.8';
+export const APP_VERSION = '1.8.1';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -22,6 +22,16 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.8.1', data: '14/11/2026', titulo: 'Versão 1.8.1: cara nova no HUD e nos painéis', itens: [
+    'Visual novo "cartum safári": botões com contorno e relevo que afundam ao toque, cores de madeira, lona, folha e sol, e fonte arredondada de jogo (vem dentro do jogo e funciona offline)',
+    'Ícones desenhados no jogo para dinheiro, relógio, estrelas, visitantes, velocidade, AO VIVO, câmera e barra de baixo: iguais em qualquer celular',
+    'Dinheiro que conta até o valor novo e pulsa em compras e vendas grandes; relógio com sol de dia, lua à noite e barra do dia',
+    'Janelas e fichas entram com mola; marcas de aviso quicam quando mudam; avisos com ícone e conquistas (meta, nível novo, curso concluído, contratação) em faixa dourada com brilho',
+    'Alertas no mapa em balões com ícone e botão de próximo alerta com sirene',
+    'Sons de toque novos (bolha nos botões, clique nas abas, abertura de janela) e vibração leve na barra e na velocidade',
+    'Economia de calor e bateria agora também reduz as animações (sem pulsar, quicar nem brilho; entradas mais curtas e dinheiro sem contagem)',
+    'Nada mudou nas regras do jogo nem no save; os gráficos Baixo, Alto e Ultra continuam iguais',
+  ] },
   { versao: '1.8', data: '13/11/2026', titulo: 'Versão 1.8: carreira da equipe (níveis, cursos, aumentos e entrevista)', itens: [
     'Níveis de carreira: Júnior, Pleno, Sênior e Especialista. A experiência vem do serviço feito (1 ponto por hora) e do tempo de casa; cada nível deixa o serviço mais rápido (8%, 16% e 25%) e aumenta o salário esperado',
     'Cursos pagos na ficha do funcionário, feitos na folga (ele continua trabalhando no turno e volta um pouco mais cansado): +1 estrela de Habilidade, Rapidez ou Dedicação; Manejo seguro (traço Cuidadoso), Primeiros socorros (Socorrista) e Condicionamento físico (Resistente). Um curso por vez; no turno integral demora 50% a mais. Subgerentes têm cursos próprios',

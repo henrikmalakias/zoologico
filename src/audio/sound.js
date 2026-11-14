@@ -45,7 +45,10 @@ function panned(x, vol, dest = master) { // saída com volume e lado (estéreo)
 }
 
 // ---------- interface ----------
-export function click() { if (!ready()) return; tone({ type: 'triangle', f0: 900, f1: 600, d: 0.05, peak: 0.08 }); }
+// 1.8.1: toque "bolha" (sobe o tom, curtinho) no lugar do clique seco
+export function click() { if (!ready()) return; tone({ type: 'sine', f0: 480, f1: 1050, a: 0.004, d: 0.07, peak: 0.11 }); tone({ type: 'triangle', f0: 1400, t: 0.012, a: 0.003, d: 0.04, peak: 0.025 }); }
+export function tab() { if (!ready()) return; tone({ type: 'sine', f0: 1200, f1: 1500, a: 0.003, d: 0.045, peak: 0.07 }); }
+export function open() { if (!ready()) return; noise({ a: 0.03, d: 0.16, peak: 0.05, f: 600, f1: 2400, q: 0.8 }); tone({ type: 'sine', f0: 660, f1: 990, t: 0.03, a: 0.01, d: 0.1, peak: 0.05 }); }
 export function cash() { if (!ready()) return; tone({ type: 'square', f0: 1320, d: 0.07, peak: 0.06, filter: { f: 3000 } }); tone({ type: 'square', f0: 1760, t: 0.07, d: 0.18, peak: 0.06, filter: { f: 3500 } }); }
 export function good() { if (!ready()) return; [523, 659, 784, 1046].forEach((f, i) => tone({ type: 'triangle', f0: f, t: i * 0.09, d: 0.25, peak: 0.1 })); }
 export function bad() { if (!ready()) return; tone({ type: 'sawtooth', f0: 220, f1: 150, d: 0.3, peak: 0.07, filter: { f: 900 } }); }
