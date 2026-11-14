@@ -8,8 +8,9 @@ import { updateStaff, refreshAlerts, managerTick, spend, earn, recalcClean } fro
 import { updateVisitors, arrivalRate, arrive, isOpen, litterCount, seedCrowd } from './visitors.js';
 import { TURNOS, NOITE_ROLES, salarioDia, turnoSugerido } from './turnos.js';
 import { updateRua } from './rua.js';
+import { prepara, carreiraHora, carreiraDia, querSair, magoa, EXP_DIAS, DIA } from './carreira.js';
 
-export const SCHEMA = 10;
+export const SCHEMA = 11;
 export const SPEEDS = [0, 1, 2, 3]; // multiplicador da velocidade normal
 export const MES = 30;
 // segundos de jogo por segundo real na velocidade normal (depende da hora: dia devagar, noite rápida)
@@ -79,9 +80,10 @@ function hourTick(s) {
   // satisfação da equipe
   const lider = s.managers.some(m => m.traits.includes('lider'));
   for (const st of [...s.staff, ...s.managers]) {
-    const target = clamp((st.salary / st.expected) * 0.7 + (s.facilities.some(f => f.type === 'centro') ? 0.3 : 0.15) + (lider ? 0.1 : 0), 0, 1);
+    const target = clamp((st.salary / st.expected) * 0.7 + (s.facilities.some(f => f.type === 'centro') ? 0.3 : 0.15) + (lider ? 0.1 : 0) - magoa(st), 0, 1);
     st.sat = clamp(st.sat + (target - st.sat) * (st.traits?.includes('reclamao') ? 0.25 : 0.1) - (st.traits?.includes('reclamao') ? 0.01 : 0));
   }
+  carreiraHora(s, s._ctx);
   updateRep(s);
   checkMetas(s);
 }
@@ -128,6 +130,9 @@ function dayTick(s) {
   for (const f of s.facilities) s.fin.pendente.manutencao += C.facilities[f.type]?.manut || 0;
   dailyAnimals(s);
   for (const st of [...s.staff]) if (st.sat < 0.25 && rnd(s) < 0.3) { fireById(s, st.id); log(s, `${st.name} pediu demissão (insatisfação).`, 'ruim'); }
+  // 1.8: aumento recusado 2 vezes e satisfação baixa: pode pedir demissão
+  for (const st of [...s.staff]) if (querSair(s, st) && rnd(s) < 0.15) { fireById(s, st.id); log(s, `${st.name} pediu demissão (aumento recusado).`, 'ruim'); }
+  carreiraDia(s);
   const t = s.stats.today, inc = Object.values(t.inc).reduce((a, b) => a + b, 0), exp = Object.values(t.exp).reduce((a, b) => a + b, 0);
   s.stats.history.push({ dia: s.clock.day, inc, exp, visitantes: s.stats.visitantesHoje, det: t });
   if (s.stats.history.length > 30) s.stats.history.shift();
@@ -147,7 +152,7 @@ export function genCandidate(s, now) {
   const base = content(s).roles[role].salario;
   const expected = Math.round(base * (0.7 + 0.1 * avg));
   const ask = Math.round((expected * (0.9 + rnd(s) * 0.3)) / 5) * 5;
-  const pool = Object.keys(mgr ? TRACOS_GERENTE : TRACOS_EQUIPE);
+  const TR = mgr ? TRACOS_GERENTE : TRACOS_EQUIPE, pool = Object.keys(TR).filter(k => !TR[k].curso);
   return { id: uid(s), role, name: pick(s, NOMES) + ' ' + pick(s, ['Silva', 'Souza', 'Lima', 'Costa', 'Rocha', 'Alves', 'Melo', 'Dias', 'Reis', 'Nunes']),
     attrs, expected, salary: ask, hidden: rnd(s) < 0.55 ? [pick(s, pool)] : [], createdAt: now, expiresAt: now + H72 };
 }
@@ -166,6 +171,8 @@ export function hire(s, candId, turno) {
   s.candidates.splice(s.candidates.indexOf(c), 1);
   const e = s.facilities.find(f => f.type === 'entrada'), p = tileToWorld(e.tx, e.ty - 1);
   const person = { id: c.id, role: c.role, name: c.name, attrs: c.attrs, traits: c.hidden, salary: c.salary, expected: c.expected, energy: 1, sat: 0.8, x: p.x, z: p.z, rot: Math.PI, inHab: 0, task: null, ferido: 0, pack: 'base' };
+  // 1.8: período de experiência (dispensa sem custo); sem entrevista, o traço só aparece depois de 1 dia de trabalho
+  prepara(person, s.clock.min); person.exp = s.clock.min + EXP_DIAS * DIA; person.oculto = !c.entrev;
   // 1.7.3: turno escolhido na contratação (sem escolha: o que falta no setor); noite só para tratador, veterinário e segurança
   if (c.role !== 'subgerente') { let t = TURNOS[turno] ? turno : turnoSugerido(s, c.role); if (t === 'noite' && !NOITE_ROLES.has(c.role)) t = 'dia'; person.turno = t; person.adic = TURNOS[t].mult; person.pausas = null; }
   if (c.role === 'subgerente') s.managers.push(person); else s.staff.push(person);

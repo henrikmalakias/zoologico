@@ -1,9 +1,9 @@
 {
   "name": "projeto-zoologico",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "vite", "build": "vite build", "test": "node tests/sim.test.js && node tests/v11.test.js && node tests/v12.test.js && node tests/v13.test.js && node tests/v14.test.js && node tests/v16.test.js && node tests/v161.test.js && node tests/v162.test.js && node tests/v17.test.js && node tests/v171.test.js && node tests/v172.test.js && node tests/v1721.test.js && node tests/v172b.test.js && node tests/v172c.test.js && node tests/v172e.test.js && node tests/v172f.test.js && node tests/v173.test.js" },
+  "scripts": { "dev": "vite", "build": "vite build", "test": "node tests/sim.test.js && node tests/v11.test.js && node tests/v12.test.js && node tests/v13.test.js && node tests/v14.test.js && node tests/v16.test.js && node tests/v161.test.js && node tests/v162.test.js && node tests/v17.test.js && node tests/v171.test.js && node tests/v172.test.js && node tests/v1721.test.js && node tests/v172b.test.js && node tests/v172c.test.js && node tests/v172e.test.js && node tests/v172f.test.js && node tests/v173.test.js && node tests/v18.test.js" },
   "dependencies": { "three": "0.187.0" },
   "devDependencies": { "vite": "8.3.6" }
 }

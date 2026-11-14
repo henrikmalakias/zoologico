@@ -6,6 +6,7 @@ import { habById, breachPoint, tocaLivre, mandarParaToca, dentro, perigoDe, PERI
 import { tocaById } from './tocas.js';
 import { tratamento, internar, portaClinica, isClinica } from './clinica.js';
 import { insideAt } from './habshape.js';
+import { velNivel, ganhaXp, gerentePedidos } from './carreira.js';
 import { emServico, deTurno, pausaDevida, centroPara, portaCentro, pontoOnibus, chamar as chamarExtra, pagarExtra, vaiParaRua, DESCANSO, TURNOS, turnoDe } from './turnos.js';
 
 export const ALERT_ROLES = { doenca: ['veterinario'], fome: ['tratador'], cerca: ['seguranca'], brecha: ['seguranca'], portao: ['seguranca', 'tratador'], fuga: ['seguranca', 'veterinario'], ferido: ['seguranca'] };
@@ -37,7 +38,7 @@ export function workMul(st) {
   let m = 0.7 + 0.1 * st.attrs.habilidade;
   if (trait(st, 'dedicado')) m *= 1.25; if (trait(st, 'preguicoso')) m *= 0.75; if (trait(st, 'talentoso')) m *= 1.35;
   if (st.energy < 0.05) m *= 0.3;
-  return m;
+  return m * velNivel(st); // 1.8: nível de carreira
 }
 const centro = s => s.facilities.find(f => f.type === 'centro');
 const temClinica = s => s.facilities.some(f => isClinica(s, f));
@@ -246,6 +247,7 @@ function pickRoutine(s, st) {
 
 function completeTask(s, st) {
   const t = st.task, C = content(s); st.task = null;
+  if (t.type !== 'idle') ganhaXp(s, st, (t.work0 || 0) / 60 + (levaAnimal(t) ? 0.5 : 0)); // 1.8: experiência pelo serviço feito (1 por hora trabalhada)
   const h = habById(s, t.target);
   const mgr = s.managers[0];
   const foodMul = mgr ? (mgr.traits.includes('perdulario') ? 1.2 : 1) * (mgr.traits.includes('economico') ? 0.85 : 1) * (1.1 - 0.05 * mgr.attrs.economia) : 1;
@@ -272,7 +274,7 @@ function completeTask(s, st) {
   if (t.alertId) { const a = s.alerts.find(a => a.id === t.alertId); if (a && a.assigned === st.id) a.assigned = null; refreshAlerts(s); }
 }
 function gateSlip(s, st, h) {
-  const p = trait(st, 'distraido') ? 0.08 : 0.012;
+  const p = trait(st, 'cuidadoso') ? 0 : trait(st, 'distraido') ? 0.08 : 0.012;
   if (rnd(s) < p && !h.gateOpen) { h.gateOpen = true; }
 }
 export function recalcClean(s, h) {
@@ -292,7 +294,7 @@ export function updateStaff(s, gameMin, ctx) {
     if (st.fora) {
       if (st.chegaEm) { if (s.clock.min < st.chegaEm) continue; st.chegaEm = 0; st.fora = false; vaiParaRua(s, st); if (st.task) st.task.route = null; }
       else if (emServico(s, st) && !st.ferido) { st.fora = false; vaiParaRua(s, st); st.task = null; }
-      else { st.energy = clamp(st.energy + 0.15 * hrs); continue; }
+      else { const cap = st.curso ? 0.75 : 1; if (st.energy < cap) st.energy = Math.min(cap, st.energy + 0.15 * hrs); continue; } // 1.8: quem estuda na folga volta um pouco mais cansado
     }
     // ferido (1.7.2c): 1 dia de jogo afastado no Centro de cuidados (ou perto da entrada), sem pegar tarefa
     if (st.ferido) {
@@ -420,7 +422,7 @@ function noPortao(s, st, t) {
   st.rot = Math.atan2(tileToWorld(h.gateIn[0], h.gateIn[1]).x - st.x, tileToWorld(h.gateIn[0], h.gateIn[1]).z - st.z);
   const P = planoServico(s, h, exclDe(t)); if (!P.total) return entrar(s, st, t);
   segurar(h, st);
-  if (trait(st, 'distraido') && rnd(s) < 0.3) { t.risco = 'distraido'; log(s, `${st.name} (distraído) esqueceu de recolher os animais perigosos e entrou no ${h.name}.`, 'ruim'); return s._ctx?.abstract ? preAbstrato(s, st, t, P) : entrar(s, st, t); }
+  if (trait(st, 'distraido') && !trait(st, 'cuidadoso') && rnd(s) < 0.3) { t.risco = 'distraido'; log(s, `${st.name} (distraído) esqueceu de recolher os animais perigosos e entrou no ${h.name}.`, 'ruim'); return s._ctx?.abstract ? preAbstrato(s, st, t, P) : entrar(s, st, t); }
   if (s._ctx?.abstract) return preAbstrato(s, st, t, P);
   t.rec = P.cabem.map(x => x.a.id); t.sob = P.sobram.map(a => a.id);
   if (t.rec.length) { for (const { a, t: tc } of P.cabem) chamar(s, a, h, tc); t.phase = 'recolher'; t.work = 30; t.work0 = 30; t.forcou = 0; return; }
@@ -502,6 +504,7 @@ function preAbstrato(s, st, t, P) {
   for (const id of t.rec || []) { const a = s.animals.find(a => a.id === id); if (a) a.guard = false; }
   t.rec = null; t.sob = null; t.sedFila = null; t.risco = null;
   entrar(s, st, t); t.travelLeft += extra;
+  if (trait(st, 'cuidadoso')) risco *= 0.5; // 1.8: curso de Manejo seguro
   if (quem && risco && rnd(s) < risco) atacarFuncionario(s, st, quem, !!s.settings.tranquilo);
 }
 // enquanto alguém da equipe estiver no recinto (ou com serviço nele), os recolhidos ficam nas tocas; depois são soltos
@@ -521,10 +524,10 @@ export function atacarFuncionario(s, st, a, manso) {
     if (!st._amea || s.clock.min - st._amea > 60) { st._amea = s.clock.min; log(s, `${a.name} (${S?.nome || '?'}) ameaçou ${st.name} no ${h?.name || 'recinto'}. O serviço atrasou.`, 'info'); }
     return;
   }
-  cancelTask(s, st); st.veh = null; st.ferido = s.clock.min + 1440;
+  cancelTask(s, st); st.veh = null; st.ferido = s.clock.min + (trait(st, 'socorrista') ? 720 : 1440);
   if (h) { h.feridoRisco = s.clock.min + 120; h.feridoNome = st.name; }
   s.stats.feridos = (s.stats.feridos || 0) + 1;
-  log(s, `${a.name} (${S?.nome || '?'}) atacou ${st.name} no ${h?.name || 'recinto'}. Ninguém morreu, mas ${st.name} se feriu e fica 1 dia de jogo afastado(a).`, 'perigo');
+  log(s, `${a.name} (${S?.nome || '?'}) atacou ${st.name} no ${h?.name || 'recinto'}. Ninguém morreu, mas ${st.name} se feriu e fica ${trait(st, 'socorrista') ? 'meio dia' : '1 dia'} de jogo afastado(a).`, 'perigo');
   startTask(s, st, 'ferido', 0);
   refreshAlerts(s);
 }
@@ -595,7 +598,8 @@ export function alertPriority(s, a) {
 export function managerTick(s, q) {
   if (!s.managers.length) return;
   const m = s.managers[0], n = s.managers.length;
-  let delay = (100 - 15 * m.attrs.rapidez) * (m.traits.includes('indeciso') ? 1.6 : 1) * (m.traits.includes('agil') ? 0.6 : 1) / Math.sqrt(n);
+  gerentePedidos(s);
+  let delay = (100 - 15 * m.attrs.rapidez) * (m.traits.includes('indeciso') ? 1.6 : 1) * (m.traits.includes('agil') ? 0.6 : 1) / Math.sqrt(n) / velNivel(m);
   const list = s.alerts.filter(a => !a.assigned).sort((a, b) => alertPriority(s, b) - alertPriority(s, a));
   for (const a of list) {
     a.wait = (a.wait || 0) + q;
@@ -604,6 +608,6 @@ export function managerTick(s, q) {
     if (!c.length) continue;
     const wrong = (5 - m.attrs.decisao) * 0.06 + (m.traits.includes('confuso') ? 0.2 : 0);
     const i = c.length > 1 && rnd(s) < wrong ? 1 : 0;
-    dispatch(s, a.id, c[i].st.id, m.name);
+    if (dispatch(s, a.id, c[i].st.id, m.name)) ganhaXp(s, m, 0.2);
   }
 }

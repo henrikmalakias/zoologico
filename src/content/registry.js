@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.7.3';
+export const APP_VERSION = '1.8';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -22,6 +22,17 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.8', data: '13/11/2026', titulo: 'Versão 1.8: carreira da equipe (níveis, cursos, aumentos e entrevista)', itens: [
+    'Níveis de carreira: Júnior, Pleno, Sênior e Especialista. A experiência vem do serviço feito (1 ponto por hora) e do tempo de casa; cada nível deixa o serviço mais rápido (8%, 16% e 25%) e aumenta o salário esperado',
+    'Cursos pagos na ficha do funcionário, feitos na folga (ele continua trabalhando no turno e volta um pouco mais cansado): +1 estrela de Habilidade, Rapidez ou Dedicação; Manejo seguro (traço Cuidadoso), Primeiros socorros (Socorrista) e Condicionamento físico (Resistente). Um curso por vez; no turno integral demora 50% a mais. Subgerentes têm cursos próprios',
+    'Reciclagem: curso que corrige um traço ruim (Distraído, Preguiçoso, Reclamão, e os do subgerente)',
+    'Pedido de aumento: quem ganha menos que o esperado pede aumento (aviso, marca no botão Equipe e lista em Equipe). Aceitar, Negociar (metade, pode não aceitar) ou Recusar. Recusar derruba a satisfação e, com 2 recusas, a pessoa pode pedir demissão. Sem resposta em 3 dias de jogo conta como recusa. Com o app fechado, o subgerente responde os pedidos da equipe',
+    'Aumento manual (+10%) na ficha agora anima o funcionário e atende o pedido quando cobre o valor; corte de salário desanima',
+    'Traço oculto resolvido: Entrevistar (R$ 300) no currículo mostra os traços antes de contratar. Sem entrevista, os traços aparecem depois de 1 dia de trabalho',
+    'Período de experiência: todo contratado passa 3 dias de jogo em experiência e pode ser dispensado sem custo. Depois disso, demitir custa 5 dias de salário',
+    'Seu zoo atual: a equipe já contratada vira efetiva, ganha experiência pelo tempo de jogo e mantém salário e salário esperado. Os primeiros pedidos de aumento chegam aos poucos (no máximo 1 por dia)',
+    'Finanças: nova linha "Cursos e entrevistas"',
+  ] },
   { versao: '1.7.3', data: '13/11/2026', titulo: 'Versão 1.7.3: turnos, intervalos, Centro de cuidados e rua da frente', itens: [
     'Turnos fixos: Dia (6h–18h), Noite (18h–6h, +25% no salário) e Integral (6h–22h, +40%, cansa mais). Noite só para tratador, veterinário e segurança. O turno é escolhido na contratação (⭐ = o que mais falta no setor) e pode ser trocado na ficha',
     'Fim do turno: o funcionário termina o que está fazendo, sai pelo portão e pega o ônibus; volta 15 min antes do próximo turno com a energia cheia',

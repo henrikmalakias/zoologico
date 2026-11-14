@@ -2,10 +2,14 @@ import { SCHEMA, DEFAULT_SETTINGS } from '../sim/core.js';
 import { rebuildOcc, orientFacility } from '../sim/grid.js';
 import { limparRuaDaFrente } from '../sim/build.js';
 import { distribuirTurnos } from '../sim/turnos.js';
+import { migrarCarreira, prepara } from '../sim/carreira.js';
 import { content } from '../content/registry.js';
 
 // Migrações: cada função leva o save da versão N para N+1.
 export const MIGRATIONS = {
+  // v10 -> v11 (versão 1.8): carreira da equipe (níveis, cursos, pedidos de aumento, entrevista e período de experiência).
+  // Quem já estava no zoo vira efetivo, com experiência pelo tempo de jogo; salários e salário esperado não mudam
+  10: s => { migrarCarreira(s); s.schemaVersion = 11; return s; },
   // v9 -> v10 (versão 1.7.3): turnos (cada setor dividido entre dia e noite, salário atual mantido), Centro de cuidados com lugares,
   // rua da frente (o que estava abaixo do portão sai com reembolso, feito depois de carregar: ver limparRuaDaFrente)
   9: s => {
@@ -84,6 +88,7 @@ export function deserialize(o) {
   for (const f of s.facilities) { const d = C.facilities[f.type]; if (d && !d.fixo && f.dir == null) f.dir = orientFacility(s, f, d); }
   if (s._sul) { delete s._sul; limparRuaDaFrente(s); }
   s.rua ||= { proxOnibus: 0 };
+  for (const p of [...s.staff, ...(s.managers || [])]) prepara(p, s.clock?.min || 0);
   for (const st of s.staff) { st.turno ||= 'dia'; st.adic ??= 1; if (st.task?.type === 'pausa' && !st.task.centro) st.dentro = 0; }
   return s;
 }

@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.7.3
+# Projeto Zoológico — v1.8
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -31,6 +31,12 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `src/render/ultra.js`: céu 360° por hora (Poly Haven, CC0), luz do ambiente, terreno com texturas (array de texturas), capim instanciado, água com ondas, copas de folhas, pelo em camadas e rugas.
 - `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
 - Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.
+
+## Carreira da equipe (1.8)
+- `src/sim/carreira.js`: `NIVEIS` (Júnior, Pleno 12, Sênior 40, Especialista 100 pontos; `vel` e `sal`), `ganhaXp` (1 ponto por hora de serviço em `completeTask`, +1 por dia de casa, +2 para subgerente), `CURSOS`/`cursosPara`/`matricular` (`p.curso = { id, ini, fim }`, concluído em `carreiraHora`), pedidos de aumento (`p.pedido = { valor, desde, negociou }`; `aceitarPedido`, `negociarPedido`, `recusarPedido`, `gerentePedidos` com o app fechado), `entrevistar` (`c.entrev`), experiência (`p.exp` = minuto em que acaba; `p.oculto` = traços ainda escondidos), `demitir`/`rescisao`, `migrarCarreira`.
+- `core.js`: `hourTick` chama `carreiraHora`, `dayTick` chama `carreiraDia` (no máximo 1 pedido novo por dia) e a demissão por 2 recusas (`querSair`). `staff.js`: `workMul` × nível, traços `cuidadoso` e `socorrista` (só por curso: `curso: true` em `TRACOS_EQUIPE`, fora do sorteio dos currículos).
+- Gasto novo: categoria `treinamento` (cursos e entrevistas). Rescisão entra em `salarios`.
+- Save 11 (migração 10 → 11). Testes: `tests/v18.test.js` (aceita SEED) e `tests/v18_browser.py`.
 
 ## Turnos, Centro de cuidados e rua da frente (1.7.3)
 - `src/sim/turnos.js`: `TURNOS` (dia 6h–18h, noite 18h–6h +25%, integral 6h–22h +40% e cansa ×1,3), `emServico` (chega 15 min antes), `pausaDevida` (intervalos escalonados: mantém max(min(2, n−1), ⌊n/2⌋) do setor trabalhando), `chamar`/`pagarExtra` (hora extra +50%, quem está em casa chega em ~20 min de jogo), Centro com 8 lugares (`centroPara`, `ocupacaoCentro`; `st.dentro` esconde o funcionário), `cobertura`, `turnoSugerido`, `distribuirTurnos` (migração).

@@ -16,6 +16,7 @@ import { ALERT_INFO, alertPos, alertTargetName, eligibleStaff, dispatch, taskNam
 import { arrivalRate } from '../sim/visitors.js';
 import { TURNOS, NOITE_ROLES, salarioDia, situacao, trocarTurno, horarioTxt, pausasTxt, cobertura, turnoSugerido, emServico, ocupacaoCentro, CAP_CENTRO, turnoDe, EXTRA_MULT, VOLTA_EXTRA } from '../sim/turnos.js';
 import { vagasTotal } from '../sim/rua.js';
+import { NIVEIS, nivelDe, progresso, emExperiencia, rescisao, demitir, entrevistar, ENTREVISTA, cursosPara, matricular, CURSOS, pedidos, aceitarPedido, negociarPedido, recusarPedido, ajustaSalario, EXP_DIAS, RESCISAO_DIAS, PEDIDO_ESPERA } from '../sim/carreira.js';
 
 const h = (tag, attrs = {}, ...kids) => {
   const e = document.createElement(tag);
@@ -136,7 +137,7 @@ export class UI {
     const st = stars(s); this.el.stars.textContent = '★ ' + st.toFixed(1);
     this.el.vis.textContent = '👥 ' + s.stats.visitorsIn;
     this.speedBtns.forEach((b, i) => b.classList.toggle('on', !this.g.live && s.clock.speed === i));
-    const nc = s.candidates.length; this.badge(this.el.bEq, nc);
+    const nc = s.candidates.length, np = pedidos(s).length; this.badge(this.el.bEq, np ? '💬' + np : nc);
     this.badge(this.el.bMenu, this.g.updateInfo?.available ? '!' : 0);
     this.badge(this.el.bMetas, 0);
     if (this.g.controls) this.el.needle.style.transform = `rotate(${this.g.controls.cam.yaw}rad)`;
@@ -384,7 +385,7 @@ export class UI {
         : h('div', { class: 'card' }, `Ninguém para isso. Contrate um ${nomes} em Equipe > Currículos.`)));
   }
   showMonth(r) {
-    if (!r) return; const L = { comida: 'Comida e remédios', construcao: 'Construção', animais: 'Compra de animais', manutencao: 'Consertos', salarios: 'Salários' };
+    if (!r) return; const L = { comida: 'Comida e remédios', construcao: 'Construção', animais: 'Compra de animais', manutencao: 'Consertos', salarios: 'Salários', treinamento: 'Cursos e entrevistas' };
     const cor = v => `color:${v >= 0 ? '#7be0a5' : '#ff8a80'}`;
     this.showModal(() => h('div', {}, h('h3', {}, `📊 Fechamento do mês ${r.mes}`),
       h('div', { class: 'row' }, 'Receitas (ingressos, lanches, loja, estacionamento, metas)', h('b', { style: cor(1) }, '+' + money(r.receitas))),
@@ -493,16 +494,47 @@ export class UI {
   }
   personCard(p, full) {
     const s = this.s, C = content(s), isMgr = p.role === 'subgerente', T = isMgr ? TRACOS_GERENTE : TRACOS_EQUIPE;
-    return [h('h3', {}, `${p.name} · ${C.roles[p.role].nome}`),
+    const pg = progresso(p), exp = emExperiencia(s, p), resc = rescisao(s, p);
+    const dh = m => { const x = Math.max(0, m); return `${Math.floor(x / 1440) ? Math.floor(x / 1440) + ' d ' : ''}${Math.floor((x % 1440) / 60)} h`; };
+    return [h('h3', {}, `${p.name} · ${C.roles[p.role].nome} ${nivelDe(p).nome}`),
       h('div', {}, ...Object.entries(p.attrs).map(([k, v]) => h('span', { class: 'tag' }, `${ATTR_NOME[k]} `, h('span', { class: 'stars' }, starStr(v))))),
-      h('div', {}, ...(p.traits.length ? p.traits.map(t => h('span', { class: 'tag ' + (T[t].bom ? 'bom' : 'ruim') }, `${T[t].nome}: ${T[t].desc}`)) : [h('span', { class: 'muted' }, 'Sem traços especiais.')])),
-      h('div', { class: 'kv' }, 'Energia', meter(p.energy), pct(p.energy), 'Satisfação', meter(p.sat), pct(p.sat)),
+      p.oculto ? h('div', {}, h('span', { class: 'tag' }, 'Traços: ??? (aparecem depois de 1 dia de trabalho)'))
+        : h('div', {}, ...(p.traits.length ? p.traits.map(t => h('span', { class: 'tag ' + (T[t]?.bom ? 'bom' : 'ruim') }, `${T[t]?.nome || t}: ${T[t]?.desc || ''}`)) : [h('span', { class: 'muted' }, 'Sem traços especiais.')])),
+      h('div', { class: 'kv' }, 'Energia', meter(p.energy), pct(p.energy), 'Satisfação', meter(p.sat), pct(p.sat), 'Carreira', meter(pg.frac), pg.prox ? `${pg.nome} → ${pg.prox}` : pg.nome),
+      h('div', { class: 'muted' }, pg.prox ? `Nível ${pg.nome}${nivelDe(p).vel > 1 ? ` (serviço ${Math.round((nivelDe(p).vel - 1) * 100)}% mais rápido)` : ''}. Faltam ${String(Math.ceil(pg.falta * 10) / 10).replace('.', ',')} pontos de experiência para ${pg.prox} (1 por hora de serviço e ${isMgr ? 2 : 1} por dia de casa).` : `Nível máximo: serviço ${Math.round((nivelDe(p).vel - 1) * 100)}% mais rápido.`),
+      exp ? h('div', { class: 'card', style: 'border-left:4px solid #f2c230' }, `🧪 Em experiência por mais ${dh(p.exp - s.clock.min)} de jogo: dá para dispensar sem custo. Depois, demitir custa ${RESCISAO_DIAS} dias de salário.`) : null,
       p.ferido ? h('div', { class: 'card', style: 'border-left:4px solid #e53935' }, `🤕 Ferido(a) por um animal: afastado(a) por mais ${Math.max(1, Math.round((p.ferido - s.clock.min) / 60))} h de jogo (o salário continua).`) : null,
+      p.pedido ? this.pedidoCard(p) : null,
       !isMgr ? h('div', { class: 'muted' }, 'Agora: ' + situacao(s, p, taskName)) : null,
       !isMgr ? this.turnoCard(p) : null,
       h('div', { class: 'row' }, h('span', {}, isMgr || (p.adic ?? 1) === 1 ? `Salário ${money(salarioDia(p))}/dia (esperado ${money(p.expected)})` : `Salário ${money(salarioDia(p))}/dia (base ${money(p.salary)} + ${Math.round(((p.adic ?? 1) - 1) * 100)}% do turno; esperado ${money(p.expected)})`),
-        h('span', {}, h('button', { class: 'btn sec sm', onclick: () => { setSalary(s, p.id, 0.9); this.refresh(); } }, '−10%'), ' ', h('button', { class: 'btn sm', onclick: () => { setSalary(s, p.id, 1.1); this.refresh(); } }, '+10%'))),
-      full ? h('button', { class: 'btn red sm', onclick: () => this.askConfirm(`Demitir ${p.name}?`, () => { fireById(s, p.id); this.closeSheet(); this.refresh(); }) }, 'Demitir') : null];
+        h('span', {}, h('button', { class: 'btn sec sm', onclick: () => { ajustaSalario(s, p.id, 0.9); this.refresh(); } }, '−10%'), ' ', h('button', { class: 'btn sm', onclick: () => { ajustaSalario(s, p.id, 1.1); this.refresh(); } }, '+10%'))),
+      this.cursoCard(p),
+      full ? h('button', { class: 'btn red sm', onclick: () => this.askConfirm(resc ? `Demitir ${p.name}? Rescisão: ${money(resc)} (${RESCISAO_DIAS} dias de salário).` : `Dispensar ${p.name}? Está em experiência: sem custo.`, () => { demitir(s, p.id, fireById); this.closeSheet(); this.refresh(); }) }, resc ? `Demitir (${money(resc)})` : 'Dispensar (sem custo)') : null];
+  }
+  // 1.8: pedido de aumento (aceitar, negociar ou recusar)
+  pedidoCard(p) {
+    const s = this.s, q = p.pedido, resta = Math.max(0, PEDIDO_ESPERA - (s.clock.min - q.desde));
+    const fim = (r, bom, ruim) => { if (!r.ok) this.toast(r.msg, 'ruim'); else this.toast(bom, ruim ? 'ruim' : 'bom'); this.refresh(); };
+    return h('div', { class: 'card', style: 'border-left:4px solid #f2c230' }, h('div', { class: 'top' }, h('b', {}, `💬 ${p.name} pediu aumento`), h('span', { class: 'muted' }, `${money(p.salary)} → ${money(q.valor)}/dia`)),
+      h('div', { class: 'muted' }, q.negociou ? 'Não aceitou a contraproposta. Aceite ou recuse.' : `Sem resposta em ${Math.floor(resta / 1440) ? Math.floor(resta / 1440) + ' d ' : ''}${Math.floor((resta % 1440) / 60)} h de jogo, conta como recusa. Recusar derruba a satisfação; com 2 recusas a pessoa pode pedir demissão.`),
+      h('div', { style: 'margin-top:6px' },
+        h('button', { class: 'btn sm', style: 'margin:2px', onclick: () => fim(aceitarPedido(s, p.id), `Aumento aceito: ${p.name} ganha ${money(q.valor)}/dia.`) }, 'Aceitar'),
+        h('button', { class: 'btn sec sm', style: 'margin:2px', disabled: q.negociou, onclick: () => { const r = negociarPedido(s, p.id); fim(r, r.aceitou ? `${p.name} aceitou ${money(r.valor)}/dia.` : `${p.name} não aceitou ${money(r.valor)}/dia.`, !r.aceitou); } }, 'Negociar (metade)'),
+        h('button', { class: 'btn red sm', style: 'margin:2px', onclick: () => fim(recusarPedido(s, p.id), `Aumento de ${p.name} recusado.`, true) }, 'Recusar')));
+  }
+  // 1.8: cursos (feitos na folga; um por vez)
+  cursoCard(p) {
+    const s = this.s;
+    if (p.curso) { const K = CURSOS[p.curso.id], tot = p.curso.fim - p.curso.ini, r = Math.max(0, p.curso.fim - s.clock.min);
+      return h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, `🎓 Cursando: ${K?.nome || '?'}`), h('span', { class: 'muted' }, `faltam ${Math.floor(r / 1440) ? Math.floor(r / 1440) + ' d ' : ''}${Math.floor((r % 1440) / 60)} h`)),
+        h('div', { class: 'kv' }, 'Progresso', meter(clamp(1 - r / (tot || 1))), pct(clamp(1 - r / (tot || 1)))), h('div', { class: 'muted' }, 'Estuda na folga: continua trabalhando no turno, mas volta um pouco mais cansado(a).')); }
+    if (emExperiencia(s, p)) return h('div', { class: 'card' }, h('b', {}, '🎓 Cursos'), h('div', { class: 'muted' }, 'Só depois do período de experiência.'));
+    const L = cursosPara(s, p), aberto = this._cursoAberto === p.id;
+    return h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, '🎓 Cursos'), h('button', { class: 'btn sec sm', onclick: () => { this._cursoAberto = aberto ? null : p.id; this.refresh(); } }, aberto ? 'Fechar' : `Ver cursos (${L.filter(c => !c.motivo).length})`)),
+      p.cursos?.length ? h('div', { class: 'muted' }, 'Concluídos: ' + p.cursos.join(', ')) : null,
+      ...(aberto ? L.map(c => h('div', { class: 'row' }, h('div', {}, h('b', {}, c.nome), h('div', { class: 'muted' }, `${c.desc} ${String(c.dias).replace('.', ',')} dias de jogo, na folga.${c.motivo ? ' ' + c.motivo + '.' : ''}`)),
+        h('button', { class: 'btn sm', disabled: !!c.motivo || s.money < c.custo, onclick: () => { const r = matricular(s, p.id, c.id); this.toast(r.ok ? `${p.name} matriculado(a) em ${c.nome}.` : r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) { sound.cash(); this._cursoAberto = null; } this.refresh(); } }, money(c.custo)))) : []));
   }
   // 1.7.3: turno, horário e intervalos do funcionário; troca de turno (o salário é recalculado)
   turnoCard(p) {
@@ -547,7 +579,7 @@ export class UI {
         h('div', { class: 'row' }, 'Animais', h('b', {}, s.animals.length)), h('div', { class: 'row' }, 'Equipe', h('b', {}, `${s.staff.length} funcionários · ${s.managers.length} subgerente(s)`)),
         h('h3', { style: 'margin-top:10px' }, 'Acontecimentos recentes'), ...s.log.slice(-14).reverse().map(l => h('div', { class: 'row' }, h('span', {}, l.msg), h('span', { class: 'muted' }, fmtClock(l.t).replace('Dia ', 'D'))))];
     } else if (tab === 'fin') {
-      const t = s.stats.today, L = { ingressos: 'Ingressos', lanches: 'Lanchonetes', loja: 'Loja', estacionamento: 'Estacionamento', metas: 'Metas e vendas', salarios: 'Salários', comida: 'Comida e remédios', manutencao: 'Manutenção', construcao: 'Construção', animais: 'Compra de animais' };
+      const t = s.stats.today, L = { ingressos: 'Ingressos', lanches: 'Lanchonetes', loja: 'Loja', estacionamento: 'Estacionamento', metas: 'Metas e vendas', salarios: 'Salários', comida: 'Comida e remédios', manutencao: 'Manutenção', construcao: 'Construção', animais: 'Compra de animais', treinamento: 'Cursos e entrevistas' };
       const inc = Object.values(t.inc).reduce((a, b) => a + b, 0), exp = Object.values(t.exp).reduce((a, b) => a + b, 0);
       const P = s.fin?.pendente || { salarios: 0, manutencao: 0 }, dm = (s.clock.day % MES) + 1, mes = Math.floor(s.clock.day / MES) + 1;
       body = [h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, `Mês ${mes} · dia ${dm} de ${MES}`), h('span', { class: 'muted' }, `fechamento em ${MES - dm + 1} dia(s)`)),
@@ -613,26 +645,29 @@ export class UI {
         ...resumo.map(x => h('div', { class: 'muted' }, `${C.roles[x.role].nome}: ${x.n.dia} das 6h às 18h · ${x.n.tarde} das 18h às 22h · ${x.n.madrugada} das 22h às 6h`)),
         ...[...new Set(av.map(x => x.role))].map(r => h('div', { style: 'color:#ffcf6b' }, `⚠ ${C.roles[r].nome}: ` + av.filter(x => x.role === r).map(x => `${x.n ? 'só ' + x.n : 'ninguém'} das ${x.faixa.replace('–', ' às ')}`).join('; ') + ' (o ideal são 2)')),
         h('div', { class: 'muted', style: 'margin-top:4px' }, 'Dia 6h–18h · Noite 18h–6h (+25%) · Integral 6h–22h (+40%). Nos intervalos, pelo menos 2 de cada setor continuam trabalhando.')) : null;
-      body = s.staff.length ? [cob, ...s.staff.map(st => h('div', { class: 'card', onclick: e => { if (e.target.tagName === 'BUTTON') return; this.closeModal(); if (!st.fora) this.g.controls.centerOn(st.x, st.z, 35); this.select('staff', st.id); } },
+      const ped = pedidos(s);
+      const pedCard = ped.length ? h('div', {}, ...ped.map(q => this.pedidoCard(q))) : null;
+      body = s.staff.length ? [pedCard, cob, ...s.staff.map(st => h('div', { class: 'card', onclick: e => { if (e.target.tagName === 'BUTTON') return; this.closeModal(); if (!st.fora) this.g.controls.centerOn(st.x, st.z, 35); this.select('staff', st.id); } },
       h('div', { class: 'top' }, h('b', {}, `${st.name} · ${C.roles[st.role].nome}`), h('span', { class: 'muted' }, money(salarioDia(st)) + '/dia')),
-      h('div', {}, h('span', { class: 'tag' }, `🕒 ${TURNOS[turnoDe(st)].nome} ${horarioTxt(turnoDe(st))}`)),
+      h('div', {}, h('span', { class: 'tag' }, `🕒 ${TURNOS[turnoDe(st)].nome} ${horarioTxt(turnoDe(st))}`), h('span', { class: 'tag' }, `⭐ ${nivelDe(st).nome}`), emExperiencia(s, st) ? h('span', { class: 'tag' }, '🧪 Experiência') : null, st.curso ? h('span', { class: 'tag' }, '🎓 ' + (CURSOS[st.curso.id]?.nome || 'Curso')) : null, st.pedido ? h('span', { class: 'tag ruim' }, '💬 Pediu aumento') : null),
       h('div', { class: 'kv' }, 'Energia', meter(st.energy), pct(st.energy), 'Satisfação', meter(st.sat), pct(st.sat)), h('div', { class: 'muted' }, situacao(s, st, taskName))))]
-      : [h('div', { class: 'card' }, 'Ninguém contratado ainda. Veja os currículos. Comece com um tratador para alimentar os animais.')];
+      : [pedCard, h('div', { class: 'card' }, 'Ninguém contratado ainda. Veja os currículos. Comece com um tratador para alimentar os animais.')];
     }
     else if (tab === 'cv') {
       const nxt = Math.max(0, s.hiring.nextAt - now);
       body = [h('div', { class: 'muted' }, `Próximo currículo em ${Math.floor(nxt / 3600e3)} h ${Math.floor((nxt % 3600e3) / 60e3)} min (tempo real). Máximo de 10 na lista; cada um expira em 72 h.`),
         ...s.candidates.slice().reverse().map(c => h('div', { class: 'card' },
           h('div', { class: 'top' }, h('b', {}, `${c.name} · ${C.roles[c.role].nome}`), h('span', {}, money(c.salary) + '/dia')),
-          h('div', {}, ...Object.entries(c.attrs).map(([k, v]) => h('span', { class: 'tag' }, `${ATTR_NOME[k]} `, h('span', { class: 'stars' }, starStr(v)))), h('span', { class: 'tag' }, 'Traços: ???')),
+          h('div', {}, ...Object.entries(c.attrs).map(([k, v]) => h('span', { class: 'tag' }, `${ATTR_NOME[k]} `, h('span', { class: 'stars' }, starStr(v)))), ...(() => { const T = c.role === 'subgerente' ? TRACOS_GERENTE : TRACOS_EQUIPE; return !c.entrev ? [h('span', { class: 'tag' }, 'Traços: ???')] : c.hidden.length ? c.hidden.map(t => h('span', { class: 'tag ' + (T[t].bom ? 'bom' : 'ruim') }, `${T[t].nome}: ${T[t].desc}`)) : [h('span', { class: 'tag bom' }, 'Entrevistado: sem traços especiais')]; })()),
           h('div', { class: 'top', style: 'margin-top:6px' }, h('span', { class: 'muted' }, `Expira em ${Math.max(0, Math.floor((c.expiresAt - now) / 3600e3))} h`),
             h('span', {}, h('button', { class: 'btn sec sm', onclick: () => { s.candidates = s.candidates.filter(x => x !== c); this.renderModal(); } }, 'Dispensar'), ' ',
+              c.entrev ? null : h('button', { class: 'btn sec sm', style: 'margin:2px', disabled: s.money < ENTREVISTA, onclick: () => { const r = entrevistar(s, c.id); if (!r.ok) return this.toast(r.msg, 'ruim'); const T = c.role === 'subgerente' ? TRACOS_GERENTE : TRACOS_EQUIPE; this.toast(r.tracos.length ? `Entrevista: ${c.name} é ${T[r.tracos[0]].nome}.` : `Entrevista: ${c.name} não tem traços especiais.`, r.tracos.length && !T[r.tracos[0]].bom ? 'ruim' : 'bom'); this.renderModal(); } }, `🔎 Entrevistar ${money(ENTREVISTA)}`), ' ',
               ...(() => { const go = turno => { const r = hire(s, c.id, turno); if (!r.ok) return this.toast(r.msg, 'ruim'); const T = c.role === 'subgerente' ? TRACOS_GERENTE : TRACOS_EQUIPE;
-                  this.toast((r.person.traits.length ? `${c.name} contratado(a). Traço revelado: ${T[r.person.traits[0]].nome}!` : `${c.name} contratado(a). Sem traços especiais.`) + (turno ? ` Turno ${TURNOS[turno].nome.toLowerCase()}.` : ''), r.person.traits.length && !T[r.person.traits[0]].bom ? 'ruim' : 'bom'); this.renderModal(); };
+                  this.toast((r.person.oculto ? `${c.name} contratado(a), em experiência por ${EXP_DIAS} dias. Os traços aparecem depois de 1 dia de trabalho.` : r.person.traits.length ? `${c.name} contratado(a), em experiência por ${EXP_DIAS} dias. Traço: ${T[r.person.traits[0]].nome}.` : `${c.name} contratado(a), em experiência por ${EXP_DIAS} dias. Sem traços especiais.`) + (turno ? ` Turno ${TURNOS[turno].nome.toLowerCase()}.` : ''), !r.person.oculto && r.person.traits.length && !T[r.person.traits[0]].bom ? 'ruim' : 'bom'); this.renderModal(); };
                 if (c.role === 'subgerente') return [h('button', { class: 'btn sm', onclick: () => go() }, 'Contratar')];
                 const sug = turnoSugerido(s, c.role);
                 return Object.entries(TURNOS).filter(([k]) => k !== 'noite' || NOITE_ROLES.has(c.role)).map(([k, X]) => h('button', { class: 'btn sm ' + (k === sug ? '' : 'sec'), style: 'margin:2px', title: horarioTxt(k), onclick: () => go(k) }, `${k === sug ? '⭐ ' : ''}${X.nome} ${money(Math.round(c.salary * X.mult))}`)); })())))),
-        s.candidates.length ? h('div', { class: 'muted' }, '⭐ = turno que mais falta no setor. Dia 6h–18h · Noite 18h–6h · Integral 6h–22h.') : null,
+        s.candidates.length ? h('div', { class: 'muted' }, `⭐ = turno que mais falta no setor. Dia 6h–18h · Noite 18h–6h · Integral 6h–22h. A entrevista (${money(ENTREVISTA)}) mostra os traços antes de contratar; sem ela, aparecem depois de 1 dia de trabalho. Todo contratado passa ${EXP_DIAS} dias em experiência (dispensa sem custo).`) : null,
         s.candidates.length ? null : h('div', { class: 'card' }, 'Nenhum currículo agora. Inaugure uma nova área (Gerência > Áreas) para receber mais.')];
     } else {
       const P = s.policies, tog = (k, label, desc) => h('div', { class: 'row' }, h('div', {}, h('b', {}, label), h('div', { class: 'muted' }, desc)), h('button', { class: 'btn sm ' + (P[k] ? '' : 'sec'), onclick: () => { P[k] = !P[k]; this.renderModal(); } }, P[k] ? 'Ligado' : 'Desligado'));

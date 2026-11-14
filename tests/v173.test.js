@@ -22,7 +22,7 @@ const ateHora = (s, h, ctx = live()) => { let g = 0; while (Math.abs(((s.clock.m
 // ---- conteúdo, áreas e save ----
 {
   const s = base(), C = content(s);
-  ok(SCHEMA === 10, 'save 10');
+  ok(SCHEMA >= 10, 'save 10 ou mais novo');
   ok(AREAS.every(a => a.y1 === 51) && AREAS[3].x0 === 0 && AREAS[3].x1 === 71, 'as áreas crescem só para trás do portão (zoo máximo 72 x 52)');
   ok(C.facilities.banheiro_familiar?.familiar && C.facilities.estacionamento?.zona === 'lote' && C.facilities.centro.lugares === 8, 'banheiro familiar, estacionamento e Centro com 8 lugares no jogo base');
   ok(!staffPassable(s, 20, RUA.muro) && staffPassable(s, RUA.portao[0], RUA.muro) && staffPassable(s, RUA.portao[0], RUA.muro - 1), 'muro da frente bloqueia; portão e catraca da Entrada passam');
@@ -133,7 +133,7 @@ function DESCANSO_FORA(o) { return ['rest', 'pausa'].includes(o.task?.type) && !
   const an = JSON.parse(JSON.stringify(o.animals[0] || { id: 9003, sp: 'zebra', name: 'Z', x: 0, z: 0, hab: 9002 })); an.id = 9003; an.hab = 9002; o.animals = [...o.animals, an];
   const m0 = o.money;
   const m = deserialize(o);
-  ok(m.schemaVersion === 10 && typeof MIGRATIONS[9] === 'function', 'migração 9 → 10');
+  ok(m.schemaVersion >= 10 && typeof MIGRATIONS[9] === 'function', 'migração 9 → 10');
   const T = m.staff.filter(x => x.role === 'tratador'); ok(T.filter(x => x.turno === 'noite').length === 2 && T.filter(x => x.turno === 'dia').length === 3 && T.every(x => x.adic === 1), '5 tratadores: 3 dia e 2 noite, salário atual');
   ok(m.staff.filter(x => x.role === 'veterinario').map(x => x.turno).sort().join() === 'dia,noite' && m.staff.find(x => x.role === 'faxineiro').turno === 'dia', '2 veterinários: 1 dia e 1 noite; faxineiro no dia');
   ok(!m.facilities.some(f => f.id === 9001) && !m.terrain.slice(52 * 72).some(t => t === 'p'), 'lanchonete e caminho abaixo do portão saíram');
@@ -164,5 +164,5 @@ function DESCANSO_FORA(o) { return ['rest', 'pausa'].includes(o.task?.type) && !
   const C = content(s); ok(C.facilities.banheiro_familiar.comportamento === 'banheiro', 'conta como banheiro para o faxineiro e os visitantes');
 }
 
-ok(APP_VERSION === '1.7.3' && CHANGELOG[0].versao === '1.7.3' && CHANGELOG[0].itens.length >= 5, 'versão 1.7.3 com novidades no topo do CHANGELOG');
+ok(CHANGELOG.some(c => c.versao === '1.7.3' && c.itens.length >= 5) && APP_VERSION >= '1.7.3', 'versão 1.7.3 com novidades no CHANGELOG');
 console.log(fails ? `\n${fails} FALHAS em ${n}` : `\nTODOS OS TESTES DA 1.7.3 PASSARAM (${n})`); process.exit(fails ? 1 : 0);

@@ -125,6 +125,9 @@ export const TRACOS_EQUIPE = {
   resistente: { nome: 'Resistente', desc: 'Cansa menos.', bom: true },
   reclamao: { nome: 'Reclamão', desc: 'Fica insatisfeito mais fácil.', bom: false },
   talentoso: { nome: 'Talentoso', desc: 'Trabalha 35% mais rápido.', bom: true },
+  // 1.8: só por curso (não aparecem em currículo)
+  cuidadoso: { nome: 'Cuidadoso', desc: 'Não esquece portão aberto e corre menos risco com animais perigosos.', bom: true, curso: true },
+  socorrista: { nome: 'Socorrista', desc: 'Se for ferido, volta ao trabalho na metade do tempo.', bom: true, curso: true },
 };
 export const TRACOS_GERENTE = {
   indeciso: { nome: 'Indeciso', desc: 'Demora mais para despachar.', bom: false },
