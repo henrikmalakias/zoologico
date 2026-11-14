@@ -9,6 +9,7 @@ export function makeTemplate(m, opts = {}) {
   g.setAttribute('color', new THREE.BufferAttribute(m.color, 3));
   g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(m.skinIndex, 4));
   g.setAttribute('skinWeight', new THREE.BufferAttribute(m.skinWeight, 4));
+  if (m.pelo) g.setAttribute('pelo', new THREE.BufferAttribute(m.pelo, 1)); // 1.8.2: pelo mais longo (juba) no Ultra
   g.setIndex(new THREE.BufferAttribute(m.index, 1));
   g.computeBoundingSphere();
   const bones = [], byName = {};

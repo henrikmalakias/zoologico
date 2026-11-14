@@ -238,21 +238,37 @@ export const FUR = { leao: { len: 0.022, den: 260 }, macaco: { len: 0.016, den: 
 export const SKIN = { elefante: 0.3, rinoceronte: 0.28, hipopotamo: 0.35, tartaruga: 0.3 };
 export function addFur(group, sp, S) {
   const F = S && 'pelo' in S ? S.pelo : FUR[sp]; const base = group.children[0]; if (!F || !base?.isSkinnedMesh) return;
-  const L = 5, src = base.geometry, n = src.attributes.position.count, g = new THREE.BufferGeometry();
-  for (const name of ['position', 'normal', 'color', 'skinIndex', 'skinWeight']) {
+  const src = base.geometry, pel = src.attributes.pelo;
+  group.add(furShell(base, src, F, 5, null, false));
+  // 1.8.2: juba (vértices com pelo > 1,6): casca extra só da região, com mais camadas e fios mais grossos e longos
+  if (pel) { const ix = src.index.array, keep = [];
+    for (let t = 0; t < ix.length; t += 3) if (pel.array[ix[t]] + pel.array[ix[t + 1]] + pel.array[ix[t + 2]] > 4.8) keep.push(ix[t], ix[t + 1], ix[t + 2]);
+    if (keep.length) { const j = furShell(base, src, { len: F.len, den: F.den * 0.45 }, 9, keep, true); j.userData.juba = true; group.add(j); } }
+}
+function furShell(base, src, F, L, sub, longo) {
+  const n = src.attributes.position.count, g = new THREE.BufferGeometry(), pel = src.attributes.pelo;
+  for (const name of ['position', 'normal', 'color', 'skinIndex', 'skinWeight', ...(pel ? ['pelo'] : [])]) {
     const a = src.attributes[name], arr = new a.array.constructor(a.array.length * L);
     for (let l = 0; l < L; l++) arr.set(a.array, l * a.array.length);
     g.setAttribute(name, new THREE.BufferAttribute(arr, a.itemSize, a.normalized));
   }
   const sh = new Float32Array(n * L); for (let l = 0; l < L; l++) sh.fill((l + 1) / L, l * n, (l + 1) * n); g.setAttribute('shell', new THREE.BufferAttribute(sh, 1));
-  const si = src.index.array, ix = new (n * L > 65535 ? Uint32Array : Uint16Array)(si.length * L);
+  const si = sub || src.index.array, ix = new (n * L > 65535 ? Uint32Array : Uint16Array)(si.length * L);
   for (let l = 0; l < L; l++) for (let k = 0; k < si.length; k++) ix[l * si.length + k] = si[k] + l * n;
   g.setIndex(new THREE.BufferAttribute(ix, 1)); g.boundingSphere = src.boundingSphere;
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+  if (pel) mat.defines = { PELO: '', ...(longo ? { LONGO: '' } : {}) };
   mat.onBeforeCompile = s2 => {
     s2.uniforms.uLen = { value: F.len }; s2.uniforms.uDen = { value: F.den };
-    s2.vertexShader = s2.vertexShader.replace('#include <common>', '#include <common>\nattribute float shell; uniform float uLen; varying float vShell; varying vec3 vOP;')
-      .replace('#include <begin_vertex>', 'vec3 transformed = vec3(position) + objectNormal * shell * uLen - vec3(0.0, shell * shell * uLen * 0.35, 0.0); vShell = shell; vOP = position;');
+    s2.vertexShader = s2.vertexShader.replace('#include <common>', '#include <common>\nattribute float shell; uniform float uLen; varying float vShell; varying vec3 vOP;\n#ifdef PELO\nattribute float pelo;\n#endif')
+      .replace('#include <begin_vertex>', `float pl = 1.0;
+        #ifdef PELO
+        pl = pelo;
+        #ifndef LONGO
+        pl = min(pl, 1.35);
+        #endif
+        #endif
+        vec3 transformed = vec3(position) + objectNormal * shell * uLen * pl - vec3(0.0, shell * shell * uLen * pl * (pl > 1.5 ? 0.9 : 0.35), 0.0); vShell = shell; vOP = position;`);
     s2.fragmentShader = s2.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uDen; varying float vShell; varying vec3 vOP;
       float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
@@ -260,8 +276,9 @@ export function addFur(group, sp, S) {
         if (length(f.xz) > 0.55 * (1.0 - vShell * 0.85) || r < vShell * 0.75) discard;`)
       .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.62, 1.08, vShell) * (0.9 + 0.2 * h31(c + 3.0));\n' + GRADE);
   };
+  mat.customProgramCacheKey = () => 'fur' + (pel ? (longo ? 'L' : 'P') : '');
   const fur = new THREE.SkinnedMesh(g, mat); fur.castShadow = false; fur.receiveShadow = true; fur.frustumCulled = false;
-  fur.bind(base.skeleton, base.bindMatrix); fur.userData.fur = true; group.add(fur);
+  fur.bind(base.skeleton, base.bindMatrix); fur.userData.fur = true; return fur;
 }
 // relevo fino na pele (rugas) sem textura: ruído 3D na posição do modelo
 export function addSkinDetail(group, sp, S) {
@@ -275,10 +292,11 @@ export function addSkinDetail(group, sp, S) {
       float n3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
         return mix(mix(mix(h31(i), h31(i+vec3(1,0,0)), f.x), mix(h31(i+vec3(0,1,0)), h31(i+vec3(1,1,0)), f.x), f.y),
                    mix(mix(h31(i+vec3(0,0,1)), h31(i+vec3(1,0,1)), f.x), mix(h31(i+vec3(0,1,1)), h31(i+vec3(1,1,1)), f.x), f.y), f.z); }
-      float wr(vec3 p){ return abs(n3(p * 9.0) - 0.5) * 1.4 + n3(p * 18.0) * 0.15; }`)
+      // 1.8.2: vincos finos (rachaduras) em vez de caroços: platôs lisos separados por sulcos estreitos
+      float wr(vec3 p){ float a = abs(n3(p * 13.0) - 0.5) * 2.0, b = abs(n3(p * 29.0 + 7.0) - 0.5) * 2.0; return pow(a, 0.4) * 0.65 + pow(b, 0.4) * 0.35; }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         { float e = 0.012, h0 = wr(vOP); vec3 gr = vec3(wr(vOP + vec3(e,0,0)) - h0, wr(vOP + vec3(0,e,0)) - h0, wr(vOP + vec3(0,0,e)) - h0) / e;
-          vec3 gv = normalize(vNM * gr + 1e-5); float fd = 1.0 - smoothstep(4.0, 16.0, length(vViewPosition)); normal = normalize(normal - gv * uAmt * 0.12 * fd * length(gr)); }`)
+          vec3 gv = normalize(vNM * gr + 1e-5); float fd = 1.0 - smoothstep(4.0, 16.0, length(vViewPosition)); normal = normalize(normal - gv * uAmt * 0.045 * fd * min(length(gr), 7.0)); }`)
       .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= 0.93 + 0.08 * n3(vOP * 8.0) * (1.0 - smoothstep(4.0, 16.0, length(vViewPosition)));\n' + GRADE);
   };
 }

@@ -4,7 +4,7 @@ import { makeTemplate } from './sdfThree.js';
 import { cacheGet, cacheSet } from '../save/save.js';
 import { poseDe } from './models.js';
 const SPECS = import.meta.glob('../content/modelos/*.json', { eager: true, import: 'default' });
-export const GEN = 'g3';
+export const GEN = 'g4'; // 1.8.2: malha própria do Ultra (chave especie:variante:u)
 export const spec = id => SPECS[`../content/modelos/${id}.json`];
 export class ModelLibrary {
   constructor(onReady) {
@@ -15,16 +15,17 @@ export class ModelLibrary {
   get(key) { return this.tpl.get(key) || null; }
   request(key) {
     if (this.tpl.has(key) || this.pending.has(key)) return;
-    const [id, variant] = key.split(':'); const sp = spec(id); if (!sp) return;
+    const [id, variant, u] = key.split(':'); const sp = spec(id); if (!sp) return; const ultra = u === 'u';
     this.pending.add(key);
     const ck = `${key}:${sp.versao}:${GEN}`;
-    cacheGet(ck).then(m => { if (m && m.position) this.finish(key, m); else { this.queue.push({ key, ck, spec: sp, variant }); this.next(); } }).catch(() => { this.queue.push({ key, ck, spec: sp, variant }); this.next(); });
+    const job = { key, ck, spec: sp, variant, ultra };
+    cacheGet(ck).then(m => { if (m && m.position) this.finish(key, m); else { this.queue.push(job); this.next(); } }).catch(() => { this.queue.push(job); this.next(); });
   }
   next() {
     if (this.busy || !this.queue.length) return;
     const job = this.queue.shift(); this.busy = job;
-    if (this.worker) this.worker.postMessage({ key: job.key, spec: job.spec, variant: job.variant });
-    else setTimeout(() => { try { this.done({ key: job.key, m: buildMesh(job.spec, job.variant) }); } catch (e) { this.done({ key: job.key, error: String(e) }); } }, 30);
+    if (this.worker) this.worker.postMessage({ key: job.key, spec: job.spec, variant: job.variant, ultra: job.ultra });
+    else setTimeout(() => { try { this.done({ key: job.key, m: buildMesh(job.spec, job.variant, { ultra: job.ultra }) }); } catch (e) { this.done({ key: job.key, error: String(e) }); } }, 30);
   }
   done({ key, m, error }) {
     const job = this.busy; this.busy = false;

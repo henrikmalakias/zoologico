@@ -1,6 +1,7 @@
 // Gera as especificações JSON dos modelos realistas (gráfico Alto).
 // Cada modelo = esqueleto (ossos) + formas suaves (cápsulas e elipsoides) + cores e padrões.
 import { writeFileSync } from 'node:fs';
+import * as UA from './ultra-anatomia.mjs';
 const V = (x, y, z) => [+x.toFixed(4), +y.toFixed(4), +z.toFixed(4)];
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const mul = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
@@ -82,8 +83,86 @@ function quadruped(P) {
 function build(nome, P, more) {
   const q = quadruped(P);
   if (more) more(q, P);
-  return { id: nome, versao: P.versao || 1, tipo: 'quadrupede', celula: P.celula, cores: P.cores, padrao: P.padrao || null, ossos: q.bones, formas: q.shapes, extras: q.extras, anim: P.anim };
+  const out = { id: nome, versao: P.versao || 1, tipo: 'quadrupede', celula: P.celula, cores: P.cores, padrao: P.padrao || null, ossos: q.bones, formas: q.shapes, extras: q.extras, anim: P.anim };
+  if (ULTRA[nome]) out.ultra = ULTRA[nome](P, q.bones);
+  return out;
 }
+// 1.8.2: bloco "ultra" (só o gráfico Ultra lê): anatomia detalhada, cores realistas e camadas de cor
+const fim = (K, o) => ({ celula: o.celula, ossos: K.ossos, formas: K.formas, extras: K.extras, cores: o.cores, camadas: o.camadas, ...(o.padrao ? { padrao: o.padrao } : {}) });
+const ULTRA = {
+  zebra: (P, alto) => {
+    const U = { pad: { corpo: 'listrasCorpo', perna: 'listrasPerna', coxa: 'listrasCoxa', cabeca: 'listras' }, corFocinho: 'nariz' };
+    const K = UA.equino(P, alto, U); UA.cabecaEquina(K, P, alto, U);
+    UA.pescoco(K, K.J.pescoco, K.J.cabeca, 0.15, 0.075, 0.62, { padrao: 'listras', papada: -0.01 });
+    UA.crina(K, { alt0: 0.12, alt1: 0.075, larg: 0.02, h: 0.045, padrao: 'listras' }); UA.caudaEquina(K, alto, P);
+    return fim(K, { celula: 0.018, padrao: { tipo: 'listras', periodo: 0.1, largura: 0.42, ondula: 0.03 },
+      cores: { base: '#e6e1d4', listra: '#1c1a18', ventre: '#ebe7dc', escuro: '#1a1817', nariz: '#22201e', casco: '#2b2622', sujeira: '#7d6a55' },
+      camadas: { sujeira: { altura: 0.26, forca: 0.45 }, variacao: 0.05 } });
+  },
+  leao: (P, alto) => {
+    const K = UA.felino(P, alto); const info = UA.cabecaFelina(K, P);
+    UA.pescoco(K, K.J.pescoco, K.J.cabeca, 0.19, 0.15, 0.82, { k: 0.1, n: 5 });
+    UA.juba(K, info); UA.caudaFina(K, P, [0, -0.6, -0.5]);
+    return fim(K, { celula: 0.02,
+      cores: { base: '#a97f4b', dorso: '#8a6537', ventre: '#d9c29b', escuro: '#3b2617', nariz: '#7a4a3c', focinho: '#e3d3b6', juba: '#8a5c2e', jubaEscura: '#4a2c17', jubaClara: '#b08250', pata: '#a98352', sujeira: '#6d5a45' },
+      camadas: { dorso: { forca: 0.55 }, sujeira: { altura: 0.18, forca: 0.35 }, variacao: 0.07 } });
+  },
+  elefante: (P, alto) => {
+    const K = UA.elefante(P, alto); UA.cabecaElefante(K, P, alto);
+    UA.pescoco(K, K.J.pescoco, K.J.cabeca, 0.5, 0.45, 0.9, { k: 0.15, n: 3 }); UA.caudaFina(K, P);
+    return fim(K, { celula: 0.042,
+      cores: { base: '#6f6a64', dorso: '#625d58', ventre: '#625d57', escuro: '#2e2a27', boca: '#6a5650', marfim: '#e3d9bf', unha: '#c9bea7', sujeira: '#5f4b39', barro: '#7c6248' },
+      camadas: { dorso: { forca: 0.35 }, sujeira: { altura: 0.75, forca: 0.6 }, manchas: { escala: 2.6, limiar: 0.6, forca: 0.45, cor: 'barro', ate: 1.6 }, variacao: 0.09 } });
+  },
+  girafa: (P, alto) => {
+    const U = { esc: 1.15, casco: 0.045, pad: { corpo: 'manchas', perna: 'manchasPernaU', coxa: 'manchas', cabeca: 'manchas' }, corFocinho: 'focinho', corQueixo: 'focinho', ossicones: true,
+      orelha: { comp: 0.065, larg: 0.034, esp: 0.016, abre: 1.6, tras: 0.2 }, escCab: 1.05, compCab: 1.15, pernaF: [0.8, 0.43, 0.12], pernaH: [0.92, 0.66, 0.41] };
+    const K = UA.equino(P, alto, U); UA.cabecaEquina(K, P, alto, U);
+    UA.pescoco(K, K.J.pescoco, K.J.cabeca, 0.24, 0.085, 0.66, { n: 8, padrao: 'manchas', k: 0.08 });
+    UA.crina(K, { alt0: 0.2, alt1: 0.075, larg: 0.018, h: 0.035, cor: 'crina' }); UA.caudaEquina(K, alto, P);
+    return fim(K, { celula: 0.026, padrao: { tipo: 'manchas', celula: 0.17, linha: 0.024 },
+      cores: { base: '#94552a', claro: '#e9d9b4', ventre: '#e6d4ab', escuro: '#3c2414', nariz: '#4a3324', focinho: '#b98d62', casco: '#33271d', crina: '#6b3f1f', sujeira: '#7a6650' },
+      camadas: { sujeira: { altura: 0.25, forca: 0.35 }, variacao: 0.06 } });
+  },
+  macaco: (P, alto) => {
+    const K = UA.primata(P, alto, { esc: 0.35, corMao: 'pele' }); UA.cabecaPrimata(K, P, { focinho: 0.7 });
+    UA.pescoco(K, K.J.pescoco, K.J.cabeca, 0.06, 0.055, 0.95, { n: 2, k: 0.03 }); UA.caudaFina(K, P, [0, 0.4, 0.6]);
+    return fim(K, { celula: 0.01,
+      cores: { base: '#6e5038', dorso: '#5a3f2a', ventre: '#b59a78', escuro: '#3b2a1c', nariz: '#4a3326', rosto: '#d0aa8a', pele: '#4a362a', sujeira: '#5a4838' },
+      camadas: { dorso: { forca: 0.45 }, sujeira: { altura: 0.06, forca: 0.3 }, variacao: 0.06 } });
+  },
+  gorila: (P, alto) => {
+    const K = UA.primata(P, alto, { corMao: 'pele' }); UA.cabecaPrimata(K, P, { crista: true, focinho: 1.15 });
+    UA.pescoco(K, K.J.pescoco, K.J.cabeca, 0.19, 0.17, 1.0, { n: 2, k: 0.08 });
+    const J = K.J; K.eli('coluna', UA.add(UA.lerp(J.quadril, J.peito, 0.35), [0, 0.2, -0.02]), [0.23, 0.11, 0.26], { k: 0.22, cor: 'prata', so: 'M' }); // costas prateadas
+    return fim(K, { celula: 0.018,
+      cores: { base: '#2a2624', dorso: '#221f1d', ventre: '#363130', escuro: '#151312', nariz: '#151312', rosto: '#1f1c1b', pele: '#1b1817', prata: '#625e59', sujeira: '#3e342a' },
+      camadas: { dorso: { forca: 0.3 }, sujeira: { altura: 0.12, forca: 0.3 }, variacao: 0.08 } });
+  },
+  hipopotamo: (P, alto) => {
+    const K = UA.paquiderme(P, alto, { pernaF: [0.85, 0.45, 0.14], pernaH: [0.9, 0.5, 0.14], sela: 0.03, kB: 0.22, barriga: 0.05, unhaR: [0.04, 0.03, 0.03], ruga: 0.02, pe: 1.1,
+      dobras: [{ dz: -0.62, r: 0.03, alto: 0.3, baixo: 0.35 }, { no: 'quadril', dz: 0.62, r: 0.028, alto: 0.25, baixo: 0.4 }] });
+    UA.cabecaHipo(K, P); UA.pescoco(K, K.J.pescoco, K.J.cabeca, 0.42, 0.38, 0.95, { n: 3, k: 0.15 }); UA.caudaFina(K, P, [0, -1, 0]);
+    return fim(K, { celula: 0.03,
+      cores: { base: '#62544f', dorso: '#4f423f', ventre: '#a8807a', focinho: '#8c6c66', rosa: '#b5847b', unha: '#b9a99a', escuro: '#2f2624', sujeira: '#5d4a3c' },
+      camadas: { dorso: { forca: 0.45 }, sujeira: { altura: 0.3, forca: 0.45 }, variacao: 0.07 } });
+  },
+  rinoceronte: (P, alto) => {
+    const K = UA.paquiderme(P, alto, { cupim: true, sela: 0.06, kB: 0.18, unhas: 3, unhaR: [0.045, 0.04, 0.03], ruga: 0.03,
+      dobras: [{ dz: -0.45, r: 0.045, prof: 0.45, alto: 0.6, baixo: 0.65, incl: 0.05, k: 0.06 }, { no: 'quadril', dz: 0.55, r: 0.045, prof: 0.45, alto: 0.55, baixo: 0.5, incl: 0.1, k: 0.06 }, { no: 'quadril', dz: -0.15, r: 0.03, alto: 0.25, baixo: 0.7, incl: -0.2 }],
+      aneisPescoco: [{ t: 0.25, rx: 0.36, ry: 0.28, r: 0.045 }, { t: 0.6, rx: 0.31, ry: 0.24, r: 0.04 }] });
+    UA.cabecaRino(K, P); UA.pescoco(K, K.J.pescoco, K.J.cabeca, 0.36, 0.29, 0.9, { n: 3, k: 0.12 }); UA.caudaFina(K, P);
+    return fim(K, { celula: 0.03,
+      cores: { base: '#6c665f', dorso: '#5b5650', ventre: '#6f6961', chifre: '#5a5046', boca: '#7d766e', unha: '#b7ac9b', escuro: '#2f2c29', sujeira: '#6a5744', barro: '#7b6650' },
+      camadas: { dorso: { forca: 0.3 }, sujeira: { altura: 0.55, forca: 0.55 }, manchas: { escala: 3, limiar: 0.62, forca: 0.35, cor: 'barro', ate: 1.0 }, variacao: 0.08 } });
+  },
+  tartaruga: (P, alto) => {
+    const K = UA.tartaruga(P, alto);
+    return fim(K, { celula: 0.0175,
+      cores: { base: '#57554a', ventre: '#6a6656', casco: '#3f3426', cascoClaro: '#7a6644', plastrao: '#a08a5c', bico: '#3a3428', unha: '#c4baa2', escuro: '#2b2a24', sujeira: '#5c4b3a' },
+      camadas: { sujeira: { altura: 0.12, forca: 0.4 }, variacao: 0.08 } });
+  },
+};
 
 const M = {};
 M.leao = build('leao', {
@@ -232,7 +311,10 @@ function bird() {
     cap('perna' + s + '2', [x, 0.52, -0.03], [x, 0.05, 0], 0.019, 0.017, 'perna', { k: 0.01 });
     eli('perna' + s + '3', [x, 0.022, 0.05], [0.05, 0.014, 0.08], 'perna', { k: 0.015 });
   }
-  return { id: 'flamingo', versao: 1, tipo: 'ave', celula: 0.011, ossos: bones, formas: shapes, extras,
+  const KU = UA.flamingo(bones);
+  const ultra = fim(KU, { celula: 0.01, cores: { base: '#ee98aa', pescoco: '#f3adbb', ventre: '#f6bfca', asa: '#e35d7c', asaClara: '#f19fb2', escuro: '#151313', bico: '#ecd4cf', perna: '#e07d90', sujeira: '#6e5b47' },
+    camadas: { sujeira: { altura: 0.08, forca: 0.3 }, variacao: 0.05 } });
+  return { id: 'flamingo', versao: 1, tipo: 'ave', celula: 0.011, ossos: bones, formas: shapes, extras, ultra,
     cores: { base: '#f29bb0', ventre: '#f7c0cc', asa: '#e8607e', escuro: '#151515', bico: '#f3d6d6', perna: '#e57f93' },
     anim: { passo: 0.45, freq: 3.4, pescoco: 1.4 } };
 }

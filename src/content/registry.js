@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.8.1';
+export const APP_VERSION = '1.8.2';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -22,6 +22,15 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.8.2', data: '14/11/2026', titulo: 'Versão 1.8.2: animais mais realistas no gráfico Ultra', itens: [
+    'Gráfico Ultra com modelo próprio para cada animal: ombro, cernelha, costelas, cintura, garupa e coxa no lugar das "bolhas"',
+    'Pernas com joelho, jarrete, boleto e casco largo (zebra e girafa), patas com dedos (leão), pés com unhas (elefante, rinoceronte, hipopótamo) e mãos apoiadas nos nós dos dedos (gorila)',
+    'Cabeças com testa, olho fundo, bochecha, focinho e narinas; orelhas em concha; chifres, presas e ossicones com base larga',
+    'Cor mais natural: dorso mais escuro, barriga clara, poeira e barro nas pernas, manchas de lama e variação de tom (fim da cor única e pálida)',
+    'Pele grossa com dobras e vincos de verdade (elefante, rinoceronte, hipopótamo) em vez de caroços; casco da tartaruga com escudos e sulcos',
+    'Juba do leão em mechas com pelo longo, mais escura atrás e mais clara em volta da cara; flamingo com asas fechadas e pontas pretas',
+    'Baixo e Alto continuam exatamente iguais; na Economia de calor e bateria o pelo e a juba só aparecem mais de perto',
+  ] },
   { versao: '1.8.1', data: '14/11/2026', titulo: 'Versão 1.8.1: cara nova no HUD e nos painéis', itens: [
     'Visual novo "cartum safári": botões com contorno e relevo que afundam ao toque, cores de madeira, lona, folha e sol, e fonte arredondada de jogo (vem dentro do jogo e funciona offline)',
     'Ícones desenhados no jogo para dinheiro, relógio, estrelas, visitantes, velocidade, AO VIVO, câmera e barra de baixo: iguais em qualquer celular',

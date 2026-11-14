@@ -37,10 +37,11 @@ ok(/\.bar button\{[^}]*flex:1;max-width:86px/.test(css), 'barra de baixo com 5 b
 
 // só visual: save igual
 ok(SCHEMA === 11, 'save continua no formato 11');
-ok(APP_VERSION === '1.8.1' && CHANGELOG[0].versao === '1.8.1' && CHANGELOG[0].itens.length >= 6, 'versão 1.8.1 com novidades no topo do CHANGELOG');
 const vnum = v => String(v).split('.').map(p => { const m = /^(\d+)([a-z]?)$/.exec(p); return m ? +m[1] + (m[2] ? (m[2].charCodeAt(0) - 96) / 100 : 0) : 0; });
+const maiorIgual = (a, b) => a === b || maior(a, b);
 const maior = (a, b) => { const x = vnum(a), y = vnum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+ok(maiorIgual(APP_VERSION, '1.8.1') && CHANGELOG.some(c => c.versao === '1.8.1' && c.itens.length >= 6), 'versão 1.8.1 com novidades no CHANGELOG');
 ok(maior('1.8.1', '1.8') && maior('1.8.5', '1.8.1') && maior('1.9', '1.8.1'), 'checagem de atualização: 1.8 < 1.8.1 < 1.8.5 < 1.9');
 const v = JSON.parse(readFileSync(new URL('../public/version.json', import.meta.url), 'utf8')), sw = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
-ok(v.versao === '1.8.1' && /zoo-1\.8\.1/.test(sw), 'version.json e cache do service worker na 1.8.1');
+ok(v.versao === APP_VERSION && sw.includes(`zoo-${APP_VERSION}`), 'version.json e cache do service worker na versão atual');
 console.log(fails ? `\n${fails} FALHAS em ${n}` : `\nTODOS OS TESTES DA 1.8.1 PASSARAM (${n})`); process.exit(fails ? 1 : 0);

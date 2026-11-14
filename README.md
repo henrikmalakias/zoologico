@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.8.1
+# Projeto Zoológico — v1.8.2
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -104,4 +104,14 @@ Obs.: em modo "Teste" o Google pede para reautorizar a cada 7 dias; publicar o a
 - `ui.js`: fichas do HUD com `<span>` trocado só quando muda (`setTxt`), dinheiro que conta (`_mv`) e pulsa (`pulse(el, 'up'|'down'|'bump')`) em mudanças ≥ R$ 500, sol/lua e barra do dia, entrada com mola (`enter()` na ficha e na gaveta, `pop-in` na janela por 380 ms para não repetir nos redesenhos), toasts com ícone e `conquista` (meta, nível, curso, contratação).
 - Economia de calor e bateria: classe `eco` no `#app` (em `updateHud`) corta laços infinitos, quiques, brilho e contagem; entradas ficam curtas. `prefers-reduced-motion` faz o mesmo.
 - Sons em `src/audio/sound.js`: `click` (bolha), `tab`, `open`. Vibração de 8 ms na barra e na velocidade quando o som está ligado.
-- Testes: `tests/v181.test.js` e `tests/v181_browser.py`. Próxima parte (1.8.2): retratos e redesenho das fichas e da Equipe.
+- Testes: `tests/v181.test.js` e `tests/v181_browser.py`. Retratos e redesenho das fichas e da Equipe passaram para a 1.8.4.
+
+## Animais realistas no gráfico Ultra (1.8.2)
+- Cada JSON de `src/content/modelos/` ganhou o bloco opcional `ultra` (`celula`, `ossos`, `formas`, `extras`, `cores`, `camadas`, `padrao`). Só o Ultra lê esse bloco; o Baixo e o Alto usam o resto do JSON como antes (a malha do Alto é idêntica, conferida por hash em `tests/v182.test.js`).
+- O bloco é gerado por `node tools/gerar-modelos.mjs`, com a anatomia em `tools/ultra-anatomia.mjs`: `equino` (zebra, girafa), `felino` (leão), `paquiderme` (elefante, rinoceronte, hipopótamo), `primata` (gorila, macaco), `tartaruga`, `flamingo`, mais cabeças, pescoço, crina, juba e caudas. Os ossos têm os mesmos nomes do Alto (as animações não mudam), com as juntas das pernas no lugar anatômico.
+- `src/render/sdf.js`: `buildMesh(spec, variante, { ultra: true })` usa `ultraSpec(spec)`. Formas com `op: 'sub'` cavam vincos, narinas e sulcos (subtração suave, aplicada depois das formas). `camadas`: `dorso` (mais escuro em cima), `sujeira` (poeira subindo do chão até `altura`), `manchas` (lama) e `variacao` (tom e matiz). Padrões novos: `listrasPerna`, `listrasCoxa`, `manchasPernaU`. Forma com `pelo` (> 1) vira juba: o vértice leva o atributo `pelo`.
+- Espécie sem bloco `ultra` (DLC): o Ultra tira o `ruido` das formas, marca joelho/jarrete/boleto nas juntas `perna*2`/`perna*3`, alarga o casco embaixo e aplica camadas automáticas.
+- `src/render/library.js`: chave `especie:variante:u` para o Ultra (o Alto continua `especie:variante`), `GEN = 'g4'` (refaz o cache). `world.js` pede a chave `:u` só no Ultra; os funcionários continuam com o modelo do Alto (ficam para a 1.8.3).
+- `src/render/ultra.js`: `addFur` cria a casca extra da juba (9 camadas, só onde `pelo` > 1,6). `addSkinDetail` troca o ruído que parecia caroço por vincos finos (mesmo custo). Economia de calor e bateria: pelo até ~30 m e juba até ~22 m (sem economia: ~39 m e ~33 m).
+- Testes: `tests/v182.test.js` e `tests/v182_closes.py [baixo|alto|ultra] [prefixo]` (closes de lado, frente e pernas de cada espécie no meio de um recinto; `SO=leao,zebra` limita as espécies). O visualizador `tests/viewer` aceita `?u=1` para ver o modelo do Ultra.
+

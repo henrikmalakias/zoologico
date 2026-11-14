@@ -394,7 +394,7 @@ export class World {
     const carga = new Map(); for (const st of s.staff) { const t = st.task; if (t && t.phase === 'load' && t.work0 > 0) carga.set(t.target, { id: st.id, f: suave(1 - Math.min(1, Math.max(0, t.work) / t.work0)) }); }
     for (const a of s.animals) {
       if (!C.species[a.sp] || a.internado) continue; seen.add(a.id); // internado: está dentro da Clínica veterinária
-      const vkey = a.sp === 'leao' || a.sp === 'gorila' || C.species[a.sp].dimorfismo ? a.sp + ':' + a.sex : a.sp + ':F';
+      const vkey = (a.sp === 'leao' || a.sp === 'gorila' || C.species[a.sp].dimorfismo ? a.sp + ':' + a.sex : a.sp + ':F') + (this.ultra ? ':u' : ''); // 1.8.2: Ultra com malha própria
       let tpl = null; if (L) { L.request(vkey); tpl = L.get(vkey); if (tpl && this.ultra && !tpl.userData.ultra) { tpl.userData.ultra = true; tpl.userData.baseMat = tpl.children[0].material; addFur(tpl, a.sp, C.species[a.sp]); addSkinDetail(tpl, a.sp, C.species[a.sp]); tpl.userData.skinMat = tpl.children[0].material; tpl.userData.farMat = gradeMaterial(tpl.userData.baseMat.clone()); tpl.children[0].material = tpl.userData.baseMat; } }
       const kind = tpl ? 'sdf' : 'proc';
       let e = this.maps.animals.get(a.id);
@@ -416,7 +416,7 @@ export class World {
       o.scale.setScalar(sc);
       if (kind === 'sdf') {
         animateSDFAnimal(o, a, dt, moving, a.sp);
-        if (tpl?.userData.ultra) { const d2 = this.camera.position.distanceToSquared(o.position), near = this.ultra && d2 < (e.near ? 1900 : 1500); e.near = near; for (const c of o.children) if (c.userData.fur) c.visible = near; const wet = this.ultra && (a._wet || 0) > 0.2 && !a.carriedBy;
+        if (tpl?.userData.ultra) { const d2 = this.camera.position.distanceToSquared(o.position), lim = this.eco ? 0.6 : 1, near = this.ultra && d2 < (e.near ? 1900 : 1500) * lim; e.near = near; for (const c of o.children) if (c.userData.fur) c.visible = near && (!c.userData.juba || d2 < (this.eco ? 500 : 1100)); /* 1.8.2: Economia encurta a distância do pelo e da juba */ const wet = this.ultra && (a._wet || 0) > 0.2 && !a.carriedBy;
           o.children[0].material = this.ultra ? (wet ? wetMaterial(tpl, near) : near ? tpl.userData.skinMat : tpl.userData.farMat) : tpl.userData.baseMat; }
       } else animateAnimal(o, a, dt, moving);
     }

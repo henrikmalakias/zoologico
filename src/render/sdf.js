@@ -3,6 +3,8 @@
 // Não depende do three.js: pode rodar no navegador ou no node.
 
 const smin = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
+const smax = (a, b, k) => -smin(-a, -b, k);
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 function hash3(x, y, z) { let h = (x * 374761393 + y * 668265263 + z * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
 export function noise3(x, y, z) {
   const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi;
@@ -30,6 +32,7 @@ function prepare(spec, variant) {
     o.max = [0, 1, 2].map(i => Math.max(...pts.map(p => p[i])) + R + (s.ruido || 0) + 0.02);
     return o;
   });
+  shapes.sort((a, b) => (a.op === 'sub') - (b.op === 'sub')); // 1.8.2: vincos (subtração) depois das formas
   const cores = spec.tipo === 'humano' ? spec.variantes[variant].cores : spec.cores;
   return { shapes, cores };
 }
@@ -53,7 +56,7 @@ function field(P, x, y, z) {
   let d = 1e9;
   for (const o of P.shapes) {
     if (x < o.min[0] - 0.1 || y < o.min[1] - 0.1 || z < o.min[2] - 0.1 || x > o.max[0] + 0.1 || y > o.max[1] + 0.1 || z > o.max[2] + 0.1) continue;
-    d = smin(d, dShape(o, x, y, z), o.k);
+    d = o.op === 'sub' ? smax(d, -dShape(o, x, y, z), o.k) : smin(d, dShape(o, x, y, z), o.k);
   }
   return d;
 }
@@ -76,6 +79,8 @@ function shapeColor(spec, P, o, x, y, z, nx, ny, nz) {
   if (pad && pd?.tipo === 'listras' && C.listra) {
     let u, per = pd.periodo, w = pd.largura;
     if (pad === 'listrasCorpo') { u = z < -0.2 ? z * 0.8 - (y - 1.0) * 0.35 : z + (y - 1.0) * 0.1; }
+    else if (pad === 'listrasPerna') { u = y; per *= y < 0.45 ? 0.5 : 0.75; }
+    else if (pad === 'listrasCoxa') { u = z * 0.55 - y * 0.85; per *= 0.95; }
     else if (o.t === 'cap') { u = (x - o.a[0]) * o.ax[0] + (y - o.a[1]) * o.ax[1] + (z - o.a[2]) * o.ax[2]; per *= y < 0.45 ? 0.55 : 0.8; }
     else u = z;
     u += (noise3(x * 6, y * 6, z * 6) - 0.5) * pd.ondula * 4;
@@ -83,18 +88,57 @@ function shapeColor(spec, P, o, x, y, z, nx, ny, nz) {
     if (f < w && !(o.ventre && ny < -0.75)) c = C.listra.slice();
   }
   if (pad && pd?.tipo === 'manchas') {
-    const cell = pad === 'manchasPerna' ? pd.celula * 0.6 : pd.celula;
+    const pe = pad === 'manchasPerna', peU = pad === 'manchasPernaU'; // 1.8.2: no Ultra a mancha desce a perna toda (só a canela fica clara)
+    const cell = pe ? pd.celula * 0.6 : peU ? pd.celula * 0.42 : pd.celula;
     const [f1, f2, id] = vor(x, y * 0.85, z, cell);
-    const line = (f2 - f1) * cell < pd.linha * (pad === 'manchasPerna' ? 1.4 : 1);
-    if (line || (pad === 'manchasPerna' && y < 0.75) || (o.ventre && ny < -0.6)) c = C.claro.slice();
+    const line = (f2 - f1) * cell < pd.linha * (pe ? 1.4 : peU ? 0.8 : 1);
+    if (line || (pe && y < 0.75) || (peU && y < 0.2 + (noise3(x * 9, y * 9, z * 9) - 0.5) * 0.12) || (o.ventre && ny < -0.6)) c = C.claro.slice();
     else { const v = 0.8 + id * 0.4; c = c.map(k => k * v); }
   }
   if (o.aneis) { const u = (x - o.a[0]) * o.ax[0] + (y - o.a[1]) * o.ax[1] + (z - o.a[2]) * o.ax[2]; const r = 0.82 + 0.18 * Math.abs(Math.sin(u * 70)); c = c.map(k => k * r); }
   return c;
 }
 
-export function buildMesh(spec, variant = 'M') {
-  const P = prepare(spec, variant);
+// 1.8.2: gráfico Ultra usa o bloco "ultra" do JSON (formas, ossos e cores próprios) e as camadas de cor.
+// Sem o bloco, o Ultra usa as formas do Alto sem o ruído da pele e com camadas automáticas.
+export function ultraSpec(spec) {
+  const u = spec.ultra || {};
+  let formas = (u.formas || spec.formas).map(f => (f.ruido && !f.tufo && !u.formas ? { ...f, ruido: 0 } : f));
+  if (!u.formas && spec.tipo !== 'humano') formas = formas.concat(juntasAuto(spec, formas));
+  return { ...spec, celula: u.celula ?? spec.celula, formas, ossos: u.ossos || spec.ossos, extras: u.extras || spec.extras,
+    cores: { ...spec.cores, ...(u.cores || {}) }, padrao: u.padrao || spec.padrao, camadas: u.camadas || autoCamadas(spec), _ultra: true };
+}
+// espécie sem bloco "ultra" (DLC): marca joelho, jarrete e boleto nas juntas das pernas e alarga o casco embaixo
+function juntasAuto(spec, formas) {
+  const out = [];
+  for (const b of spec.ossos) {
+    if (!/^perna.*[23]$/.test(b.nome)) continue;
+    const c = formas.find(f => f.t === 'cap' && f.osso === b.nome && Math.hypot(f.a[0] - b.pos[0], f.a[1] - b.pos[1], f.a[2] - b.pos[2]) < 0.02); if (!c) continue;
+    const r = c.r[0]; out.push({ t: 'eli', osso: b.nome, c: b.pos, r: [r * 1.22, r * 1.12, r * 1.28], k: Math.max(0.01, r * 0.5), cor: c.cor || 'base', padrao: c.padrao });
+  }
+  for (const f of formas) if (f.cor === 'casco' && f.t === 'cap') out.push({ ...f, r: [f.r[0], f.r[1] * 1.3], b: [f.b[0], Math.min(f.b[1], 0), f.b[2]] });
+  return out;
+}
+function autoCamadas(spec) {
+  if (spec.tipo === 'humano') return { variacao: 0.04 };
+  const top = Math.max(...spec.ossos.map(b => b.pos[1]));
+  return { dorso: { forca: 0.18 }, sujeira: { altura: Math.min(0.45, top * 0.22), forca: spec.tipo === 'ave' ? 0.15 : 0.45 }, variacao: 0.07 };
+}
+// camadas de cor do Ultra: dorso mais escuro, sujeira subindo do chão e variação grande de tom
+function camadas(CM, C, c, x, y, z, ny, ao) {
+  c = c.slice();
+  const mix = (to, t) => { if (t > 0) for (let i = 0; i < 3; i++) c[i] += (to[i] - c[i]) * Math.min(1, t); };
+  if (CM.dorso) { const d = CM.dorso, to = C.dorso || c.map(k => k * 0.62); mix(to, sstep(0.15, 0.85, ny) * (d.forca ?? 0.3) * (d.min == null || y > d.min ? 1 : 0)); }
+  if (CM.sujeira) { const s = CM.sujeira, h = s.altura ?? 0.3, n = noise3(x * 7, y * 7, z * 7) - 0.5, n2 = noise3(x * 23, y * 23, z * 23) - 0.5;
+    const t = (1 - sstep(h * 0.25, h, y + (n * 0.6 + n2 * 0.25) * h)) * (s.forca ?? 0.5); mix(C.sujeira || [0.16, 0.11, 0.07], t); }
+  if (CM.manchas) { const s = CM.manchas, n = noise3(x * s.escala, y * s.escala, z * s.escala); mix(C[s.cor] || C.sujeira || [0.2, 0.15, 0.1], sstep(s.limiar, s.limiar + 0.08, n) * s.forca * (y < (s.ate ?? 9) ? 1 : 0)); }
+  const v = CM.variacao ?? 0.06, k = 1 + ((noise3(x * 1.7 + 3, y * 1.7, z * 1.7) - 0.5) * 1.6 + (noise3(x * 6, y * 6, z * 6 + 5) - 0.5) * 0.6) * v;
+  const w = 1 + (noise3(x * 2.3, y * 2.3 + 9, z * 2.3) - 0.5) * v * 0.6; // leve troca de matiz (mais quente ou mais frio)
+  return [c[0] * k * w, c[1] * k, c[2] * k / w, (0.3 + 0.7 * Math.pow(ao, 1.4))];
+}
+export function buildMesh(spec, variant = 'M', opts = {}) {
+  if (opts.ultra && !spec._ultra) spec = ultraSpec(spec);
+  const P = prepare(spec, variant), CM = spec._ultra ? spec.camadas : null;
   P.cores = Object.fromEntries(Object.entries(P.cores).map(([k, v]) => [k, hex(v)]));
   const cell = spec.celula;
   const mn = [0, 1, 2].map(i => Math.min(...P.shapes.map(s => s.min[i])) - cell * 2);
@@ -136,7 +180,7 @@ export function buildMesh(spec, variant = 'M') {
     }
   }
   // normais pelo gradiente, cores, oclusão e pesos
-  const V = pos.length / 3, nor = new Float32Array(V * 3), col = new Float32Array(V * 3), si = new Uint16Array(V * 4), sw = new Float32Array(V * 4);
+  const V = pos.length / 3, nor = new Float32Array(V * 3), col = new Float32Array(V * 3), si = new Uint16Array(V * 4), sw = new Float32Array(V * 4), pel = CM ? new Float32Array(V) : null;
   const boneIx = Object.fromEntries(spec.ossos.map((b, i) => [b.nome, i]));
   const e = cell * 0.5, ao1 = cell * 3, ao2 = cell * 7, blend = cell * 1.2, sig = Math.max(0.012, cell * 2.5);
   const dist = new Float32Array(P.shapes.length);
@@ -145,18 +189,19 @@ export function buildMesh(spec, variant = 'M') {
     let gx = field(P, x + e, y, z) - field(P, x - e, y, z), gy = field(P, x, y + e, z) - field(P, x, y - e, z), gz = field(P, x, y, z + e) - field(P, x, y, z - e);
     const gl = Math.hypot(gx, gy, gz) || 1; gx /= gl; gy /= gl; gz /= gl;
     nor[v * 3] = gx; nor[v * 3 + 1] = gy; nor[v * 3 + 2] = gz;
-    let dmin = 1e9; for (let s = 0; s < P.shapes.length; s++) { const o = P.shapes[s]; const d = (x < o.min[0] || y < o.min[1] || z < o.min[2] || x > o.max[0] || y > o.max[1] || z > o.max[2]) ? 9 : dShape(o, x, y, z); dist[s] = d; if (d < dmin) dmin = d; }
-    let cr = 0, cg = 0, cb = 0, cw = 0; const bw = new Float32Array(spec.ossos.length);
+    let dmin = 1e9; for (let s = 0; s < P.shapes.length; s++) { const o = P.shapes[s]; if (o.op === 'sub') { dist[s] = 9; continue; } const d = (x < o.min[0] || y < o.min[1] || z < o.min[2] || x > o.max[0] || y > o.max[1] || z > o.max[2]) ? 9 : dShape(o, x, y, z); dist[s] = d; if (d < dmin) dmin = d; }
+    let cr = 0, cg = 0, cb = 0, cw = 0, pw = 0; const bw = new Float32Array(spec.ossos.length);
     for (let s = 0; s < P.shapes.length; s++) {
-      const dd = dist[s] - dmin; if (dd > sig * 6) continue; const o = P.shapes[s];
+      const o = P.shapes[s]; if (o.op === 'sub') continue; const dd = dist[s] - dmin; if (dd > sig * 6) continue;
       const wb = Math.exp(-dd / sig); bw[boneIx[o.osso]] += wb;
-      if (dd < blend * 5) { const wc = Math.exp(-dd / blend); const c = shapeColor(spec, P, o, x, y, z, gx, gy, gz); cr += c[0] * wc; cg += c[1] * wc; cb += c[2] * wc; cw += wc; }
+      if (dd < blend * 5) { const wc = Math.exp(-dd / blend); const c = shapeColor(spec, P, o, x, y, z, gx, gy, gz); cr += c[0] * wc; cg += c[1] * wc; cb += c[2] * wc; cw += wc; pw += (o.pelo ?? 1) * wc; }
     }
     const a1 = Math.min(1, Math.max(0, field(P, x + gx * ao1, y + gy * ao1, z + gz * ao1) / ao1)), a2 = Math.min(1, Math.max(0, field(P, x + gx * ao2, y + gy * ao2, z + gz * ao2) / ao2));
     const ao = 0.45 + 0.55 * Math.pow(a1 * 0.5 + a2 * 0.5, 0.8);
     const fur = 0.9 + 0.2 * noise3(x * 25, y * 25, z * 25), lift = 0.92 + 0.08 * Math.max(0, gy);
-    const m = (ao * fur * lift) / (cw || 1);
-    col[v * 3] = cr * m; col[v * 3 + 1] = cg * m; col[v * 3 + 2] = cb * m;
+    let m = (ao * fur * lift) / (cw || 1);
+    if (CM) { const c = camadas(CM, P.cores, [cr / (cw || 1), cg / (cw || 1), cb / (cw || 1)], x, y, z, gy, ao); cr = c[0]; cg = c[1]; cb = c[2]; m = c[3] * (0.95 + 0.1 * noise3(x * 25, y * 25, z * 25)) * lift; }
+    col[v * 3] = cr * m; col[v * 3 + 1] = cg * m; col[v * 3 + 2] = cb * m; if (pel) pel[v] = pw / (cw || 1);
     const top = [...bw.keys()].sort((a, b) => bw[b] - bw[a]).slice(0, 4); const tot = top.reduce((t, b) => t + bw[b], 0) || 1;
     top.forEach((b, i) => { si[v * 4 + i] = b; sw[v * 4 + i] = bw[b] / tot; });
   }
@@ -168,5 +213,5 @@ export function buildMesh(spec, variant = 'M') {
     const fx = uy * vz - uz * vy, fy = uz * vx - ux * vz, fz = ux * vy - uy * vx;
     if (fx * (nor[a * 3] + nor[b * 3] + nor[c * 3]) + fy * (nor[a * 3 + 1] + nor[b * 3 + 1] + nor[c * 3 + 1]) + fz * (nor[a * 3 + 2] + nor[b * 3 + 2] + nor[c * 3 + 2]) < 0) { idx[t + 1] = c; idx[t + 2] = b; }
   }
-  return { position: new Float32Array(pos), normal: nor, color: col, skinIndex: si, skinWeight: sw, index: V > 65535 ? new Uint32Array(idx) : new Uint16Array(idx), ossos: spec.ossos, extras: spec.extras || [], vertices: V, triangulos: idx.length / 3 };
+  return { position: new Float32Array(pos), normal: nor, color: col, skinIndex: si, skinWeight: sw, index: V > 65535 ? new Uint32Array(idx) : new Uint16Array(idx), ossos: spec.ossos, extras: spec.extras || [], ...(pel && pel.some(p => p > 1.2) ? { pelo: pel } : {}), vertices: V, triangulos: idx.length / 3 };
 }
