@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.7.2f';
+export const APP_VERSION = '1.7.3';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -22,6 +22,17 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.7.3', data: '13/11/2026', titulo: 'Versão 1.7.3: turnos, intervalos, Centro de cuidados e rua da frente', itens: [
+    'Turnos fixos: Dia (6h–18h), Noite (18h–6h, +25% no salário) e Integral (6h–22h, +40%, cansa mais). Noite só para tratador, veterinário e segurança. O turno é escolhido na contratação (⭐ = o que mais falta no setor) e pode ser trocado na ficha',
+    'Fim do turno: o funcionário termina o que está fazendo, sai pelo portão e pega o ônibus; volta 15 min antes do próximo turno com a energia cheia',
+    'Alerta sem ninguém de turno: quem está de folga aparece no menu com "hora extra" (+50% da hora, pago no fechamento do mês). Quem está em casa leva ~20 min de jogo para chegar. Com o app fechado, o subgerente faz o mesmo',
+    'Intervalos escalonados: café da manhã, almoço e café da tarde (noite: jantar e café da madrugada). Pelo menos 2 de cada setor continuam trabalhando e no máximo metade sai ao mesmo tempo',
+    'Centro de cuidados: a equipe entra no prédio (8 lugares, com refeitório) para os intervalos, para descansar e quando se fere. Dá para construir vários. Sem vaga, descansam num banco perto da entrada e recuperam menos',
+    'Rua da frente: muro com o portão, calçadas, rua de 2 faixas com carros, faixa de pedestres e ponto de ônibus (de dia, um ônibus a cada 20 min traz visitantes). As áreas novas crescem só para trás do portão; o que estava abaixo dele saiu com 100% do dinheiro devolvido',
+    'Estacionamento (nos lotes do outro lado da rua): cobra R$ 10 por carro e traz +15% de visitantes (até 2 estacionamentos)',
+    'Famílias: parte dos visitantes chega com criança (meia-entrada). Banheiro familiar novo, com trocador: as famílias preferem e ficam mais satisfeitas',
+    'Equipe > Funcionários mostra quantos de cada setor trabalham em cada horário e avisa quando há menos de 2',
+  ] },
   { versao: '1.7.2f', data: '13/11/2026', titulo: 'Versão 1.7.2f: correção do funcionário sem caminho', itens: [
     'Funcionário ferido (ou descansando) que estava dentro de um recinto quando o jogo foi fechado ou atualizado não fica mais preso repetindo "não encontrou caminho": ele sai pelo portão e vai descansar',
     'Descanso sem caminho até o Centro de cuidados: o funcionário descansa onde está, sem tentar de novo a cada instante',

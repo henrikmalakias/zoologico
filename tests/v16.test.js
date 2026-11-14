@@ -38,7 +38,7 @@ const now = Date.now();
   ok(visitorCap(s) === 100, 'limite de 100 visitantes desenhados no gráfico Alto/Ultra');
   const ctx = { abstract: false, realDt: 0.05, moveMul: 1 }, m0 = s.money;
   for (let i = 0; i < 160; i++) arrive(s, ctx);
-  ok(s.visitors.length === 100, 'só 100 visitantes são criados');
+  ok(s.visitors.length + (s._fila?.length || 0) === 100, 'só 100 visitantes são criados (contando quem espera o ônibus)');
   ok(s.stats.visitantesHoje === 160 && s.money - m0 >= 160 * s.ticket, 'os 160 pagam o ingresso');
   updateVisitors(s, 0.01, ctx);
   ok(s.stats.visitorsIn === 160, 'o contador mostra 160 (100 desenhados + 60 virtuais)');

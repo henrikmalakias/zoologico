@@ -44,7 +44,7 @@ const dentro = (s, st) => { const T = worldToTile(st.x, st.z); return !!s._occ.h
   ok(semCaminho(s, L) <= 1, `funcionário cercado: aviso não se repete a cada passo (${semCaminho(s, L)})`);
   st.task = null; st.energy = 0.1; startTask(s, st, 'rest', 0);
   for (let i = 0; i < 50; i++) step(s, 0.0125, live());
-  ok(st.task?.type === 'rest' && st.task.phase === 'work', 'descanso sem rota: descansa onde está');
+  ok(['rest', 'pausa'].includes(st.task?.type) && st.task.phase === 'work', 'descanso sem rota: descansa onde está');
 }
-ok(APP_VERSION === '1.7.2f' && CHANGELOG[0].versao === '1.7.2f', 'versão 1.7.2f com novidades no topo do CHANGELOG');
+ok(CHANGELOG.some(c => c.versao === '1.7.2f'), 'novidades da 1.7.2f no CHANGELOG');
 console.log(fails ? `\n${fails} FALHAS em ${n}` : `\nTODOS OS TESTES DA 1.7.2f PASSARAM (${n})`); process.exit(fails ? 1 : 0);

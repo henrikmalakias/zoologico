@@ -102,7 +102,10 @@ export const BASE_PACK = {
     banco: { nome: 'Banco', w: 1, h: 1, custo: 150, cor: '#7a5230', manut: 0 },
     mesas: { nome: 'Área de mesas', w: 3, h: 3, custo: 2800, cor: '#c0803a', manut: 12 },
     placa: { nome: 'Placa educativa', w: 1, h: 1, custo: 300, cor: '#2e6b54', manut: 0 },
-    centro: { nome: 'Centro de cuidados básicos', w: 3, h: 3, custo: 12000, cor: '#e9ecef', manut: 40, semCaminho: true, desc: 'Base da equipe: descanso e recuperação de quem se feriu.' },
+    centro: { nome: 'Centro de cuidados básicos', w: 3, h: 3, custo: 12000, cor: '#e9ecef', manut: 40, semCaminho: true, lugares: 8, desc: 'Base da equipe: 8 lugares, refeitório para os intervalos, descanso e recuperação de quem se feriu. Pode construir vários.' },
+    // 1.7.3: banheiro familiar (as famílias com criança preferem) e estacionamento nos lotes do outro lado da rua da frente
+    banheiro_familiar: { nome: 'Banheiro familiar', w: 3, h: 2, custo: 3500, cor: '#5aa0d8', manut: 20, comportamento: 'banheiro', familiar: true, desc: 'Banheiro maior, com trocador e cabine para a família. As famílias com criança preferem este e ficam mais satisfeitas.' },
+    estacionamento: { nome: 'Estacionamento', w: 6, h: 5, custo: 6000, cor: '#5b5f63', manut: 15, vagas: 12, cobra: 10, zona: 'lote', semCaminho: true, desc: 'Fica nos lotes do outro lado da rua da frente. Cobra R$ 10 por carro e traz mais visitantes (contam até 2 estacionamentos).' },
     // 1.7.2c: internação dos casos graves (2 vagas por clínica; pode construir várias). Precisa de caminho (o veículo chega pela frente)
     clinica: { nome: 'Clínica veterinária', w: 3, h: 3, custo: 15000, cor: '#dff1f7', manut: 45, vagas: 2, desc: 'Interna os animais em estado grave (2 vagas) e deixa o tratamento por dardo mais rápido.' },
   },

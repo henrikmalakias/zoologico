@@ -211,6 +211,7 @@ export class Grass {
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     for (let ty = t0y - rt; ty <= t0y + rt && n < this.cap; ty++) for (let tx = t0x - rt; tx <= t0x + rt && n < this.cap; tx++) {
       if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) continue;
+      if (ty >= 52 && ty <= 60) continue; // 1.7.3: rua da frente (muro, calçadas e asfalto)
       const i = idx(tx, ty); if (s.terrain[i] !== 'g' || s._occ.fac[i] || s._occ.obj?.[i] === -1) continue;
       const wx = tx * TILE - HALF + 1, wz = ty * TILE - HALF + 1; if (Math.hypot(wx - cx, wz - cz) > R) continue;
       seed = (i * 7919) % 2147483647 || 1; const hb = s._occ.hab[i] ? s.habitats.find(h => h.id === s._occ.hab[i]) : null, dry = hb?.biome === 'savana' ? 0.22 : hb ? -0.05 : 0.06;

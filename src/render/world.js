@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RuaView } from './rua.js';
 import { Kit, buildAnimal, animateAnimal, buildPerson, buildPlant, buildFacility, buildFurn, furnParts, groupParts, mergeStatic, mergeRig, buildVehicle, buildTool, buildCones, buildToca } from './models.js';
 import { tocaCenter, tocaAltura } from '../sim/tocas.js';
 import { ModelLibrary, animateSDFAnimal, animateSDFHuman } from './library.js';
@@ -80,8 +81,9 @@ export class World {
     this.layers = {}; for (const k of ['habs', 'facs', 'objs', 'tocas', 'furn', 'animals', 'staff', 'fx']) { this.layers[k] = new THREE.Group(); sc.add(this.layers[k]); }
     this.maps = { habs: new Map(), facs: new Map(), objs: new Map(), tocas: new Map(), furn: new Map(), animals: new Map(), staff: new Map() }; this._furnH = null; this._furnParts = {}; this._furnMeshes = []; this._plantH = null; this._plantParts = {}; this._plantMeshes = [];
     this.kit.lamp = this.hi ? new THREE.MeshStandardMaterial({ color: '#fff4c8', emissive: '#ffc766', emissiveIntensity: 0 }) : new THREE.MeshLambertMaterial({ color: '#fff4c8', emissive: '#ffc766' }); this.kit.lamp.emissiveIntensity = 0; this.lampOn = false;
+    this.ruaView = new RuaView(this.kit, sc); // 1.7.3: rua da frente
     // visitantes instanciados
-    const cap = 160;
+    const cap = 220; // 1.7.3: até 100 visitantes + as crianças das famílias
     this.vBody = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.24, 1.2, 6), this.kit.mat('#ffffff'), cap);
     this.vHead = new THREE.InstancedMesh(new THREE.SphereGeometry(0.16, 8, 6), this.kit.mat('#d9a87e'), cap);
     for (const m of [this.vBody, this.vHead]) { m.count = 0; m.frustumCulled = false; m.castShadow = this.hi; sc.add(m); }
@@ -383,6 +385,7 @@ export class World {
     this.t += dt; this._s = s;
     this.syncTerrain(s);
     this.syncStatic(s);
+    this.ruaView.update(s, dt);
     { const hr = hourOf(s.clock.min), on = hr >= 18 || hr < 6.5; if (on !== this.lampOn) { this.lampOn = on; this.kit.lamp.emissiveIntensity = on ? 1.6 : 0; } }
     const C = content(s), m = new THREE.Matrix4(), q = new THREE.Quaternion();
     // animais
@@ -427,6 +430,9 @@ export class World {
       let e = this.maps.staff.get(st.id);
       if (e && e.kind !== kind) { this.layers.staff.remove(e.o); if (e.veh) this.layers.staff.remove(e.veh); e = null; }
       if (!e) { const R = C.roles[st.role]; const o = tpl ? sdfInstance(tpl) : buildPerson(this.kit, R?.cor || '#888', st.role === 'seguranca' ? '#111' : st.role === 'tratador' ? '#6b8e23' : null); o.userData.kind = 'staff'; o.userData.id = st.id; this.layers.staff.add(o); e = { o, px: st.x, pz: st.z, kind, t: 0 }; this.maps.staff.set(st.id, e); }
+      // 1.7.3: em casa (folga) ou dentro do Centro de cuidados: não aparece
+      if (st.fora || st.dentro) { e.o.visible = false; if (e.veh) e.veh.visible = false; e.px = st.x; e.pz = st.z; this.fxSparks(st.id, null); this.fxDart(st.id, null); continue; }
+      if (e.veh) e.veh.visible = true;
       const t = st.task, mv = Math.hypot(st.x - e.px, st.z - e.pz), moving = mv > 0.002 && dt > 0;
       e.px = st.x; e.pz = st.z; e.t += dt;
       const driving = st.veh && t && (t.phase === 'travel' || t.phase === 'return');
@@ -482,13 +488,19 @@ export class World {
     this.dirtMesh.forEach((dm, k) => { dm.count = nd[k]; dm.instanceMatrix.needsUpdate = true; });
     // visitantes
     const col = new THREE.Color();
-    const n = Math.min(s.visitors.length, this.vBody.instanceMatrix.count);
-    for (let i = 0; i < n; i++) {
-      const v = s.visitors[i], bob = (v.route.length ? Math.abs(Math.sin(this.t * 9 + i)) * 0.05 : 0) + walkY(s, v.x, v.z);
+    const capV = this.vBody.instanceMatrix.count, kidS = new THREE.Vector3(0.62, 0.62, 0.62), one = new THREE.Vector3(1, 1, 1);
+    let n = 0;
+    for (let i = 0; i < s.visitors.length && n < capV; i++) {
+      const v = s.visitors[i], anda = v.route.length || v.rua?.length, bob = (anda ? Math.abs(Math.sin(this.t * 9 + i)) * 0.05 : 0) + (v.rua ? 0.16 : walkY(s, v.x, v.z));
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), v.rot || 0);
-      m.compose(new THREE.Vector3(v.x, 0.6 + bob, v.z), q, new THREE.Vector3(1, 1, 1)); this.vBody.setMatrixAt(i, m);
-      m.compose(new THREE.Vector3(v.x, 1.38 + bob, v.z), q, new THREE.Vector3(1, 1, 1)); this.vHead.setMatrixAt(i, m);
-      this.vBody.setColorAt(i, col.set(VCOLS[v.col % VCOLS.length]));
+      m.compose(new THREE.Vector3(v.x, 0.6 + bob, v.z), q, one); this.vBody.setMatrixAt(n, m);
+      m.compose(new THREE.Vector3(v.x, 1.38 + bob, v.z), q, one); this.vHead.setMatrixAt(n, m);
+      this.vBody.setColorAt(n++, col.set(VCOLS[v.col % VCOLS.length]));
+      // 1.7.3: criança andando ao lado (de mão dada com o adulto)
+      if (v.kid && n < capV) { const r = v.rot || 0, kx = v.x + Math.cos(r) * 0.55, kz = v.z - Math.sin(r) * 0.55, kb = (anda ? Math.abs(Math.sin(this.t * 11 + i)) * 0.05 : 0) + (v.rua ? 0.16 : walkY(s, kx, kz));
+        m.compose(new THREE.Vector3(kx, 0.37 + kb, kz), q, kidS); this.vBody.setMatrixAt(n, m);
+        m.compose(new THREE.Vector3(kx, 0.86 + kb, kz), q, kidS); this.vHead.setMatrixAt(n, m);
+        this.vBody.setColorAt(n++, col.set(VCOLS[(v.col + 3) % VCOLS.length])); }
     }
     this.vBody.count = this.vHead.count = n;
     this.vBody.instanceMatrix.needsUpdate = this.vHead.instanceMatrix.needsUpdate = true; if (this.vBody.instanceColor) this.vBody.instanceColor.needsUpdate = true;

@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.7.2f
+# Projeto Zoológico — v1.7.3
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -31,6 +31,15 @@ Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js
 - `src/render/ultra.js`: céu 360° por hora (Poly Haven, CC0), luz do ambiente, terreno com texturas (array de texturas), capim instanciado, água com ondas, copas de folhas, pelo em camadas e rugas.
 - `python3 tools/baixar-polyhaven.py` baixa e converte as texturas e céus para `public/ultra/` (créditos em `public/ultra/CREDITOS.txt`).
 - Só carrega os arquivos do Ultra quando o jogador escolhe esse gráfico.
+
+## Turnos, Centro de cuidados e rua da frente (1.7.3)
+- `src/sim/turnos.js`: `TURNOS` (dia 6h–18h, noite 18h–6h +25%, integral 6h–22h +40% e cansa ×1,3), `emServico` (chega 15 min antes), `pausaDevida` (intervalos escalonados: mantém max(min(2, n−1), ⌊n/2⌋) do setor trabalhando), `chamar`/`pagarExtra` (hora extra +50%, quem está em casa chega em ~20 min de jogo), Centro com 8 lugares (`centroPara`, `ocupacaoCentro`; `st.dentro` esconde o funcionário), `cobertura`, `turnoSugerido`, `distribuirTurnos` (migração).
+- `src/sim/staff.js`: no fim do turno a tarefa `casa` leva ao ponto de ônibus (`st.fora`); tarefa `pausa`; `eligibleStaff` devolve `folga`; `dispatch`, `orderTask` e `orderTransfer` chamam a hora extra. Salário do dia = `salarioDia(p)` (salário × `p.adic`).
+- `src/sim/grid.js`: `AREAS` com `y1 = 51` (só crescem para trás do portão); `RUA` (muro na linha 52 com o portão em x 35–36, calçadas 53–54 e 59–60, rua 55–58, lotes 61–67); `staffPassable` bloqueia o muro e libera a catraca da Entrada.
+- `src/sim/rua.js`: ônibus a cada 20 min de jogo das 7h às 19h (`s._bus`, `s._fila`), origem dos visitantes (`sortearOrigem`: carro/ônibus/a pé), `rotaChegada`, estacionamento (+15% de chegada, R$ 10 por carro). Visitante na rua = `v.rua` (lista de pontos); `v.kid` = família com criança (meia-entrada).
+- `src/sim/build.js`: `limparRuaDaFrente` (chamada ao carregar um save 9): tudo da linha 52 para baixo sai com 100% devolvido; habitat que cruza a linha é cortado (ou sai inteiro, com os animais, se perder portão/comedouro/bebedouro/toca ou ficar com menos de 12 blocos).
+- Desenho: `src/render/rua.js` (`RuaView`: muro, calçadas, asfalto, faixa de pedestres, ponto, postes, ônibus, carros passando e parados); modelos `banheiro_familiar`, `estacionamento`, `buildCar`, `buildBus` em models.js; capim do Ultra não nasce na rua.
+- Save 10. Testes: `tests/v173.test.js` (aceita SEED) e `tests/v173_browser.py [baixo|alto|ultra]`.
 
 ## Funcionário sem caminho (1.7.2f)
 - `buildRoute`: quem está de pé dentro de um recinto sem `inHab` (rota interrompida ao recarregar o save) recebe a marca de volta e sai pelo portão. Descanso/afastamento sem rota fica no lugar; o aviso de caminho tem limite de 1 por hora de jogo por funcionário (`st._semRota`). Teste: `tests/v172f.test.js`.

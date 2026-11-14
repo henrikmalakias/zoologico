@@ -6,6 +6,7 @@ import { habById, breachPoint, tocaLivre, mandarParaToca, dentro, perigoDe, PERI
 import { tocaById } from './tocas.js';
 import { tratamento, internar, portaClinica, isClinica } from './clinica.js';
 import { insideAt } from './habshape.js';
+import { emServico, deTurno, pausaDevida, centroPara, portaCentro, pontoOnibus, chamar as chamarExtra, pagarExtra, vaiParaRua, DESCANSO, TURNOS, turnoDe } from './turnos.js';
 
 export const ALERT_ROLES = { doenca: ['veterinario'], fome: ['tratador'], cerca: ['seguranca'], brecha: ['seguranca'], portao: ['seguranca', 'tratador'], fuga: ['seguranca', 'veterinario'], ferido: ['seguranca'] };
 export const TRANSFER_ROLES = ['tratador', 'seguranca', 'veterinario'];
@@ -18,11 +19,12 @@ export const ALERT_INFO = {
   fuga: { nome: 'Animal fugiu', sev: 4, desc: 'Recapture o animal. Visitantes estão em pânico.' },
   ferido: { nome: 'Funcionário ferido', sev: 2, desc: 'Um animal atacou um funcionário dentro do recinto. Ele está afastado por 1 dia de jogo (o salário continua). Envie um segurança para conferir o recinto.' },
 };
-const TASK_NOME = { feed: 'Alimentando', water: 'Repondo água', clean: 'Limpando fezes e restos de comida', treat: 'Tratando animal', checkup: 'Checagem', wc: 'Limpando banheiro', litter: 'Recolhendo lixo', repair: 'Consertando cerca', close: 'Fechando portão', recapture: 'Recapturando', transfer: 'Transferindo animal', patrol: 'Ronda', sedar: 'Sedando animais perigosos', ferido: 'Afastado (ferido)', rest: 'Descansando', idle: 'Livre' };
+const TASK_NOME = { feed: 'Alimentando', water: 'Repondo água', clean: 'Limpando fezes e restos de comida', treat: 'Tratando animal', checkup: 'Checagem', wc: 'Limpando banheiro', litter: 'Recolhendo lixo', repair: 'Consertando cerca', close: 'Fechando portão', recapture: 'Recapturando', transfer: 'Transferindo animal', patrol: 'Ronda', sedar: 'Sedando animais perigosos', ferido: 'Afastado (ferido)', rest: 'Descansando', idle: 'Livre', pausa: 'Intervalo', casa: 'Fim do turno: indo para casa' };
 const REC_FASE = { travel: 'indo até o animal', sedate: 'aplicando dardo tranquilizante', load: 'colocando no veículo', return: 'levando de volta', release: 'soltando no habitat' };
 const PRE_FASE = { recolher: 'chamando os animais perigosos para as tocas', espera: 'esperando o veterinário sedar os perigosos', sedar: 'sedando os animais perigosos' };
 export const taskName = t => {
   if (!t) return 'Livre';
+  if (t.type === 'pausa') return 'Intervalo: ' + (t.nome || 'pausa');
   const n = t.type === 'treat' ? (t.modo === 'internar' ? 'Internando animal' : 'Remédio por dardo') : (TASK_NOME[t.type] || t.type);
   if (PRE_FASE[t.phase]) return n + ': ' + PRE_FASE[t.phase];
   if (t.pre && t.phase === 'travel') return n + ': indo até o portão';
@@ -60,7 +62,8 @@ function destFor(s, type, target) {
   if (type === 'transfer') { const a = s.animals.find(a => a.id === target); if (!a || a.escaped) return null; return { hab: a.hab, x: a.x, z: a.z }; }
   if (type === 'wc') { const f = s.facilities.find(f => f.id === target); const t = f && accessTile(s, f); if (!t) return null; const p = tileToWorld(t[0], t[1]); return { hab: 0, x: p.x, z: p.z }; }
   if (type === 'litter') { const p = tileToWorld(target % MAP, (target / MAP) | 0); return { hab: 0, x: p.x, z: p.z }; }
-  if (type === 'rest' || type === 'idle' || type === 'ferido') {
+  if (type === 'casa') { const p = pontoOnibus(); return { hab: 0, x: p.x, z: p.z }; }
+  if (type === 'rest' || type === 'idle' || type === 'ferido' || type === 'pausa') {
     const c = centro(s); const t = c ? (accessTile(s, c) || [c.tx - 1, c.ty]) : null;
     if (t) { const p = tileToWorld(t[0], t[1]); return { hab: 0, x: p.x + (rnd(s) - 0.5) * 2, z: p.z + (rnd(s) - 0.5) * 2 }; }
     const e = s.facilities.find(f => f.type === 'entrada'); const p = tileToWorld(e.tx, e.ty - 2);
@@ -68,22 +71,32 @@ function destFor(s, type, target) {
   }
   return null;
 }
-const WORK = { transfer: 9, feed: 30, water: 15, clean: 40, treat: 15, checkup: 20, wc: 20, litter: 4, repair: 45, close: 5, recapture: 25, patrol: 10, sedar: 5, ferido: 0, rest: 0, idle: 6 };
+const WORK = { pausa: 15, casa: 0, transfer: 9, feed: 30, water: 15, clean: 40, treat: 15, checkup: 20, wc: 20, litter: 4, repair: 45, close: 5, recapture: 25, patrol: 10, sedar: 5, ferido: 0, rest: 0, idle: 6 };
 
 // opts.clinica: clínica escolhida para internar (sem ela, a mais perto com vaga)
 export function startTask(s, st, type, target, alertId = null, opts = {}) {
   if (st.ferido && type !== 'ferido') return false;
   let dest = destFor(s, type, target), modo = null, clinica = null; if (!dest) return false;
+  // 1.7.3: descanso, intervalo e afastamento dentro do Centro de cuidados (8 lugares por prédio); sem vaga, num banco perto da entrada
+  let centro = null;
+  if (DESCANSO.has(type)) {
+    const f = centroPara(s, st);
+    if (f) { centro = f.id; const p = portaCentro(s, f); dest = { hab: 0, x: p.x, z: p.z }; }
+    else { const e = s.facilities.find(f => f.type === 'entrada'); if (e) { const p = tileToWorld(e.tx, e.ty - 2); dest = { hab: 0, x: p.x + (rnd(s) - 0.5) * 4, z: p.z + (rnd(s) - 0.5) * 2 }; } }
+  }
   if (type === 'treat') {
     const a = s.animals.find(a => a.id === target), T = tratamento(s, a, opts.clinica); if (!T.ok) return false;
     modo = T.modo; if (modo === 'internar') { clinica = T.clinica.id; dest = { hab: a.hab, x: a.x, z: a.z }; }
   }
   let work = WORK[type];
+  if (type === 'pausa') work = opts.dur || 15;
   if (type === 'treat' && temClinica(s)) work *= 0.6; // o bônus de tratamento é da Clínica veterinária (antes era do Centro de cuidados)
   if (type === 'recapture') { const a = s.animals.find(a => a.id === target); const S = a && content(s).species[a.sp]; if (S?.tracos.perigoso) work = 40; }
   const d = dist(st, dest);
   st.task = { type, target, alertId, phase: 'travel', dest, work, work0: work, travelLeft: (d * 1.25) / 3.5 + (st.inHab ? 2 : 0), route: null };
   if (modo) { st.task.modo = modo; if (clinica) st.task.clinica = clinica; }
+  if (centro) st.task.centro = centro;
+  if (type === 'pausa') { st.task.nome = opts.nome; st.task.pi = opts.i; }
   if (levaAnimal(st.task)) { const a = s.animals.find(a => a.id === target); const SA = a && content(s).species[a.sp]; st.task.vehKind = a && (['elefante', 'girafa', 'hipopotamo', 'rinoceronte'].includes(a.sp) || SA?.caminhao || (SA?.raio ?? 0) >= 0.9) ? 'caminhao' : 'jipe'; if (d > 12) { st.veh = st.task.vehKind; st.task.travelLeft = (d * 1.25) / 10; } }
   // recinto com animal perigoso solto: primeiro vai até o portão (do lado de fora) e decide como entrar com segurança
   if (entraNoRecinto(st.task) && s.settings.selvagem !== false) {
@@ -153,6 +166,8 @@ function buildRoute(s, st, dest) {
 
 function cancelTask(s, st) {
   const t = st.task; if (!t) return;
+  if (t.type === 'pausa' && st.pausas && (t.phase === 'travel' || t.work > t.work0 * 0.5)) st.pausas.feitas = st.pausas.feitas.filter(i => i !== t.pi); // intervalo interrompido cedo: volta para a fila
+  st.dentro = 0;
   if (levaAnimal(t) && t.phase !== 'travel') { const a = s.animals.find(a => a.id === t.target); if (a && (a.carriedBy === st.id || (a.sedated && !a.sedAte))) { if (a.carriedBy === st.id && t.type !== 'recapture') { const hh = habById(s, a.hab); if (hh) { const p = tileToWorld(hh.gateIn[0], hh.gateIn[1]); a.x = p.x; a.z = p.z; } } a.carriedBy = 0; a.sedated = false; a.st = 'idle'; } }
   if (levaAnimal(t)) st.veh = null;
   if (t.rec) for (const id of t.rec) { const a = s.animals.find(a => a.id === id); if (a && a.guard && !a.preso) a.guard = false; }
@@ -168,6 +183,7 @@ export function dispatch(s, alertId, staffId, by = 'você', opts = {}) {
   if (type === 'treat' && !tratamento(s, s.animals.find(x => x.id === a.target), opts.clinica).ok) return false; // caso grave sem vaga na clínica
   const prev = s.staff.find(x => x.id === a.assigned); if (prev && prev !== st) cancelTask(s, prev);
   cancelTask(s, st);
+  chamarExtra(s, st); // 1.7.3: fora do turno = hora extra (quem está em casa vem pela rua)
   if (!startTask(s, st, type, a.target, a.id, opts)) return false;
   a.assigned = st.id; a.by = by;
   return true;
@@ -180,7 +196,7 @@ export function orderTask(s, staffId, type, target) {
   if (!ORDER_ROLES[type]?.includes(st.role)) return { ok: false, msg: 'Função errada para esse trabalho.' };
   const al = s.alerts.find(a => ({ treat: 'doenca', repair: a.type === 'brecha' ? 'brecha' : 'cerca', close: 'portao', feed: 'fome' })[type] === a.type && a.target === target);
   if (al) { dispatch(s, al.id, st.id); return { ok: true }; }
-  cancelTask(s, st);
+  cancelTask(s, st); chamarExtra(s, st);
   if (!startTask(s, st, type, target)) return { ok: false, msg: 'Não foi possível iniciar.' };
   st.task.manual = true; return { ok: true };
 }
@@ -193,7 +209,7 @@ export function orderTransfer(s, animalId, destHabId, staffId) {
   if (a.hab === d.id) return { ok: false, msg: 'O animal já está nesse habitat.' };
   if (s.staff.some(o => o.task?.type === 'transfer' && o.task.target === a.id)) return { ok: false, msg: 'Esse animal já está sendo transferido.' };
   if (!TRANSFER_ROLES.includes(st.role)) return { ok: false, msg: 'Faxineiros não fazem transferências.' };
-  cancelTask(s, st);
+  cancelTask(s, st); chamarExtra(s, st);
   if (!startTask(s, st, 'transfer', a.id)) return { ok: false, msg: 'Não foi possível iniciar.' };
   st.task.destHab = d.id;
   log(s, `${st.name} vai transferir ${a.name} para o ${d.name}.`, 'info');
@@ -271,18 +287,37 @@ export function earn(s, cat, v) { s.money += v; s.stats.today.inc[cat] = (s.stat
 export function updateStaff(s, gameMin, ctx) {
   const hrs = gameMin / 60;
   for (const st of s.staff) {
+    // 1.7.3: em casa (folga) ou chegando para a hora extra
+    if (st.dentro && !(st.task && DESCANSO.has(st.task.type) && st.task.phase === 'work' && st.task.centro === st.dentro)) st.dentro = 0;
+    if (st.fora) {
+      if (st.chegaEm) { if (s.clock.min < st.chegaEm) continue; st.chegaEm = 0; st.fora = false; vaiParaRua(s, st); if (st.task) st.task.route = null; }
+      else if (emServico(s, st) && !st.ferido) { st.fora = false; vaiParaRua(s, st); st.task = null; }
+      else { st.energy = clamp(st.energy + 0.15 * hrs); continue; }
+    }
     // ferido (1.7.2c): 1 dia de jogo afastado no Centro de cuidados (ou perto da entrada), sem pegar tarefa
     if (st.ferido) {
       if (s.clock.min >= st.ferido) { st.ferido = 0; if (st.task?.type === 'ferido') st.task = null; log(s, `${st.name} se recuperou e voltou ao trabalho.`, 'bom'); }
       else if (st.task?.type !== 'ferido') { cancelTask(s, st); st.veh = null; startTask(s, st, 'ferido', 0); }
     }
     const working = st.task && st.task.type !== 'idle' && st.task.type !== 'rest' && st.task.type !== 'ferido';
-    const drain = (working ? 0.035 : 0.008) * (trait(st, 'resistente') ? 0.6 : 1) * (1.2 - 0.08 * st.attrs.dedicacao);
-    if ((st.task?.type === 'rest' || st.task?.type === 'ferido') && st.task.phase === 'work') st.energy = clamp(st.energy + (centro(s) ? 0.5 : 0.3) * hrs);
+    const drain = (working ? 0.035 : 0.008) * (trait(st, 'resistente') ? 0.6 : 1) * (1.2 - 0.08 * st.attrs.dedicacao) * (TURNOS[turnoDe(st)].cansa || 1) * (st.extra ? 1.3 : 1);
+    if (DESCANSO.has(st.task?.type) && st.task.phase === 'work') st.energy = clamp(st.energy + (st.task.type === 'pausa' ? 0.8 : 0.5) * (st.dentro ? 1 : 0.5) * hrs);
     else st.energy = clamp(st.energy - drain * hrs);
-    if (!st.ferido && (!st.task || (st.task.type === 'idle' && st.energy < 0.15))) {
-      if (st.task) cancelTask(s, st);
-      if (st.energy < 0.15) startTask(s, st, 'rest', 0); else pickRoutine(s, st);
+    if (!st.ferido) {
+      const on = emServico(s, st), t0 = st.task, livre = !t0 || t0.type === 'idle';
+      if (!on) {
+        // fim do turno: termina o que está fazendo e vai para casa (hora extra é paga ao terminar)
+        if (st.extra && (livre || t0.type === 'rest' || t0.type === 'pausa')) pagarExtra(s, st);
+        if (!st.extra && (livre || t0.type === 'rest' || t0.type === 'pausa')) { cancelTask(s, st); startTask(s, st, 'casa', 0); }
+      } else {
+        if (t0?.type === 'casa') cancelTask(s, st);
+        const P = (!st.task || st.task.type === 'idle' || st.task.type === 'rest') && pausaDevida(s, st);
+        if (P) { cancelTask(s, st); st.pausas.feitas.push(P.i); startTask(s, st, 'pausa', 0, null, P); }
+        else if (!st.task || (st.task.type === 'idle' && st.energy < 0.15)) {
+          if (st.task) cancelTask(s, st);
+          if (st.energy < 0.15) startTask(s, st, 'rest', 0); else pickRoutine(s, st);
+        }
+      }
     }
     const t = st.task; if (!t) continue;
     if (t.type === 'recapture' && t.phase === 'travel') { const a = s.animals.find(a => a.id === t.target); if (!a || !a.escaped) { cancelTask(s, st); continue; } if (!a.escaping) { t.dest.x = a.x; t.dest.z = a.z; } }
@@ -300,7 +335,7 @@ export function updateStaff(s, gameMin, ctx) {
       } else {
         if (!t.route) { t.route = buildRoute(s, st, t.dest); if (t.route && t.route.length > 1 && !t.dest.hab && Math.hypot(t.route[0].x - st.x, t.route[0].z - st.z) < 1) t.route.shift(); if (!t.route) {
           // 1.7.2f: descanso/afastamento sem rota: fica onde está (não entra num ciclo de tentar de novo a cada passo)
-          if (t.type === 'rest' || t.type === 'ferido' || t.type === 'idle') { t.dest = { hab: st.inHab || 0, x: st.x, z: st.z }; t.route = []; }
+          if (DESCANSO.has(t.type) || t.type === 'idle' || t.type === 'casa') { if (t.type !== 'casa') { t.dest = { hab: st.inHab || 0, x: st.x, z: st.z }; t.centro = null; } t.route = []; }
           else { if (!st._semRota || s.clock.min - st._semRota > 60) { st._semRota = s.clock.min; log(s, `${st.name} não encontrou caminho até o destino e voltou ao trabalho normal. Ligue o local a um caminho.`, 'ruim'); } cancelTask(s, st); continue; }
         } }
         if ((t.type === 'recapture' || ((t.type === 'transfer' || t.modo === 'internar') && !t.pre)) && t.phase === 'travel' && t.route.length) {
@@ -321,7 +356,8 @@ export function updateStaff(s, gameMin, ctx) {
         if (!t.route.length || near) { st.inHab = t.dest.hab; t.route = null; arrive(s, st, t); }
       }
     } else {
-      if (t.type === 'rest') { if (st.energy >= 0.95) st.task = null; continue; }
+      if (t.type === 'rest') { if (st.energy >= 0.95) { st.task = null; st.dentro = 0; } continue; }
+      if (t.type === 'pausa') { t.work -= gameMin; if (t.work <= 0) { st.task = null; st.dentro = 0; } continue; }
       if (t.type === 'ferido') continue;
       if (levaAnimal(t)) { recaptureWork(s, st, t, gameMin, ctx); continue; }
       if (t.type === 'sedar') { sedarWork(s, st, t, gameMin); continue; }
@@ -340,6 +376,8 @@ export function updateStaff(s, gameMin, ctx) {
 
 // ---------- fases: chegada, captura e limpeza ----------
 function arrive(s, st, t) {
+  if (t.type === 'casa') { st.task = null; st.fora = true; vaiParaRua(s, st); return; } // 1.7.3: pega o ônibus e só volta no próximo turno
+  if (DESCANSO.has(t.type) && t.phase === 'travel' && t.centro && s.facilities.some(f => f.id === t.centro)) st.dentro = t.centro;
   if (t.pre && t.phase === 'travel') return noPortao(s, st, t);
   if (t.type === 'sedar' && t.phase === 'travel') { const h = habById(s, t.target); if (h) st.rot = Math.atan2(tileToWorld(h.gateIn[0], h.gateIn[1]).x - st.x, tileToWorld(h.gateIn[0], h.gateIn[1]).z - st.z); t.phase = 'work'; t.work = 5; t.work0 = 5; return; }
   if (levaAnimal(t) && t.phase === 'travel') {
@@ -544,8 +582,9 @@ export function alertPos(s, a) {
 }
 export function eligibleStaff(s, a) {
   const roles = ALERT_ROLES[a.type], p = alertPos(s, a) || { x: 0, z: 0 };
-  return s.staff.filter(st => roles.includes(st.role) && !st.ferido).map(st => ({ st, d: dist(st, p), busyAlert: !!st.task?.alertId && st.task.alertId !== a.id }))
-    .sort((x, y) => (x.busyAlert - y.busyAlert) || (y.st.energy > 0.15) - (x.st.energy > 0.15) || x.d - y.d);
+  // 1.7.3: quem está de folga também aparece (hora extra), depois de quem está de turno
+  return s.staff.filter(st => roles.includes(st.role) && !st.ferido).map(st => ({ st, d: st.fora ? 999 : dist(st, p), busyAlert: !!st.task?.alertId && st.task.alertId !== a.id, folga: (!emServico(s, st) || st.fora) && !st.extra }))
+    .sort((x, y) => (x.busyAlert - y.busyAlert) || (x.folga - y.folga) || (y.st.energy > 0.15) - (x.st.energy > 0.15) || x.d - y.d);
 }
 export function alertPriority(s, a) {
   let p = ALERT_INFO[a.type].sev;

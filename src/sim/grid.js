@@ -7,12 +7,18 @@ export const idx = (x, y) => y * MAP + x;
 export const inMap = (x, y) => x >= 0 && y >= 0 && x < MAP && y < MAP;
 export const tileToWorld = (tx, ty) => ({ x: (tx + 0.5) * TILE - HALF, z: (ty + 0.5) * TILE - HALF });
 export const worldToTile = (x, z) => ({ tx: Math.floor((x + HALF) / TILE), ty: Math.floor((z + HALF) / TILE) });
+// 1.7.3: as áreas novas crescem só "do portão para trás" (norte, leste e oeste); abaixo do portão fica a rua da frente
 export const AREAS = [
   { x0: 20, y0: 20, x1: 51, y1: 51, custo: 0 },
-  { x0: 14, y0: 14, x1: 57, y1: 57, custo: 20000 },
-  { x0: 8, y0: 8, x1: 63, y1: 63, custo: 40000 },
-  { x0: 0, y0: 0, x1: 71, y1: 71, custo: 80000 },
+  { x0: 14, y0: 12, x1: 57, y1: 51, custo: 20000 },
+  { x0: 8, y0: 5, x1: 63, y1: 51, custo: 40000 },
+  { x0: 0, y0: 0, x1: 71, y1: 51, custo: 80000 },
 ];
+// rua da frente (linhas do mapa): muro com o portão, calçada, rua de 2 faixas, calçada do outro lado e os lotes (estacionamento)
+export const RUA = { muro: 52, calcN: [53, 54], rua: [55, 58], calcS: [59, 60], lote: { x0: 2, y0: 61, x1: 69, y1: 67 }, portao: [35, 36], ponto: [30, 54], faixa: [35, 36] };
+export const naRua = (x, y) => y >= RUA.muro && y <= RUA.calcS[1];
+export const inLote = (x, y) => x >= RUA.lote.x0 && x <= RUA.lote.x1 && y >= RUA.lote.y0 && y <= RUA.lote.y1;
+export const muroAt = (x, y) => y === RUA.muro && (x < RUA.portao[0] || x > RUA.portao[1]);
 export function inArea(s, x, y) { const a = AREAS[s.areaLevel]; return x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1; }
 
 // Mapa de ocupação (transitório, recalculado)
@@ -74,7 +80,9 @@ export function astar(s, sx, sy, gx, gy, passable, costFn) {
 // tipos de caminho: p = pedra, q = terra, c = cimentado, k = cimentado com calçada
 export const isPathT = t => t === 'p' || t === 'q' || t === 'c' || t === 'k';
 export const isPath = (s, x, y) => inMap(x, y) && isPathT(s.terrain[idx(x, y)]) && !s._occ.hab[idx(x, y)] && !s._occ.fac[idx(x, y)];
-export const staffPassable = (s, x, y) => inMap(x, y) && !s._occ.hab[idx(x, y)] && !s._occ.fac[idx(x, y)] && s.terrain[idx(x, y)] !== 'w';
+// a equipe passa pela catraca da Entrada (2 blocos logo acima do portão da rua) para chegar e ir embora
+const catraca = (x, y) => y === RUA.muro - 1 && x >= RUA.portao[0] && x <= RUA.portao[1];
+export const staffPassable = (s, x, y) => inMap(x, y) && !s._occ.hab[idx(x, y)] && (!s._occ.fac[idx(x, y)] || catraca(x, y)) && s.terrain[idx(x, y)] !== 'w' && !muroAt(x, y);
 
 // Orientação das construções: a frente (+z do modelo) fica virada para um caminho.
 // dir: 0 = sul (+z), 1 = leste (+x), 2 = norte (-z), 3 = oeste (-x)

@@ -1,6 +1,6 @@
 import { content } from '../content/registry.js';
 import { clamp, rnd, uid, log } from './util.js';
-import { MAP, idx, inMap, inArea, rebuildOcc, isPath, isPathT, accessTile, orientFacility, viewTiles, tileToWorld, CW, ci, tileCorners, tileSlope, WATER_Y, worldToTile, fixShore, refreshAfterPaint } from './grid.js';
+import { MAP, idx, inMap, inArea, inLote, RUA, rebuildOcc, isPath, isPathT, accessTile, orientFacility, viewTiles, tileToWorld, CW, ci, tileCorners, tileSlope, WATER_Y, worldToTile, fixShore, refreshAfterPaint } from './grid.js';
 import { removeFurnAt, addFurnNear } from './furn.js';
 import { newAnimal, habById } from './animals.js';
 import { spend, earn } from './staff.js';
@@ -336,7 +336,7 @@ export function placePlant(s, tx, ty, type) {
 export function checkFacility(s, type, tx, ty) {
   const D = content(s).facilities[type]; if (!D || D.fixo) return R(false, 'Indisponível.');
   for (let y = ty; y < ty + D.h; y++) for (let x = tx; x < tx + D.w; x++) {
-    if (!inMap(x, y) || !inArea(s, x, y)) return R(false, 'Fora da área do parque.');
+    if (D.zona === 'lote' ? !inLote(x, y) : (!inMap(x, y) || !inArea(s, x, y))) return R(false, D.zona === 'lote' ? 'O estacionamento fica nos lotes do outro lado da rua da frente.' : 'Fora da área do parque.');
     const i = idx(x, y);
     if (s._occ.hab[i] || s._occ.fac[i]) return R(false, 'Espaço ocupado.');
     if (isPathT(s.terrain[i])) return R(false, 'Não construa em cima do caminho; coloque ao lado.');
@@ -346,7 +346,6 @@ export function checkFacility(s, type, tx, ty) {
   if (s.height) { let lo = 1e9, hi = -1e9; for (let y = ty; y <= ty + D.h; y++) for (let x = tx; x <= tx + D.w; x++) { const v = s.height[ci(x, y)]; lo = Math.min(lo, v); hi = Math.max(hi, v); } if (hi - lo > 0.6) return R(false, 'Terreno muito inclinado. Use Relevo > Nivelar antes.'); }
   if (type === 'placa' && !s.habitats.some(h => tx >= h.x - 3 && tx <= h.x + h.w + 2 && ty >= h.y - 3 && ty <= h.y + h.h + 2)) return R(false, 'A placa precisa ficar perto de um habitat.');
   if (type === 'mesas' && !s.facilities.some(f => f.type === 'lanchonete' && f.tx >= tx - 5 && f.tx <= tx + D.w + 4 && f.ty >= ty - 5 && f.ty <= ty + D.h + 4)) return R(false, 'A área de mesas precisa ficar ao lado de uma lanchonete (até 4 blocos de distância).');
-  if (type === 'centro' && s.facilities.some(f => f.type === 'centro')) return R(false, 'Você já tem um centro de cuidados.');
   if (s.money < D.custo) return R(false, 'Dinheiro insuficiente.');
   return R(true);
 }
@@ -357,6 +356,7 @@ export function placeFacility(s, type, tx, ty) {
   const f = { id: uid(s), type, tx, ty, dirty: 0, pack: D.pack };
   s.facilities.push(f); rebuildOcc(s);
   f.dir = orientFacility(s, f, D); // entrada sempre voltada para o caminho
+  if (D.zona === 'lote') f.dir = 2; // estacionamento: a entrada dos carros fica virada para a rua
   if (type === 'lanchonete' || type === 'mesas') addFurnNear(s, 'lixeira', f, D);
   spend(s, 'construcao', D.custo);
   return R(true);
@@ -443,4 +443,50 @@ export function sculpt(s, tx, ty, mode, base = 0) {
   }
   spend(s, 'construcao', SCULPT_COST); s._hver = (s._hver || 0) + 1; fixShore(s);
   return R(true);
+}
+
+// ---------- 1.7.3: rua da frente ----------
+// saves antigos com área ampliada para baixo do portão: tudo o que está da linha do muro para baixo sai com 100% do dinheiro devolvido.
+// Habitat que cruza a linha é cortado nela; se o corte pegar portão/comedouro/bebedouro/toca, ficar com menos de 12 blocos
+// ou dividir o habitat, ele sai inteiro (animais devolvidos pelo preço de compra).
+export function limparRuaDaFrente(s) {
+  const C = content(s), Y = RUA.muro, sul = i => ((i / MAP) | 0) >= Y, sulT = (x, y) => y >= Y;
+  let total = 0; const itens = [];
+  const devolve = (v, txt) => { v = Math.round(v || 0); if (v > 0) { s.money += v; total += v; } if (txt) itens.push(txt); };
+  rebuildOcc(s);
+  // instalações (a Entrada fica)
+  for (const f of [...s.facilities]) { const D = C.facilities[f.type] || { w: 1, h: 1 }; if (D.fixo || D.zona === 'lote' || f.ty + D.h - 1 < Y) continue;
+    for (const a of s.animals) if (a.internado === f.id) a.intAte = 0;
+    s.facilities.splice(s.facilities.indexOf(f), 1); devolve(D.custo, D.nome); }
+  // mobiliário, plantas e tocas
+  for (const f of [...s.furn]) if (sulT(f.tx, f.ty)) { s.furn.splice(s.furn.indexOf(f), 1); devolve(C.furniture?.[f.type]?.custo); }
+  for (const o of [...s.objects]) if (sulT(o.tx, o.ty) && o.ty <= 68) { s.objects.splice(s.objects.indexOf(o), 1); if (!o.deco) devolve(C.plants?.[o.type]?.custo); }
+  // habitats
+  for (const h of [...s.habitats]) {
+    const cells = ensureCells(h); if (!cells.some(sul)) continue;
+    const rest = cells.filter(i => !sul(i)), chave = [h.gateIn, h.gateOut, h.feed, h.water].some(([x, y]) => sulT(x, y));
+    const tocaSul = tocasDe(s, h.id).some(t => [...tocaCells(t), ...ladoTiles(t, t.dir), ...ladoTiles(t, t.porta ?? (t.dir + 2) % 4)].some(([x, y]) => sulT(x, y)));
+    if (chave || tocaSul || rest.length < 12 || !connected(rest) || C.fences[h.fence]?.fosso) {
+      for (const a of [...s.animals]) if (a.hab === h.id || a.habOrig === h.id) { s.animals.splice(s.animals.indexOf(a), 1); devolve(C.species[a.sp]?.custo, null); }
+      for (const t of tocasDe(s, h.id)) devolve(C.estruturas?.toca?.custo);
+      s.tocas = s.tocas.filter(t => t.hab !== h.id);
+      for (const st of s.staff) if (st.inHab === h.id || st.task?.hab === h.id || st.task?.target === h.id) { st.inHab = 0; st.task = null; }
+      s.alerts = s.alerts.filter(a => a.target !== h.id);
+      for (const i of cells) if (s.terrain[i] === 'w') s.terrain[i] = 'g';
+      s.habitats.splice(s.habitats.indexOf(h), 1); devolve(habitatCostRef(s, h), h.name + ' (com os animais)');
+    } else {
+      const cortados = cells.filter(sul); h.cells = rest;
+      for (const a of s.animals) if (a.hab === h.id) { const t = worldToTile(a.x, a.z); if (sulT(t.tx, t.ty)) { const p = tileToWorld(h.gateIn[0], h.gateIn[1]); a.x = p.x; a.z = p.z; a.tgt = null; } }
+      h.dirt = (h.dirt || []).filter(d => { const t = worldToTile(d[0] ?? d.x, d[1] ?? d.z); return !sulT(t.tx, t.ty); });
+      touch(h); reshape(s, h); devolve(cortados.length * 3 + (C.fences[h.fence]?.custo || 0) * 2, `${h.name} (cortado na linha do muro)`);
+    }
+  }
+  // caminhos, água e relevo da faixa da rua para baixo
+  for (let y = Y; y < MAP; y++) for (let x = 0; x < MAP; x++) { const i = idx(x, y);
+    if (s.terrain[i] !== 'g') { devolve(C.terrains?.[s.terrain[i]]?.custo || 0); s.terrain[i] = 'g'; }
+    delete s.litter[i]; }
+  if (s.height) for (let y = Y + 1; y <= MAP; y++) for (let x = 0; x <= MAP; x++) s.height[ci(x, y)] = 0;
+  rebuildOcc(s);
+  if (itens.length || total) log(s, `Rua da frente: o que estava abaixo do portão foi retirado e R$ ${total.toLocaleString('pt-BR')} foram devolvidos (${itens.length ? itens.slice(0, 6).join(', ') + (itens.length > 6 ? '…' : '') : 'caminhos e plantas'}).`, 'info');
+  return { total, itens };
 }

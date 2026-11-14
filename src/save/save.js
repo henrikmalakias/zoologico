@@ -1,9 +1,18 @@
 import { SCHEMA, DEFAULT_SETTINGS } from '../sim/core.js';
 import { rebuildOcc, orientFacility } from '../sim/grid.js';
+import { limparRuaDaFrente } from '../sim/build.js';
+import { distribuirTurnos } from '../sim/turnos.js';
 import { content } from '../content/registry.js';
 
 // Migrações: cada função leva o save da versão N para N+1.
 export const MIGRATIONS = {
+  // v9 -> v10 (versão 1.7.3): turnos (cada setor dividido entre dia e noite, salário atual mantido), Centro de cuidados com lugares,
+  // rua da frente (o que estava abaixo do portão sai com reembolso, feito depois de carregar: ver limparRuaDaFrente)
+  9: s => {
+    for (const st of s.staff || []) { st.dentro = 0; st.fora = false; st.chegaEm = 0; st.extra = null; if (st.task && ['rest', 'idle'].includes(st.task.type)) st.task = null; }
+    distribuirTurnos(s.staff || []);
+    s.rua = { proxOnibus: 0 }; s._sul = true; s.schemaVersion = 10; return s;
+  },
   // v8 -> v9 (versão 1.7.2c): o perigo passa a valer para os funcionários; Clínica veterinária; AO VIVO "fantasma"
   8: s => {
     for (const st of s.staff || []) { st.ferido = st.ferido || 0; if (st.task?.type === 'guardar') st.task = null; }
@@ -73,6 +82,9 @@ export function deserialize(o) {
   rebuildOcc(s);
   const C = content(s);
   for (const f of s.facilities) { const d = C.facilities[f.type]; if (d && !d.fixo && f.dir == null) f.dir = orientFacility(s, f, d); }
+  if (s._sul) { delete s._sul; limparRuaDaFrente(s); }
+  s.rua ||= { proxOnibus: 0 };
+  for (const st of s.staff) { st.turno ||= 'dia'; st.adic ??= 1; if (st.task?.type === 'pausa' && !st.task.centro) st.dentro = 0; }
   return s;
 }
 

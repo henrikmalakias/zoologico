@@ -2,6 +2,7 @@ import { content, papel } from '../content/registry.js';
 import { clamp, rnd, pick, uid, dist, hourOf } from './util.js';
 import { MAP, idx, tileToWorld, worldToTile, astar, isPath, isPathT, accessTile, viewTiles } from './grid.js';
 import { earn } from './staff.js';
+import { sortearOrigem, rotaChegada, fatorChegada, PCT_FAMILIA } from './rua.js';
 
 export const isOpen = s => { const h = hourOf(s.clock.min); return h >= 8 && h < 18; };
 // no máximo 100 visitantes desenhados (70 no gráfico Baixo); os demais contam e pagam, mas não aparecem
@@ -14,7 +15,7 @@ export function arrivalRate(s) {
   if (!appeal) return 3;
   const attraction = clamp(appeal / 40, 0.15, 1.5);
   const price = clamp(1.5 - s.ticket / 60, 0.1, 1.4);
-  return (3 + 32 * s.stats.rep.total * attraction) * price;
+  return (3 + 32 * s.stats.rep.total * attraction) * price * fatorChegada(s); // 1.7.3: o estacionamento traz mais gente
 }
 
 const recordSat = (s, v, a = 0.05) => { s.stats.sat += (clamp(v) - s.stats.sat) * a; };
@@ -22,13 +23,19 @@ const recordSat = (s, v, a = 0.05) => { s.stats.sat += (clamp(v) - s.stats.sat) 
 export function arrive(s, ctx) {
   s.stats.visitantesHoje++;
   earn(s, 'ingressos', s.ticket);
-  const et = entranceTile(s);
-  if (!ctx.abstract && et && s.visitors.length < visitorCap(s)) {
-    const p = tileToWorld(et[0], et[1]);
-    s.visitors.push({ id: uid(s), x: p.x, z: p.z, route: [], goal: null, useT: 0, hunger: rnd(s) * 0.4, bath: rnd(s) * 0.4, energy: 0.8 + rnd(s) * 0.2,
-      sat: 0.6, stay: 150 + rnd(s) * 180, col: Math.floor(rnd(s) * 8), off: { x: (rnd(s) - 0.5) * 1.2, z: (rnd(s) - 0.5) * 1.2 }, loja: false, panic: false, rot: 0 });
-  } else { virtualVisit(s); if (!ctx.abstract) (s.vstock ||= []).push(s.clock.min + 150 + rnd(s) * 180); }
+  // 1.7.3: famílias com criança (meia-entrada da criança) e origem na rua da frente (ônibus, carro no estacionamento ou a pé)
+  const kid = rnd(s) < PCT_FAMILIA; if (kid) earn(s, 'ingressos', Math.round(s.ticket / 2));
+  const origem = sortearOrigem(s);
+  if (origem.tipo === 'carro' && rnd(s) < 0.45) earn(s, 'estacionamento', content(s).facilities.estacionamento?.cobra || 10); // ~1 carro a cada 2 visitantes
+  const et = entranceTile(s), fila = (s._fila ||= []);
+  if (!ctx.abstract && et && s.visitors.length + fila.length < visitorCap(s)) {
+    const v = { id: uid(s), x: 0, z: 0, route: [], goal: null, useT: 0, hunger: rnd(s) * 0.4, bath: rnd(s) * 0.4, energy: 0.8 + rnd(s) * 0.2,
+      sat: 0.6, stay: 150 + rnd(s) * 180, col: Math.floor(rnd(s) * 8), off: { x: (rnd(s) - 0.5) * 1.2, z: (rnd(s) - 0.5) * 1.2 }, loja: false, panic: false, rot: 0, kid, origem };
+    if (origem.tipo === 'onibus') { fila.push(v); return; } // espera o próximo ônibus parar no ponto
+    v.rua = ruaComEntrada(s, v, et); v.x = v.rua[0].x; v.z = v.rua[0].z; s.visitors.push(v);
+  } else { virtualVisit(s, kid); if (!ctx.abstract) (s.vstock ||= []).push(s.clock.min + 150 + rnd(s) * 180); }
 }
+const ruaComEntrada = (s, v, et) => { const p = tileToWorld(et[0], et[1]); return [...rotaChegada(s, v).map(q => ({ x: q.x + v.off.x * 0.6, z: q.z + v.off.z * 0.3 })), { x: p.x + v.off.x, z: p.z + v.off.z }]; };
 // ao abrir o jogo no horário de visitação, o parque já começa com gente dentro (em vez de zerado):
 // sorteia quem teria chegado nas últimas horas e ainda estaria passeando; os que passam do limite viram "fantasmas" (só contam)
 export function seedCrowd(s) {
@@ -43,7 +50,7 @@ export function seedCrowd(s) {
     made++;
     if (s.visitors.length < cap && tiles.length) {
       const i = pick(s, tiles), p = tileToWorld(i % MAP, Math.floor(i / MAP));
-      s.visitors.push({ id: uid(s), x: p.x, z: p.z, route: [], goal: null, useT: rnd(s) * 3, hunger: clamp(rnd(s) * 0.4 + 0.15 * age), bath: clamp(rnd(s) * 0.4 + 0.18 * age), energy: clamp(0.8 + rnd(s) * 0.2 - 0.1 * age),
+      s.visitors.push({ id: uid(s), x: p.x, z: p.z, route: [], goal: null, useT: rnd(s) * 3, kid: rnd(s) < PCT_FAMILIA, origem: sortearOrigem(s), hunger: clamp(rnd(s) * 0.4 + 0.15 * age), bath: clamp(rnd(s) * 0.4 + 0.18 * age), energy: clamp(0.8 + rnd(s) * 0.2 - 0.1 * age),
         sat: 0.6, stay: left, col: Math.floor(rnd(s) * 8), off: { x: (rnd(s) - 0.5) * 1.2, z: (rnd(s) - 0.5) * 1.2 }, loja: false, panic: false, rot: rnd(s) * 6.28 });
     } else s.vstock.push(s.clock.min + left);
   }
@@ -53,7 +60,7 @@ export function seedCrowd(s) {
 const binCover = s => { const bins = s.furn.reduce((n, f) => n + (f.type === 'lixeira'), 0); return clamp((bins / Math.max(1, (s._pathN || 1) / 12)) * 0.7, 0, 0.85); };
 const has = (s, type) => s.furn.some(f => f.type === type);
 const F2 = (s, t) => { const C = content(s); return s.facilities.filter(f => papel(C, f.type) === t); };
-function virtualVisit(s) {
+function virtualVisit(s, kid) {
   const C = content(s), fac = t => s.facilities.filter(f => papel(C, f.type) === t);
   const L = fac('lanchonete'), W = fac('banheiro'), J = fac('loja');
   const lucro = list => { const D = C.facilities[list[0].type]; return (D.venda || 0) - (D.custoVenda || 0); };
@@ -63,6 +70,7 @@ function virtualVisit(s) {
   if (L.length && rnd(s) < 0.2 * (1 - binCover(s))) dropLitterRandom(s);
   const r = s.stats.rep;
   const est = 0.35 + 0.3 * r.animais + 0.1 * !!L.length + 0.1 * !!W.length + 0.08 * !!J.length + 0.07 * !!fac('playground').length
+    + (kid ? (W.some(w => C.facilities[w.type]?.familiar) ? 0.03 : -0.03) : 0)
     + 0.03 * has(s, 'lixeira') + 0.03 * (has(s, 'banco') || !!fac('banco').length) + 0.04 * !!(fac('mesas').length && L.length) - litterPenalty(s);
   recordSat(s, est, 0.02);
 }
@@ -99,7 +107,9 @@ function chooseGoal(s, v) {
     if (e && routeTo(s, v, e[0], e[1])) { v.goal = { type: 'exit' }; return; }
     v.goal = { type: 'exit' }; v.route = []; return;
   }
-  if (v.bath > 0.7) { for (const f of nearest(F('banheiro'))) if (go('wc', f)) return; v.sat -= 0.05; v.bath = 0.5; }
+  if (v.bath > 0.7) { // 1.7.3: família com criança procura primeiro o banheiro familiar
+    const W = F('banheiro'), fam = f => !!C.facilities[f.type]?.familiar;
+    for (const f of v.kid ? [...nearest(W.filter(fam)), ...nearest(W.filter(f => !fam(f)))] : nearest(W)) if (go('wc', f)) return; v.sat -= 0.05; v.bath = 0.5; }
   if (v.hunger > 0.6) { for (const f of nearest(F('lanchonete'))) if (go('food', f)) return; v.sat -= 0.05; v.hunger = 0.4; }
   if (v.energy < 0.35) {
     const seats = [...F('playground'), ...F('banco'), ...F('mesas'), ...s.furn.filter(f => f.type === 'banco')];
@@ -129,7 +139,7 @@ function applyGoal(s, v) {
     const m = F2(s, 'mesas'); if (m.length && rnd(s) < 0.6) v.next = 'mesas'; }
   else if (g.type === 'sit' && f) { v.energy = clamp(v.energy + 0.3); v.sat += 0.06; }
   else if (g.type === 'bin') { v.sat += 0.01; }
-  else if (g.type === 'wc' && f) { v.bath = 0; f.dirty = clamp((f.dirty || 0) + 0.04); v.sat += f.dirty > 0.7 ? -0.12 : 0.03; }
+  else if (g.type === 'wc' && f) { const fam = !!C.facilities[f.type]?.familiar; v.bath = 0; f.dirty = clamp((f.dirty || 0) + (fam ? 0.03 : 0.04)); v.sat += (f.dirty > 0.7 ? -0.12 : 0.03) + (v.kid ? (fam ? 0.06 : -0.04) : 0); }
   else if (g.type === 'loja' && f) { const D = C.facilities[f.type] || C.facilities.loja; earn(s, 'loja', D.venda - D.custoVenda); v.sat += 0.05; }
   else if (g.type === 'rest' && g.furn) { v.energy = clamp(v.energy + 0.5); v.sat += 0.04; }
   else if (g.type === 'rest' && f) { v.energy = clamp(v.energy + 0.5); v.sat += papel(C, f.type) === 'playground' ? 0.07 : 0.03; }
@@ -154,7 +164,16 @@ export function updateVisitors(s, gameMin, ctx) {
     v.sat = clamp(v.sat - 0.03 * hrs); v.stay -= gameMin;
     if (!v.panic) for (const a of escaped) if (dist(v, a) < 12) { v.panic = true; v.leaving = true; v.sat = clamp(v.sat - 0.3); v.route = []; v.goal = null; v.useT = 0; }
     if (ctx.abstract) {
-      if (v.stay <= 0 || !isOpen(s) || v.panic) { recordSat(s, v.sat); s.visitors.splice(i, 1); }
+      if (v.saindo || v.stay <= 0 || !isOpen(s) || v.panic) { if (!v.saindo) recordSat(s, v.sat); s.visitors.splice(i, 1); }
+      else if (v.rua) { const e = entranceTile(s); if (e) { const p = tileToWorld(e[0], e[1]); v.x = p.x; v.z = p.z; } v.rua = null; }
+      continue;
+    }
+    // 1.7.3: andando na rua da frente (chegando pela calçada/faixa ou indo embora até o ponto, o carro ou a esquina)
+    if (v.rua) {
+      let left = (v.panic ? 2.6 : 1.25) * ctx.moveMul * ctx.realDt;
+      while (left > 0 && v.rua.length) { const p = v.rua[0], dx = p.x - v.x, dz = p.z - v.z, d = Math.hypot(dx, dz);
+        if (d <= left) { v.x = p.x; v.z = p.z; left -= d; v.rua.shift(); } else { v.x += (dx / d) * left; v.z += (dz / d) * left; v.rot = Math.atan2(dx, dz); left = 0; } }
+      if (!v.rua.length) { v.rua = null; if (v.saindo) { s.visitors.splice(i, 1); continue; } v.useT = 0; }
       continue;
     }
     if (v.route.length) {
@@ -167,10 +186,10 @@ export function updateVisitors(s, gameMin, ctx) {
       continue;
     }
     if (v.useT > 0) { v.useT -= ctx.realDt * ctx.moveMul; continue; }
-    if (v.goal?.type === 'exit') { recordSat(s, v.sat); s.visitors.splice(i, 1); continue; }
+    if (v.goal?.type === 'exit') { recordSat(s, v.sat); v.goal = null; if (!v.origem) { s.visitors.splice(i, 1); continue; } v.saindo = true; v.rua = rotaChegada(s, v).reverse().map(q => ({ x: q.x + v.off.x * 0.6, z: q.z + v.off.z * 0.3 })); continue; }
     if (v.goal) applyGoal(s, v);
     chooseGoal(s, v);
   }
   s.vstock = (s.vstock || []).filter(t => t > s.clock.min); if (!isOpen(s)) s.vstock.length = 0;
-  s.stats.visitorsIn = s.visitors.length + s.vstock.length; // o contador inclui quem não é desenhado
+  s.stats.visitorsIn = s.visitors.length + s.vstock.length + (s._fila?.length || 0); // o contador inclui quem não é desenhado (e quem espera o ônibus)
 }

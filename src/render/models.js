@@ -329,8 +329,48 @@ export function buildFacility(kit, type, D) {
       // pegada na placa lateral
       const pw = kit.mat('#2f7fa8'); add(kit.sphere(0.2), pw, -w / 2 + 0.22, 1.9, 0.2); for (const [y, z] of [[2.25, -0.05], [2.3, 0.2], [2.25, 0.45]]) add(kit.sphere(0.09), pw, -w / 2 + 0.22, y, z);
       break; }
+    // 1.7.3: banheiro familiar (porta larga com trocador) e estacionamento (2 fileiras de 6 vagas, cabine e placa P)
+    case 'banheiro_familiar': {
+      const wall = kit.mat('#e6f0f5'), blue = kit.mat('#3a8fd6');
+      add(kit.box(w - 0.7, 2.7, d - 0.7), wall, 0, 1.35, 0); add(kit.box(w - 0.6, 0.8, d - 0.6), kit.mat('#a9d1ea'), 0, 0.4, 0);
+      add(kit.box(w + 0.2, 0.22, d + 0.3), blue, 0, 2.82, 0.05); add(kit.box(w - 0.3, 0.14, d - 0.3), kit.mat('#2f6a9b'), 0, 2.98, 0);
+      const dm = kit.tex('doorM', () => doorIcon('M', '#2b78b8')), df = kit.tex('doorF', () => doorIcon('F', '#d2528a'));
+      add(kit.box(0.82, 1.85, 0.08), kit.mat('#ffffff', { map: dm }), -1.9, 1.0, d / 2 - 0.32); add(kit.box(0.82, 1.85, 0.08), kit.mat('#ffffff', { map: df }), -0.9, 1.0, d / 2 - 0.32);
+      add(kit.box(1.5, 1.95, 0.08), kit.mat('#f2c230'), 0.9, 1.0, d / 2 - 0.32); // porta larga da família (carrinho de bebê)
+      const em = kit.tex('emFam', () => emblemCanvas('wc', 'FAMÍLIA', '#2b78b8')); add(kit.box(2.4, 0.75, 0.08), kit.mat('#ffffff', { map: em }), 0, 3.4, d / 2 - 0.35);
+      const tc = kit.tex('lblTROCADOR#f2c230', () => labelCanvas('TROCADOR', '#f2c230', '#1d3b52')); add(kit.box(1.3, 0.33, 0.06), kit.mat('#ffffff', { map: tc }), 0.9, 2.25, d / 2 - 0.3);
+      for (const sx of [-1, 1]) { add(kit.cyl(0.22, 0.17, 0.3), kit.mat('#9c5a34'), sx * (w / 2 - 0.25), 0.15, d / 2 - 0.05); add(kit.sphere(0.28), kit.mat('#3d8f3a'), sx * (w / 2 - 0.25), 0.5, d / 2 - 0.05); }
+      break; }
+    case 'estacionamento': {
+      add(kit.box(w - 0.1, 0.06, d - 0.1), kit.mat('#4d5156'), 0, 0.03, 0);
+      const line = kit.mat('#f1f1ec');
+      // 2 fileiras de 6 vagas (4,4 m de fundo) com o corredor no meio; os carros ficam de frente para o corredor
+      for (const sz of [-1, 1]) { for (let i = 0; i <= 6; i++) add(kit.box(0.1, 0.02, 4.2), line, -w / 2 + 0.05 + i * ((w - 0.1) / 6), 0.07, sz * (d / 2 - 2.25)); add(kit.box(w - 0.2, 0.02, 0.1), line, 0, 0.07, sz * (d / 2 - 0.15)); }
+      for (const sx of [-1, 1]) add(kit.box(0.25, 0.18, d - 0.2), kit.mat('#9a9a94'), sx * (w / 2 - 0.12), 0.09, 0); // meio-fio
+      add(kit.cyl(0.05, 0.05, 2.6), kit.mat('#5b6770'), w / 2 + 0.4, 1.3, d / 2 - 0.3);
+      const pt = kit.tex('lblP#2b78b8', () => labelCanvas('P', '#2b78b8', '#fff', 64, 64)); add(kit.box(0.9, 0.9, 0.08), kit.mat('#ffffff', { map: pt }), w / 2 + 0.4, 2.8, d / 2 - 0.3);
+      break; }
     default: add(kit.box(w - 0.4, 2, d - 0.4), kit.mat(D.cor || '#999'), 0, 1, 0);
   }
+  return g;
+}
+// carro de passeio (rua da frente e estacionamento) e ônibus
+export function buildCar(kit, cor) {
+  const g = new THREE.Group(), add = (geo, m, x, y, z) => { const o = kit.mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
+  add(kit.box(1.7, 0.6, 4.1), kit.mat(cor, { rough: 0.35, metal: 0.3 }), 0, 0.55, 0);
+  add(kit.box(1.5, 0.55, 2.1), kit.mat('#2a3b48', { rough: 0.1, metal: 0.4 }), 0, 1.1, -0.15);
+  for (const [x, z] of [[-0.8, 1.3], [0.8, 1.3], [-0.8, -1.3], [0.8, -1.3]]) add(kit.cyl(0.32, 0.32, 0.22), kit.mat('#1c1c1c'), x, 0.32, z).rotation.z = Math.PI / 2;
+  add(kit.box(1.4, 0.12, 0.05), kit.mat('#fff3c4'), 0, 0.65, 2.06); add(kit.box(1.4, 0.12, 0.05), kit.mat('#c62828'), 0, 0.65, -2.06);
+  return g;
+}
+export function buildBus(kit) {
+  const g = new THREE.Group(), add = (geo, m, x, y, z) => { const o = kit.mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
+  add(kit.box(2.5, 2.6, 11), kit.mat('#2e8b57', { rough: 0.45 }), 0, 1.75, 0);
+  add(kit.box(2.54, 0.9, 10.2), kit.mat('#203845', { rough: 0.1, metal: 0.3 }), 0, 2.35, -0.2);
+  add(kit.box(2.3, 1.3, 0.06), kit.mat('#203845', { rough: 0.1, metal: 0.3 }), 0, 2.1, 5.51);
+  add(kit.box(2.56, 0.3, 11.04), kit.mat('#f2c230'), 0, 1.2, 0);
+  const lb = kit.tex('lblZOOLÓGICO#1d3b52', () => labelCanvas('ZOOLÓGICO', '#1d3b52')); add(kit.box(1.8, 0.4, 0.05), kit.mat('#ffffff', { map: lb }), 0, 2.85, 5.53);
+  for (const z of [-3.6, 3.6]) for (const x of [-1.15, 1.15]) add(kit.cyl(0.5, 0.5, 0.3), kit.mat('#1c1c1c'), x, 0.5, z).rotation.z = Math.PI / 2;
   return g;
 }
 

@@ -27,7 +27,7 @@ const run = (s, k, fn, ctx = live()) => { for (let i = 0; i < k; i++) { step(s, 
 // ---- conteúdo e save ----
 {
   const s = base(), C = content(s);
-  ok(SCHEMA === 9 && !('player' in s), 'save 9: jogo novo sem o contador de lesões do jogador');
+  ok(SCHEMA >= 9 && !('player' in s), 'save 9+: jogo novo sem o contador de lesões do jogador');
   ok(C.facilities.clinica && C.facilities.clinica.vagas === 2 && C.facilities.clinica.pack === 'base', 'Clínica veterinária no jogo base (2 vagas)');
   ok(ALERT_INFO.ferido && !ALERT_INFO.visita && ALERT_ROLES.ferido.includes('seguranca'), 'alerta "Funcionário ferido" no lugar de "Visitante em risco"');
   ok(ESTADOS.has('medo'), 'estado "medo" é conhecido pelo desenho');
@@ -40,7 +40,7 @@ const run = (s, k, fn, ctx = live()) => { for (let i = 0; i < k; i++) { step(s, 
   o.alerts = [{ id: 1, type: 'visita', target: h.id, created: 0, assigned: null, wait: 0 }]; o.staff[0].task = { type: 'guardar', target: o.animals[0].id, phase: 'work', dest: { hab: h.id, x: 0, z: 0 } };
   o.animals[0].preso = true; o.animals[0].guard = true; o.tocas[0].fechada = true; delete o.staff[0].ferido;
   const m = deserialize(o);
-  ok(m.schemaVersion === 9 && !m.player && !m.alerts.length && m.staff[0].task === null && m.staff[0].ferido === 0, 'migração 8 → 9: sai o jogador, o alerta de visita e a tarefa de recolher para a visita');
+  ok(m.schemaVersion === SCHEMA && !m.player && !m.alerts.length && m.staff[0].task === null && m.staff[0].ferido === 0, 'migração 8 → 9: sai o jogador, o alerta de visita e a tarefa de recolher para a visita');
   ok(!m.habitats[0].preparo && !m.habitats[0].visitaAte && !m.habitats[0].visitaRisco && Array.isArray(m.habitats[0].seg), 'campos da visita perigosa limpos; habitat ganha a lista de quem segura as tocas');
   ok(!m.animals[0].preso && !m.animals[0].guard && !m.tocas[0].fechada && m.animals.length === 2, 'ninguém fica preso na toca; nenhum animal perdido');
   ok(typeof MIGRATIONS[8] === 'function', 'migração 8 existe');

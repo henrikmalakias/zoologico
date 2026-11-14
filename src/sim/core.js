@@ -6,8 +6,10 @@ import { MAP, idx, rebuildOcc, tileToWorld, AREAS, isPathT } from './grid.js';
 import { updateAnimals, hourlyAnimals, dailyAnimals, habInfo } from './animals.js';
 import { updateStaff, refreshAlerts, managerTick, spend, earn, recalcClean } from './staff.js';
 import { updateVisitors, arrivalRate, arrive, isOpen, litterCount, seedCrowd } from './visitors.js';
+import { TURNOS, NOITE_ROLES, salarioDia, turnoSugerido } from './turnos.js';
+import { updateRua } from './rua.js';
 
-export const SCHEMA = 9;
+export const SCHEMA = 10;
 export const SPEEDS = [0, 1, 2, 3]; // multiplicador da velocidade normal
 export const MES = 30;
 // segundos de jogo por segundo real na velocidade normal (depende da hora: dia devagar, noite rápida)
@@ -27,7 +29,7 @@ export function newGame(now = Date.now(), opts = {}) {
     candidates: [], hiring: { nextAt: now + H2 },
     alerts: [], metas: {}, settings: { ...DEFAULT_SETTINGS(), tranquilo: !!opts.tranquilo, fugas: !opts.tranquilo },
     stats: { today: blankDay(), history: [], rep: { animais: 0.3, sustent: 0.6, educacao: 0, experiencia: 0.5, total: 0.35 }, sat: 0.6, visitantesHoje: 0, visitorsIn: 0, mortes: 0, feridos: 0 },
-    log: [], acc: { hour: 0, q: 0, arr: 0 }, fin: { pendente: { salarios: 0, manutencao: 0 }, meses: [], novo: null },
+    rua: { proxOnibus: 0 }, log: [], acc: { hour: 0, q: 0, arr: 0 }, fin: { pendente: { salarios: 0, manutencao: 0 }, meses: [], novo: null },
   };
   // layout inicial: entrada ao sul e caminhos principais
   s.facilities.push({ id: uid(s), type: 'entrada', tx: 35, ty: 51, pack: 'base' });
@@ -38,7 +40,7 @@ export function newGame(now = Date.now(), opts = {}) {
   // decoração fora da área
   for (let i = 0; i < 70; i++) {
     const x = Math.floor(rnd(s) * MAP), y = Math.floor(rnd(s) * MAP);
-    if (x >= 19 && x <= 52 && y >= 19 && y <= 52) continue;
+    if ((x >= 19 && x <= 52 && y >= 19 && y <= 52) || (y >= 51 && y <= 68)) continue; // 1.7.3: nada na rua da frente nem nos lotes
     s.objects.push({ id: uid(s), type: rnd(s) < 0.5 ? 'acacia' : rnd(s) < 0.5 ? 'arvore_floresta' : 'arbusto', tx: x, ty: y, rot: rnd(s) * 6.28, sc: 0.8 + rnd(s) * 0.5, pack: 'base', deco: true });
   }
   rebuildOcc(s);
@@ -46,7 +48,7 @@ export function newGame(now = Date.now(), opts = {}) {
   log(s, 'Bem-vindo ao seu zoológico! Construa um habitat e contrate sua equipe.', 'bom');
   return s;
 }
-export function blankDay() { return { inc: { ingressos: 0, lanches: 0, loja: 0, metas: 0 }, exp: { salarios: 0, comida: 0, manutencao: 0, construcao: 0, animais: 0 } }; }
+export function blankDay() { return { inc: { ingressos: 0, lanches: 0, loja: 0, estacionamento: 0, metas: 0 }, exp: { salarios: 0, comida: 0, manutencao: 0, construcao: 0, animais: 0 } }; }
 
 // ---------- passo principal ----------
 export function step(s, gameMin, ctx) {
@@ -57,6 +59,7 @@ export function step(s, gameMin, ctx) {
   updateStaff(s, gameMin, ctx);
   if (isOpen(s)) { s.acc.arr += (arrivalRate(s) * gameMin) / 60; while (s.acc.arr >= 1) { s.acc.arr--; arrive(s, ctx); } }
   updateVisitors(s, gameMin, ctx);
+  updateRua(s, gameMin, ctx);
   if (s.acc.q >= 15) { const q = s.acc.q; s.acc.q = 0; s._qt = (s._qt || 0) + 1; refreshAlerts(s); if ((ctx.abstract && !ctx.noManager) || !s.settings.subSoFechado) managerTick(s, q); }
   while (s.acc.hour >= 60) { s.acc.hour -= 60; hourTick(s); }
   const d = Math.floor(s.clock.min / 1440);
@@ -98,7 +101,7 @@ export function updateRep(s) {
   const target = clamp((r.animais + r.sustent + r.educacao + r.experiencia) / 4 - fug);
   r.total = clamp(r.total + (target - r.total) * 0.2);
 }
-export function fixedDaily(s) { const C = content(s); return [...s.staff, ...s.managers].reduce((t, p) => t + p.salary, 0) + s.facilities.reduce((t, f) => t + (C.facilities[f.type]?.manut || 0), 0); }
+export function fixedDaily(s) { const C = content(s); return [...s.staff, ...s.managers].reduce((t, p) => t + salarioDia(p), 0) + s.facilities.reduce((t, f) => t + (C.facilities[f.type]?.manut || 0), 0); }
 function closeMonth(s) {
   const P = s.fin.pendente, mes = s.clock.day / MES;
   const dias = s.stats.history.slice(-MES);
@@ -121,7 +124,7 @@ function dayTick(s) {
   const C = content(s);
   // salários e manutenção se acumulam e são pagos no fechamento do mês
   s.fin ||= { pendente: { salarios: 0, manutencao: 0 }, meses: [], novo: null };
-  for (const st of [...s.staff, ...s.managers]) s.fin.pendente.salarios += st.salary;
+  for (const st of [...s.staff, ...s.managers]) s.fin.pendente.salarios += salarioDia(st);
   for (const f of s.facilities) s.fin.pendente.manutencao += C.facilities[f.type]?.manut || 0;
   dailyAnimals(s);
   for (const st of [...s.staff]) if (st.sat < 0.25 && rnd(s) < 0.3) { fireById(s, st.id); log(s, `${st.name} pediu demissão (insatisfação).`, 'ruim'); }
@@ -157,12 +160,14 @@ export function hiringTick(s, now) {
   while (now >= s.hiring.nextAt && guard++ < 50) { fillCandidates(s, s.hiring.nextAt, 1); s.hiring.nextAt += H2; }
   s.candidates = s.candidates.filter(c => c.expiresAt > now);
 }
-export function hire(s, candId) {
+export function hire(s, candId, turno) {
   const c = s.candidates.find(c => c.id === candId); if (!c) return { ok: false, msg: 'Candidato não encontrado.' };
   if (c.role === 'subgerente' && s.managers.length >= VAGAS[s.areaLevel]) return { ok: false, msg: `Sem vaga de subgerente (vagas: ${VAGAS[s.areaLevel]}). Inaugure novas áreas para abrir vagas.` };
   s.candidates.splice(s.candidates.indexOf(c), 1);
   const e = s.facilities.find(f => f.type === 'entrada'), p = tileToWorld(e.tx, e.ty - 1);
   const person = { id: c.id, role: c.role, name: c.name, attrs: c.attrs, traits: c.hidden, salary: c.salary, expected: c.expected, energy: 1, sat: 0.8, x: p.x, z: p.z, rot: Math.PI, inHab: 0, task: null, ferido: 0, pack: 'base' };
+  // 1.7.3: turno escolhido na contratação (sem escolha: o que falta no setor); noite só para tratador, veterinário e segurança
+  if (c.role !== 'subgerente') { let t = TURNOS[turno] ? turno : turnoSugerido(s, c.role); if (t === 'noite' && !NOITE_ROLES.has(c.role)) t = 'dia'; person.turno = t; person.adic = TURNOS[t].mult; person.pausas = null; }
   if (c.role === 'subgerente') s.managers.push(person); else s.staff.push(person);
   log(s, `${c.name} foi contratado(a) como ${content(s).roles[c.role].nome.toLowerCase()}.`, 'bom');
   return { ok: true, person };
