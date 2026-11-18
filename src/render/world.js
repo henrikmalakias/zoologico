@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RuaView } from './rua.js';
+import { ObraView } from './obras.js';
 import { Kit, buildAnimal, animateAnimal, buildPerson, buildPlant, buildFacility, buildFurn, furnParts, groupParts, mergeStatic, mergeRig, buildVehicle, buildTool, buildCones, buildToca } from './models.js';
 import { tocaCenter, tocaAltura } from '../sim/tocas.js';
 import { ModelLibrary, animateSDFAnimal, animateSDFHuman } from './library.js';
@@ -82,6 +83,7 @@ export class World {
     this.maps = { habs: new Map(), facs: new Map(), objs: new Map(), tocas: new Map(), furn: new Map(), animals: new Map(), staff: new Map() }; this._furnH = null; this._furnParts = {}; this._furnMeshes = []; this._plantH = null; this._plantParts = {}; this._plantMeshes = [];
     this.kit.lamp = this.hi ? new THREE.MeshStandardMaterial({ color: '#fff4c8', emissive: '#ffc766', emissiveIntensity: 0 }) : new THREE.MeshLambertMaterial({ color: '#fff4c8', emissive: '#ffc766' }); this.kit.lamp.emissiveIntensity = 0; this.lampOn = false;
     this.ruaView = new RuaView(this.kit, sc); // 1.7.3: rua da frente
+    this.obraView = new ObraView(this.kit, sc, this); // 1.8.3: obras com tapume, andaime, operários e guindaste
     // visitantes instanciados
     const cap = 220; // 1.7.3: até 100 visitantes + as crianças das famílias
     this.vBody = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.24, 1.2, 6), this.kit.mat('#ffffff'), cap);
@@ -109,7 +111,7 @@ export class World {
     this.kit.lamp?.dispose(); this.kit.dispose(); this.ttex.dispose(); // 1.7.2d: estas três chamadas estavam dentro do comentário da linha acima
     this.glassMat?.dispose(); this.waterMat?.dispose(); this.ground?.material?.dispose?.();
     this.usky?.dispose(); this.grass?.dispose(); this.tarr?.cor.dispose(); this.tarr?.nor.dispose(); this.tdata?.dispose(); this.waterMat.normalMap?.dispose(); this.lakeMat?.dispose(); this.lakeMat = null;
-    this.usky = this.grass = this.tarr = this.tdata = null;
+    this.usky = this.grass = this.tarr = this.tdata = null; this.obraView?.dispose();
     this.scene.traverse(o => { if (o.isInstancedMesh || o === this.ground || o.userData?.merged) o.geometry.dispose(); });
   }
   pixelRatio() { return this.hi ? Math.min(devicePixelRatio, this.eco ? 1.5 : 2) : Math.min(devicePixelRatio, 1); }
@@ -388,6 +390,7 @@ export class World {
     this.syncTerrain(s);
     this.syncStatic(s);
     this.ruaView.update(s, dt);
+    this.obraView.update(s, dt);
     { const hr = hourOf(s.clock.min), on = hr >= 18 || hr < 6.5; if (on !== this.lampOn) { this.lampOn = on; this.kit.lamp.emissiveIntensity = on ? 1.6 : 0; } }
     const C = content(s), m = new THREE.Matrix4(), q = new THREE.Quaternion();
     // animais
@@ -588,7 +591,7 @@ export class World {
   groundAt(cx, cy) { this.raycaster.setFromCamera(this.ndc(cx, cy), this.camera); const hit = this.raycaster.intersectObject(this.ground, false)[0]; if (hit) return hit.point; const p = new THREE.Vector3(); return this.raycaster.ray.intersectPlane(this.plane, p) ? p : null; }
   pickEntity(cx, cy) {
     this.raycaster.setFromCamera(this.ndc(cx, cy), this.camera);
-    const hits = this.raycaster.intersectObjects([this.layers.animals, this.layers.staff, this.layers.facs, this.layers.tocas, this.layers.habs], true);
+    const hits = this.raycaster.intersectObjects([this.obraView.g, this.layers.animals, this.layers.staff, this.layers.facs, this.layers.tocas, this.layers.habs], true);
     for (const hh of hits) { let o = hh.object; while (o && !o.userData?.kind) o = o.parent; if (o) return { kind: o.userData.kind, id: o.userData.id }; }
     return null;
   }

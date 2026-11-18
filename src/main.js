@@ -8,6 +8,8 @@ import { Controls } from './ui/controls.js';
 import { UI } from './ui/ui.js';
 import * as B from './sim/build.js';
 import * as RAP from './sim/rapido.js';
+import * as OB from './sim/obras.js';
+import { obraTick } from './sim/obras.js';
 import { hire } from './sim/core.js';
 import { dispatch, refreshAlerts, startTask, orderTransfer, ALERT_INFO, alertTargetName, atacarFuncionario } from './sim/staff.js';
 import { library } from './render/world.js';
@@ -71,7 +73,7 @@ class Game {
     }
     s.clock.lastRealTs = now;
     this.slow += dt;
-    if (this.slow > 1) { this.slow = 0; hiringTick(s, now); this.ui.slowTick(); if (s.fin?.novo && !this.ui.modal) { s.fin.novo = null; this.ui.showMonth(s.fin.meses[s.fin.meses.length - 1]); } }
+    if (this.slow > 1) { this.slow = 0; hiringTick(s, now); obraTick(s, now); this.ui.slowTick(); if (s.fin?.novo && !this.ui.modal) { s.fin.novo = null; this.ui.showMonth(s.fin.meses[s.fin.meses.length - 1]); } }
     for (const e of s._events.splice(0)) if (e.kind !== 'info') this.ui.toast(e.msg, e.kind);
     this.controls.update(dt);
     this.world.update(s, dt);
@@ -205,5 +207,5 @@ class Game {
 const vnum = v => String(v).split('.').map(p => { const m = /^(\d+)([a-z]?)$/.exec(p); return m ? +m[1] + (m[2] ? (m[2].charCodeAt(0) - 96) / 100 : 0) : 0; }); // 1.7.2b > 1.7.2a > 1.7.2
 const cmp = (a, b) => { const x = vnum(a), y = vnum(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
 
-const game = new Game(); window.__game = game; window.__sound = sound; window.__api = { ...B, RAP, V, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, atacar: (s, st, a) => atacarFuncionario(s, st, a, false), fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
+const game = new Game(); window.__game = game; window.__sound = sound; window.__api = { ...B, RAP, OB, V, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, atacar: (s, st, a) => atacarFuncionario(s, st, a, false), fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
 game.start().catch(e => { console.error(e); const b = document.getElementById('boot'); if (b) b.textContent = 'Erro ao iniciar: ' + e.message; });

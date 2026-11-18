@@ -13,6 +13,7 @@ export { perigosos };
 
 export function podeVisitar(s, h) {
   if (!h) return { ok: false, msg: 'Habitat não encontrado.' };
+  if (h.obra) return { ok: false, msg: 'Recinto em obra: a entrada está fechada até ficar pronto.' };
   if (s.animals.some(a => a.hab === h.id && a.escaping)) return { ok: false, msg: 'Há um animal fugindo deste recinto agora.' };
   return { ok: true, msg: '' };
 }

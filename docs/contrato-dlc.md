@@ -72,7 +72,8 @@ urso_polar: { nome:'Urso-polar', custo:22000, bioma:'artico', dieta:'Carnívoro'
 - Equilíbrio: custo e apelo coerentes com o base (o rinoceronte custa 18000 com apelo 10; o flamingo 1200 com apelo 6).
 - `bioma` precisa existir (base ou a própria DLC).
 
-**facilities** `{ nome, w, h, custo, cor, manut, venda?, custoVenda?, parecido, comportamento }`
+**facilities** `{ nome, w, h, custo, cor, manut, venda?, custoVenda?, parecido, comportamento, obraMin? }`
+- `obraMin` (opcional, desde a 1.8.3): minutos reais de obra. Sem ele a duração sai do custo (3 a 12 min; abaixo de R$ 1.000 fica instantâneo). Recintos, tocas e ampliações calculam a duração sozinhos (pelo tamanho), sem campo novo.
 - `parecido`: id de instalação do base cujo desenho será reaproveitado (`lanchonete`, `banheiro`, `loja`, `mesas`, `playground`, `placa`, `centro`, `clinica`).
 - `comportamento`: `comida` (como lanchonete, usa `venda`/`custoVenda` dela) | `compras` (como loja) | `banheiro` | `lazer` (como playground) | `mesas` | `descanso` (como banco) | `clinica` (desde a 1.7.2c: interna os casos graves; use `vagas`, padrão 2). Sem `comportamento` = só decoração.
 

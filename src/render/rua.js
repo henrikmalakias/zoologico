@@ -36,9 +36,14 @@ export class RuaView {
       add(k.box(x1 - x0, h, 0.45), muro, (x0 + x1) / 2, h / 2, zw); add(k.box(x1 - x0, 0.6, 0.5), tij, (x0 + x1) / 2, 0.3, zw); add(k.box(x1 - x0 + 0.1, 0.15, 0.6), k.mat('#8d7a5a'), (x0 + x1) / 2, h + 0.07, zw);
       for (let x = x0; x <= x1 + 0.01; x += 8) add(k.box(0.7, h + 0.4, 0.7), muro, Math.min(x, x1), (h + 0.4) / 2, zw);
     }
-    for (const x of [xp0, xp1]) { add(k.box(0.9, 3.6, 0.9), tij, x, 1.8, zw); add(k.sphere(0.35), k.mat('#f1e3c0'), x, 3.75, zw); }
-    const lb = k.tex('lblZOOLÓGICO · ENTRADA#2e6b54', () => labelCanvas('ZOOLÓGICO · ENTRADA', '#2e6b54'));
-    add(k.box(xp1 - xp0 + 0.9, 0.5, 0.1), k.mat('#ffffff', { map: lb }), (xp0 + xp1) / 2, 3.3, zw + 0.3);
+    // 1.8.3: portão único da entrada: pilares de tijolo, arco de madeira com telhadinho, placa grande, lampiões e vasos
+    const xm = (xp0 + xp1) / 2, vao = xp1 - xp0, wood = k.mat('#8a5a32'), verde = k.mat('#2e6b54');
+    for (const x of [xp0, xp1]) { add(k.box(1.0, 3.9, 1.0), tij, x, 1.95, zw); add(k.box(1.2, 0.2, 1.2), k.mat('#8d7a5a'), x, 3.95, zw); add(k.sphere(0.32), k.mat('#f1e3c0'), x, 4.75, zw); add(k.cyl(0.06, 0.06, 0.6), k.mat('#4a4f55'), x, 4.3, zw);
+      for (const dz of [-0.95, 0.95]) { add(k.cyl(0.32, 0.25, 0.5), k.mat('#9c5a34'), x + (x < xm ? -0.9 : 0.9), 0.25, zw + dz); add(k.sphere(0.4), k.mat('#3d8f3a'), x + (x < xm ? -0.9 : 0.9), 0.75, zw + dz); } }
+    add(k.box(vao + 1.4, 0.42, 0.7), wood, xm, 4.05, zw); add(k.box(vao + 2.0, 0.16, 1.5), verde, xm, 4.36, zw); add(k.box(vao + 1.6, 0.1, 1.2), k.mat('#f2c230'), xm, 4.48, zw);
+    const lb = k.tex('lblZOOLÓGICO#2e6b54', () => labelCanvas('ZOOLÓGICO', '#2e6b54'));
+    add(k.box(vao + 0.7, 0.7, 0.5), wood, xm, 3.35, zw);
+    for (const dz of [0.26, -0.26]) { const pl = k.mesh(new THREE.PlaneGeometry(vao + 0.5, 0.58), k.mat('#ffffff', { map: lb }), false); pl.position.set(xm, 3.35, zw + dz); if (dz < 0) pl.rotation.y = Math.PI; g.add(pl); }
     // ponto de ônibus (cobertura, banco e placa)
     const px = xCol(RUA.ponto[0]) + 1, pz = zRow(RUA.ponto[1]) + 0.6;
     add(k.box(3.2, 0.1, 1.4), k.mat('#2e6b54'), px, 2.5, pz); for (const sx of [-1.5, 1.5]) add(k.box(0.1, 2.5, 0.1), k.mat('#5b6770'), px + sx, 1.25, pz - 0.6);

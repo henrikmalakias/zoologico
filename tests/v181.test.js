@@ -36,7 +36,7 @@ ok(/\.chips\{[^}]*max-width:56%/.test(css) && /\.speed\{[^}]*max-width:46%/.test
 ok(/\.bar button\{[^}]*flex:1;max-width:86px/.test(css), 'barra de baixo com 5 botões flexíveis');
 
 // só visual: save igual
-ok(SCHEMA === 11, 'save continua no formato 11');
+ok(SCHEMA >= 11, 'save no formato 11 ou mais novo');
 const vnum = v => String(v).split('.').map(p => { const m = /^(\d+)([a-z]?)$/.exec(p); return m ? +m[1] + (m[2] ? (m[2].charCodeAt(0) - 96) / 100 : 0) : 0; });
 const maiorIgual = (a, b) => a === b || maior(a, b);
 const maior = (a, b) => { const x = vnum(a), y = vnum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };

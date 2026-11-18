@@ -204,3 +204,6 @@ textarea{border:2px solid var(--line);border-radius:10px;background:#fff}
 .eco .badge.bump,.eco .chip.up,.eco .chip.down{animation:none}
 .eco .meter i{transition:none}
 @media (prefers-reduced-motion:reduce){.alert,.nextalert,.toast.conquista::after,.badge.bump,.chip.up,.chip.down{animation:none}}
+/* 1.8.3: cartão da obra (faixa listrada amarela e preta) */
+.card.obra { border-left: 6px solid #f2c230; background-image: repeating-linear-gradient(135deg, rgba(242, 194, 48, .14) 0 10px, transparent 10px 20px); }
+.card.obra .meter i { background: #f2b51c; }

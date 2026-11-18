@@ -237,8 +237,8 @@ function pickRoutine(s, st) {
     if (best !== null) cands.push(['litter', best, 0.6 / (1 + bd / 40)]);
   }
   if (st.role === 'seguranca') {
-    for (const h of s.habitats) if (h.fenceHp < 0.7 || h.breaches?.length) cands.push(['repair', h.id, (1 - h.fenceHp) / (1 + dist(st, tileToWorld(h.gateOut[0], h.gateOut[1])) / 40)]);
-    if (s.habitats.length) { const h = s.habitats[Math.floor(rnd(s) * s.habitats.length)]; cands.push(['patrol', h.id, 0.1]); }
+    for (const h of s.habitats) if (!h.obra && (h.fenceHp < 0.7 || h.breaches?.length)) cands.push(['repair', h.id, (1 - h.fenceHp) / (1 + dist(st, tileToWorld(h.gateOut[0], h.gateOut[1])) / 40)]);
+    if (s.habitats.length) { const h = s.habitats[Math.floor(rnd(s) * s.habitats.length)]; if (!h.obra) cands.push(['patrol', h.id, 0.1]); }
   }
   cands.sort((a, b) => b[2] - a[2]);
   for (const [type, target] of cands) if (!reserved(s, type, target, st) && startTask(s, st, type, target)) return;

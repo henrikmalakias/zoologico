@@ -31,7 +31,8 @@ export function rebuildOcc(s) {
     for (let y = f.ty; y < f.ty + d.h; y++) for (let x = f.tx; x < f.tx + d.w; x++) if (inMap(x, y)) fac[idx(x, y)] = f.id; }
   for (const o of s.objects) obj[idx(o.tx, o.ty)] = o.id;
   const toca = new Int32Array(n); markTocas(s, obj, toca);
-  s._occ = { hab, fac, obj, toca };
+  const obra = new Int32Array(n); markObras(s, obra);
+  s._occ = { hab, fac, obj, toca, obra };
   let pn = 0; for (let i = 0; i < n; i++) if (isPathT(s.terrain[i])) pn++; s._pathN = pn;
   s._ver = (s._ver || 0) + 1;
   rebuildBridges(s);
@@ -39,6 +40,15 @@ export function rebuildOcc(s) {
 }
 // tocas (2 x 2 blocos): ocupam o bloco como um objeto, então planta, caminho e instalação não entram em cima
 function markTocas(s, obj, toca) { for (const t of s.tocas || []) for (let y = t.ty; y < t.ty + 2; y++) for (let x = t.tx; x < t.tx + 2; x++) if (inMap(x, y)) { obj[idx(x, y)] = t.id; toca[idx(x, y)] = t.id; } }
+// 1.8.3: obras que ainda não são habitat (ampliação, toca nova, prédio) reservam os blocos até ficarem prontas
+function markObras(s, occ) {
+  const C = content(s);
+  for (const o of s.obras || []) {
+    if (o.tipo === 'ampliar') { for (const i of o.cells || []) occ[i] = o.id; continue; }
+    const r = o.tipo === 'toca' ? { x: o.toca.tx, y: o.toca.ty, w: 2, h: 2 } : o.tipo === 'fac' ? { x: o.fac.tx, y: o.fac.ty, w: C.facilities[o.fac.type]?.w || 1, h: C.facilities[o.fac.type]?.h || 1 } : null;
+    if (r) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (inMap(x, y)) occ[idx(x, y)] = o.id;
+  }
+}
 // pintar terreno/caminho não muda habitats nem instalações: atualiza só o necessário (arrastar um caminho longo fica leve)
 export function refreshAfterPaint(s, i, was, objsRemoved) {
   if (!s._occ) return rebuildOcc(s);
@@ -82,7 +92,7 @@ export const isPathT = t => t === 'p' || t === 'q' || t === 'c' || t === 'k';
 export const isPath = (s, x, y) => inMap(x, y) && isPathT(s.terrain[idx(x, y)]) && !s._occ.hab[idx(x, y)] && !s._occ.fac[idx(x, y)];
 // a equipe passa pela catraca da Entrada (2 blocos logo acima do portão da rua) para chegar e ir embora
 const catraca = (x, y) => y === RUA.muro - 1 && x >= RUA.portao[0] && x <= RUA.portao[1];
-export const staffPassable = (s, x, y) => inMap(x, y) && !s._occ.hab[idx(x, y)] && (!s._occ.fac[idx(x, y)] || catraca(x, y)) && s.terrain[idx(x, y)] !== 'w' && !muroAt(x, y);
+export const staffPassable = (s, x, y) => inMap(x, y) && !s._occ.hab[idx(x, y)] && !s._occ.obra?.[idx(x, y)] && (!s._occ.fac[idx(x, y)] || catraca(x, y)) && s.terrain[idx(x, y)] !== 'w' && !muroAt(x, y);
 
 // Orientação das construções: a frente (+z do modelo) fica virada para um caminho.
 // dir: 0 = sul (+z), 1 = leste (+x), 2 = norte (-z), 3 = oeste (-x)

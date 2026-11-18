@@ -18,11 +18,18 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
   { id: 'fachadas', nome: 'Fachadas', desc: 'Entrada nova com bilheterias e catracas, portal temático e estacionamento pago para gerar mais receita.', tamanho: '~12 MB', estado: 'em_breve' },
   { id: 'biomas', nome: 'Biomas', desc: 'Deserto, floresta tropical, ártico, montanha, Pantanal e litoral, com espécies novas e domos imersivos: paisagem 360° por dentro, habitat com animais e tela de LED por fora.', tamanho: '~60 MB', estado: 'em_breve' },
   { id: 'clima', nome: 'Clima e Estações', desc: 'Estações do ano e clima mudando o ambiente e as necessidades.', tamanho: '~8 MB', estado: 'em_breve' },
-  { id: 'obras', nome: 'Obras e Construções', desc: 'Reformas, terraplanagens e construções passam a levar dias de jogo, com tapumes e barra de progresso na obra.', tamanho: '~6 MB', estado: 'em_breve' },
+  { id: 'obras', nome: 'Obras e Construções', desc: 'Reforma de habitat (muda bioma e proteção sem demolir), pedreiros e engenheiros que aceleram as obras, novos veículos e objetos de construção. (O tempo de obra com tapume já vem no jogo base desde a 1.8.3.)', tamanho: '~6 MB', estado: 'em_breve' },
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
-  { versao: '1.8.3', data: '17/11/2026', titulo: 'Versão 1.8.3: construção rápida de recinto', itens: [
+  { versao: '1.8.3', data: '18/11/2026', titulo: 'Versão 1.8.3: construção rápida de recinto e tempo de obra', itens: [
+    'Obras levam tempo de verdade (minutos reais, em qualquer velocidade e até com o jogo fechado): recinto pequeno 6 min, grande até 1 h, prédios de 3 a 12 min, ampliação pelo tamanho que cresce e toca nova 3 min. Caminho, banco, poste, lixeira e plantas continuam na hora',
+    'Na obra: tapume em volta, andaime que sobe em 4 etapas, prédio subindo, operários e guindaste trabalhando (de perto) e barra com a porcentagem e o tempo que falta. A Economia de calor e bateria deixa a obra parada',
+    '⏩ Terminar agora: paga para acabar na hora, proporcional ao que falta (no máximo 60% do custo da obra). A primeira obra de um zoo novo é por nossa conta',
+    'Durante a obra a área fica fechada aos visitantes e à equipe. Os animais comprados ficam "a caminho" (aparecem na ficha) e chegam de caminhão quando a obra termina',
+    'Ampliar deixa os animais no recinto e só a faixa nova fica em obra; +1 com toca nova e Outra espécie só esperam quando precisam de obra',
+    'O relatório "Enquanto você esteve fora" conta as obras que terminaram e os animais que chegaram',
+    'Entrada com um portão só: o portão do muro ganhou arco, placa, lampiões e vasos; as catracas e a bilheteria ficam logo atrás dele',
     'Construir > Habitat > ⚡ Construção rápida: escolha o animal, toque no mapa e veja a prévia já no tamanho certo, com o preço. Girar vira o recinto e Construir monta tudo',
     'O recinto sai completo: bioma da espécie, cerca certa (muro para os perigosos, viveiro com tela para os macacos), lago quando a espécie precisa (raso para os flamingos, fundo para hipopótamos e elefantes), plantas, toca e portão virado para o caminho',
     'Já chega o grupo mínimo da espécie, com espaço para mais 3. Se o dinheiro não der, dá para fazer a versão só com o grupo mínimo',

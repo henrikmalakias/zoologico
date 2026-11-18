@@ -6,6 +6,8 @@ import { newAnimal, habById } from './animals.js';
 import { spend, earn } from './staff.js';
 import { TOCA_MAX, DIRV, tocasDe, tocaCells, ladoTiles, ocupantes, modeloDoBioma, tocaEm, tocaLugar, tocaVagas } from './tocas.js';
 import { rectCells, ensureCells, cellSet, walkSet, edges, fitBox, touch, cellXY, biggestComponent, connected, DIRS, perimeter } from './habshape.js';
+import { iniciarObra, encomendar, duracaoHab, duracaoAmpliar, duracaoToca, duracaoFac, obraDoHab, ampliacaoDe, obrasDoHab, tocasEmObra, obraById, cancelarObra, limparDoHab, ganchos, obras as listaObras } from './obras.js';
+const naObra = (s, i) => !!s._occ.obra?.[i];
 
 const R = (ok, msg = '', extra = {}) => ({ ok, msg, ...extra });
 const norm = (x0, y0, x1, y1) => ({ x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0) + 1, h: Math.abs(y1 - y0) + 1 });
@@ -18,7 +20,7 @@ export function freeCells(s, r, ownId = 0) {
   for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) {
     if (!inMap(x, y) || !inArea(s, x, y)) continue;
     const i = idx(x, y);
-    if (s._occ.fac[i] || isPathT(s.terrain[i])) continue;
+    if (s._occ.fac[i] || naObra(s, i) || isPathT(s.terrain[i])) continue;
     let near = false;
     for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) { const nx = x + dx, ny = y + dy; if (!inMap(nx, ny)) continue; const o = s._occ.hab[idx(nx, ny)]; if (o && o !== ownId) { near = true; break; } }
     if (near || (s._occ.hab[i] && s._occ.hab[i] !== ownId)) continue;
@@ -99,7 +101,7 @@ export function checkHabitat(s, x0, y0, x1, y1, fence) {
   if (s.money < cost) return R(false, `Custa R$ ${cost.toLocaleString('pt-BR')}. Dinheiro insuficiente.`, extra);
   return R(true, `R$ ${cost.toLocaleString('pt-BR')}${skip ? ` · contorna ${skip} bloco(s) ocupado(s)` : ''}`, extra);
 }
-export function placeHabitat(s, x0, y0, x1, y1, biome, fence) {
+export function placeHabitat(s, x0, y0, x1, y1, biome, fence, opts = {}) {
   const c = checkHabitat(s, x0, y0, x1, y1, fence); if (!c.ok) return c;
   const r = c.rect, isl = !!content(s).fences[fence]?.fosso, B = content(s).biomes[biome];
   const h = { id: uid(s), name: `Habitat ${s.habitats.length + 1}`, cells: c.cells, biome, fence, fenceHp: 1, gateOpen: false,
@@ -132,6 +134,8 @@ export function placeHabitat(s, x0, y0, x1, y1, biome, fence) {
   s.habitats.push(h);
   spend(s, 'construcao', c.cost);
   rebuildOcc(s);
+  // 1.8.3: com tempo de obra o recinto fica com tapume até ficar pronto (os animais comprados esperam a caminho)
+  if (opts.obra) { const o = iniciarObra(s, { tipo: 'hab', hab: h.id, dur: duracaoHab(h.cells.length), custo: c.cost, nome: h.name }, opts.now); log(s, `${h.name} (${B.nome}) em obra.`, 'info'); return R(true, '', { hab: h, obra: o }); }
   log(s, `${h.name} (${B.nome}) construído.`, 'bom');
   return R(true, '', { hab: h });
 }
@@ -147,6 +151,8 @@ export function checkExpand(s, x0, y0, x1, y1) {
   const r = norm(x0, y0, x1, y1), h = habNear(s, r);
   if (!h) return R(false, 'Encoste o retângulo em um habitat para ampliá-lo.', { rect: r });
   if (content(s).fences[h.fence]?.fosso) return R(false, 'Ilhas não podem ser ampliadas.', { rect: r, hab: h });
+  if (h.obra) return R(false, `O ${h.name} ainda está em obra. Espere ficar pronto para ampliar.`, { rect: r, hab: h });
+  if (ampliacaoDe(s, h.id)) return R(false, `O ${h.name} já tem uma ampliação em obra.`, { rect: r, hab: h });
   const own = cellSet(h), cand = new Set(freeCells(s, r, h.id).filter(i => !own.has(i)));
   // só os blocos novos ligados ao habitat
   const add = [], q = [...own], seen = new Set(own);
@@ -161,16 +167,19 @@ export function checkExpand(s, x0, y0, x1, y1) {
   if (s.money < cost) return R(false, `Custa R$ ${cost.toLocaleString('pt-BR')}. Dinheiro insuficiente.`, extra);
   return R(true, `+${add.length} blocos no ${h.name} · R$ ${cost.toLocaleString('pt-BR')}`, extra);
 }
-function reshape(s, h) {
+export function reshape(s, h) {
   fitBox(h);
   const ok = new Set(edges(h).map(e => e.d + ':' + e.c));
   h.breaches = (h.breaches || []).filter(b => ok.has(b.side + ':' + b.k));
   if (!edges(h).some(e => e.out[0] === h.gateOut[0] && e.out[1] === h.gateOut[1])) { chooseGate(s, h); const W = walkSet(h); if (!W.has(idx(...h.feed)) || !W.has(idx(...h.water))) chooseFeedWater(s, h); }
   rebuildOcc(s);
 }
-export function expandHabitat(s, x0, y0, x1, y1) {
+export function expandHabitat(s, x0, y0, x1, y1, opts = {}) {
   const c = checkExpand(s, x0, y0, x1, y1); if (!c.ok) return c;
-  const h = c.hab; paintBiome(s, c.cells, h.biome); h.cells = [...h.cells, ...c.cells];
+  const h = c.hab;
+  // 1.8.3: a faixa nova fica com tapume; os animais continuam no recinto antigo e ganham o espaço quando a obra termina
+  if (opts.obra) { spend(s, 'construcao', c.cost); const o = iniciarObra(s, { tipo: 'ampliar', hab: h.id, cells: [...c.cells], dur: duracaoAmpliar(c.cells.length), custo: c.cost, nome: h.name }, opts.now); log(s, `Ampliação do ${h.name} em obra (+${c.cells.length} blocos).`, 'info'); return R(true, '', { hab: h, obra: o }); }
+  paintBiome(s, c.cells, h.biome); h.cells = [...h.cells, ...c.cells];
   spend(s, 'construcao', c.cost); reshape(s, h);
   log(s, `${h.name} ampliado em ${c.cells.length} blocos.`, 'bom');
   return R(true, '', { hab: h });
@@ -178,6 +187,7 @@ export function expandHabitat(s, x0, y0, x1, y1) {
 export function checkShrink(s, x0, y0, x1, y1) {
   const r = norm(x0, y0, x1, y1), h = habNear(s, r);
   if (!h) return R(false, 'Desenhe sobre a parte do habitat que quer tirar.', { rect: r });
+  if (obrasDoHab(s, h.id).length) return R(false, `O ${h.name} tem obra em andamento. Espere terminar para recortar.`, { rect: r, hab: h });
   if (content(s).fences[h.fence]?.fosso) return R(false, 'Ilhas não podem ser recortadas.', { rect: r, hab: h });
   const keep = new Set([idx(...h.gateIn), idx(...h.feed), idx(...h.water)]);
   // 1.7.2d: a toca perde o vidro ou a entrada se o recorte pegar os 2 blocos da frente deles, então esses também ficam de fora
@@ -255,13 +265,13 @@ export function checkToca(s, tx0, ty0, opts = {}) {
     if (!h) return R(false, 'Toque dentro de um habitat.', { rect: { x: tx0, y: ty0, w: 2, h: 2 } });
     if (mv && mv.hab !== h.id) return R(false, 'Mova só dentro do mesmo habitat.', { rect: r });
     const W = walkSet(h), meu = (x, y) => mv && x >= mv.tx && x < mv.tx + 2 && y >= mv.ty && y < mv.ty + 2;
-    const livre = (x, y) => { if (!inMap(x, y)) return false; const i = idx(x, y); return W.has(i) && s.terrain[i] !== 'w' && !s._occ.fac[i] && (!s._occ.toca[i] || meu(x, y)); };
+    const livre = (x, y) => { if (!inMap(x, y)) return false; const i = idx(x, y); return W.has(i) && s.terrain[i] !== 'w' && !s._occ.fac[i] && !naObra(s, i) && (!s._occ.toca[i] || meu(x, y)); };
     let msg = '';
     for (const [x, y] of tocaCells(t)) {
       const i = inMap(x, y) ? idx(x, y) : -1;
       if (i < 0 || !W.has(i)) { msg = cellSet(h).has(i) ? 'Esse é o fosso da ilha.' : 'A toca (2 x 2 blocos) precisa caber inteira dentro do habitat.'; break; }
       if (s.terrain[i] === 'w') { msg = 'Não dá para pôr a toca na água.'; break; }
-      if ((s._occ.obj[i] && !meu(x, y)) || s._occ.fac[i] || isPathT(s.terrain[i])) { msg = 'Já há algo aqui (planta ou outra toca). Escolha 2 x 2 blocos livres.'; break; }
+      if ((s._occ.obj[i] && !meu(x, y)) || s._occ.fac[i] || naObra(s, i) || isPathT(s.terrain[i])) { msg = 'Já há algo aqui (planta ou outra toca). Escolha 2 x 2 blocos livres.'; break; }
       if ((h.gateIn[0] === x && h.gateIn[1] === y) || (h.feed[0] === x && h.feed[1] === y) || (h.water[0] === x && h.water[1] === y)) { msg = 'Deixe o portão, o comedouro e o bebedouro livres.'; break; }
     }
     if (!msg && s.height) { let lo = 1e9, hi = -1e9; for (let y = ty; y <= ty + 2; y++) for (let x = tx; x <= tx + 2; x++) { const v = s.height[ci(x, y)]; lo = Math.min(lo, v); hi = Math.max(hi, v); } if (hi - lo > 0.8) msg = 'Terreno muito inclinado. Use Relevo > Nivelar antes.'; }
@@ -269,15 +279,21 @@ export function checkToca(s, tx0, ty0, opts = {}) {
     if (!msg && !L) msg = 'A toca precisa de 2 lados livres dentro do habitat: um para o vidro e um para a entrada do animal.';
     if (msg) { last = R(false, msg, { rect: r, hab: h }); continue; }
     const extra = { rect: r, hab: h, tx, ty, dir: L.dir, porta: L.porta, cost: mv ? 0 : E.custo };
-    if (!mv && tocasDe(s, h.id).length >= TOCA_MAX) return R(false, `Máximo de ${TOCA_MAX} tocas por habitat.`, extra);
+    if (!mv && tocasDe(s, h.id).length + tocasEmObra(s, h.id).length >= TOCA_MAX) return R(false, `Máximo de ${TOCA_MAX} tocas por habitat.`, extra);
     if (!mv && s.money < E.custo) return R(false, `Custa R$ ${E.custo.toLocaleString('pt-BR')}. Dinheiro insuficiente.`, extra);
     return R(true, `R$ ${E.custo.toLocaleString('pt-BR')}`, extra);
   }
   return last;
 }
-export function placeToca(s, tx, ty, modelo) {
+export function placeToca(s, tx, ty, modelo, opts = {}) {
   const c = checkToca(s, tx, ty); if (!c.ok) return c;
   const E = content(s).estruturas.toca, h = c.hab, m = modelo && E.modelos[modelo] ? modelo : modeloDoBioma(s, h.biome);
+  // 1.8.3: toca nova é uma obra curta (3 min); dentro de um recinto que ainda está em obra ela sai junto com ele
+  if (opts.obra && !h.obra) {
+    spend(s, 'construcao', E.custo);
+    const o = iniciarObra(s, { tipo: 'toca', hab: h.id, toca: { tx: c.tx, ty: c.ty, dir: c.dir, porta: c.porta, modelo: m, pack: E.pack }, dur: duracaoToca(), custo: E.custo, nome: `${E.modelos[m]?.nome || E.nome} (${h.name})` }, opts.now);
+    touch(h); return R(true, `${E.modelos[m]?.nome || E.nome} em obra no ${h.name} (3 min).`, { obra: o, hab: h });
+  }
   const t = { id: uid(s), hab: h.id, tx: c.tx, ty: c.ty, dir: c.dir, porta: c.porta, modelo: m, fechada: false, pack: E.pack };
   (s.tocas ||= []).push(t); spend(s, 'construcao', E.custo); touch(h); rebuildOcc(s);
   return R(true, `${E.modelos[m]?.nome || E.nome} construída no ${h.name}.`, { toca: t, hab: h });
@@ -288,6 +304,7 @@ export function paintTerrain(s, tx, ty, t) {
   const i = idx(tx, ty), isP = isPathT(t);
   if (s.terrain[i] === t) return R(true);
   if (s._occ.fac[i]) return R(false, 'Há uma instalação aqui.');
+  if (naObra(s, i)) return R(false, 'Há uma obra aqui. Espere ficar pronta.');
   if (t === 'w' && s._occ.toca?.[i]) return R(false, 'Há uma toca aqui. Mova a toca antes.');
   const hid = s._occ.hab[i];
   if (isP && hid) return R(false, 'Caminhos não podem ficar dentro de habitats.');
@@ -326,6 +343,7 @@ export function placePlant(s, tx, ty, type) {
   if (!inMap(tx, ty) || !inArea(s, tx, ty)) return R(false, 'Fora da área do parque.');
   const i = idx(tx, ty);
   if (s._occ.fac[i] || s._occ.obj[i]) return R(false, 'Já há algo aqui.');
+  if (naObra(s, i)) return R(false, 'Há uma obra aqui. Espere ficar pronta.');
   if (s.terrain[i] === 'w' || isPathT(s.terrain[i])) return R(false, 'Não dá para plantar na água nem no caminho.');
   for (const h of s.habitats) if ((tx === h.gateIn[0] && ty === h.gateIn[1]) || (tx === h.feed[0] && ty === h.feed[1]) || (tx === h.water[0] && ty === h.water[1])) return R(false, 'Deixe o portão, o comedouro e o bebedouro livres.');
   if (s.money < P.custo) return R(false, 'Dinheiro insuficiente.');
@@ -338,21 +356,24 @@ export function checkFacility(s, type, tx, ty) {
   for (let y = ty; y < ty + D.h; y++) for (let x = tx; x < tx + D.w; x++) {
     if (D.zona === 'lote' ? !inLote(x, y) : (!inMap(x, y) || !inArea(s, x, y))) return R(false, D.zona === 'lote' ? 'O estacionamento fica nos lotes do outro lado da rua da frente.' : 'Fora da área do parque.');
     const i = idx(x, y);
-    if (s._occ.hab[i] || s._occ.fac[i]) return R(false, 'Espaço ocupado.');
+    if (s._occ.hab[i] || s._occ.fac[i] || naObra(s, i)) return R(false, 'Espaço ocupado.');
     if (isPathT(s.terrain[i])) return R(false, 'Não construa em cima do caminho; coloque ao lado.');
     if (s.terrain[i] === 'w') return R(false, 'Não dá para construir na água.');
   }
   if (!D.semCaminho && !accessTile(s, { type, tx, ty })) return R(false, 'Precisa ficar ao lado de um caminho.');
   if (s.height) { let lo = 1e9, hi = -1e9; for (let y = ty; y <= ty + D.h; y++) for (let x = tx; x <= tx + D.w; x++) { const v = s.height[ci(x, y)]; lo = Math.min(lo, v); hi = Math.max(hi, v); } if (hi - lo > 0.6) return R(false, 'Terreno muito inclinado. Use Relevo > Nivelar antes.'); }
   if (type === 'placa' && !s.habitats.some(h => tx >= h.x - 3 && tx <= h.x + h.w + 2 && ty >= h.y - 3 && ty <= h.y + h.h + 2)) return R(false, 'A placa precisa ficar perto de um habitat.');
-  if (type === 'mesas' && !s.facilities.some(f => f.type === 'lanchonete' && f.tx >= tx - 5 && f.tx <= tx + D.w + 4 && f.ty >= ty - 5 && f.ty <= ty + D.h + 4)) return R(false, 'A área de mesas precisa ficar ao lado de uma lanchonete (até 4 blocos de distância).');
+  if (type === 'mesas' && ![...s.facilities, ...listaObras(s).filter(o => o.tipo === 'fac').map(o => o.fac)].some(f => f.type === 'lanchonete' && f.tx >= tx - 5 && f.tx <= tx + D.w + 4 && f.ty >= ty - 5 && f.ty <= ty + D.h + 4)) return R(false, 'A área de mesas precisa ficar ao lado de uma lanchonete (até 4 blocos de distância).');
   if (s.money < D.custo) return R(false, 'Dinheiro insuficiente.');
   return R(true);
 }
-export function placeFacility(s, type, tx, ty) {
+export function placeFacility(s, type, tx, ty, opts = {}) {
   const c = checkFacility(s, type, tx, ty); if (!c.ok) return c;
   const D = content(s).facilities[type];
   s.objects = s.objects.filter(o => !(o.tx >= tx && o.tx < tx + D.w && o.ty >= ty && o.ty < ty + D.h));
+  // 1.8.3: prédios levam de 3 a 12 min (bancos e placas continuam instantâneos)
+  const dur = opts.obra ? duracaoFac(s, type) : 0;
+  if (dur > 0) { spend(s, 'construcao', D.custo); const o = iniciarObra(s, { tipo: 'fac', fac: { id: uid(s), type, tx, ty, dirty: 0, pack: D.pack }, dur, custo: D.custo, nome: D.nome }, opts.now); log(s, `${D.nome} em obra.`, 'info'); return R(true, '', { obra: o }); }
   const f = { id: uid(s), type, tx, ty, dirty: 0, pack: D.pack };
   s.facilities.push(f); rebuildOcc(s);
   f.dir = orientFacility(s, f, D); // entrada sempre voltada para o caminho
@@ -367,6 +388,8 @@ export function buyAnimal(s, sp, tx, ty) {
   if (!hid) return R(false, 'Toque dentro de um habitat.');
   if (s.money < S.custo) return R(false, 'Dinheiro insuficiente.');
   const h = habById(s, hid);
+  // 1.8.3: recinto em obra: o animal espera a caminho e chega de caminhão quando a obra terminar
+  if (h.obra) { const e = encomendar(s, sp, h, [h.obra]); spend(s, 'animais', S.custo); log(s, `${S.nome} (${e.sex === 'M' ? 'macho' : 'fêmea'}) a caminho do ${h.name}: chega quando a obra terminar.`, 'bom'); return R(true, 'A caminho!', { aCaminho: e }); }
   const a = newAnimal(s, sp, h, true);
   const same = s.animals.filter(b => b.hab === h.id && b.sp === sp);
   if (same.length) a.sex = same.filter(b => b.sex === 'M').length > same.filter(b => b.sex === 'F').length ? 'F' : 'M';
@@ -385,6 +408,9 @@ export function sellAnimal(s, id) {
 export function demolish(s, tx, ty) {
   if (!inMap(tx, ty)) return R(false);
   const i = idx(tx, ty), C = content(s);
+  // 1.8.3: obra de prédio, toca ou ampliação: cancela e devolve tudo
+  const ob = s._occ.obra?.[i] && obraById(s, s._occ.obra[i]);
+  if (ob) return cancelarObra(s, ob.id);
   const fid = s._occ.fac[i];
   if (fid) { const f = s.facilities.find(f => f.id === fid); const D = C.facilities[f.type];
     if (D?.fixo) return R(false, 'A entrada não pode ser demolida.');
@@ -403,7 +429,9 @@ export function demolish(s, tx, ty) {
     if (s.animals.some(a => a.hab === hid || a.habOrig === hid)) return R(false, 'Venda ou remova os animais desse habitat antes (inclusive os internados na clínica).');
     if (s.staff.some(st => st.inHab === hid)) for (const st of s.staff) if (st.inHab === hid) { st.inHab = 0; st.task = null; }
     s.tocas = (s.tocas || []).filter(t => t.hab !== hid);
+    const oh = obraDoHab(s, h); limparDoHab(s, hid);
     s.habitats.splice(s.habitats.indexOf(h), 1); s.alerts = s.alerts.filter(a => a.target !== hid || a.type === 'doenca' || a.type === 'fuga');
+    if (oh) { earn(s, 'metas', Math.round(oh.custo || 0)); rebuildOcc(s); return R(true, `Obra cancelada: ${h.name} desfeito e dinheiro devolvido.`); }
     earn(s, 'metas', Math.round(habitatCostRef(s, h) * 0.3)); rebuildOcc(s); return R(true, 'Habitat demolido.'); }
   if (isPathT(s.terrain[i])) { s.terrain[i] = 'g'; delete s.litter[i]; removeFurnAt(s, tx, ty); rebuildOcc(s); reorientAround(s, tx, ty); return R(true, 'Caminho removido.'); }
   return R(false, 'Nada para demolir aqui.');
@@ -490,3 +518,13 @@ export function limparRuaDaFrente(s) {
   if (itens.length || total) log(s, `Rua da frente: o que estava abaixo do portão foi retirado e R$ ${total.toLocaleString('pt-BR')} foram devolvidos (${itens.length ? itens.slice(0, 6).join(', ') + (itens.length > 6 ? '…' : '') : 'caminhos e plantas'}).`, 'info');
   return { total, itens };
 }
+
+// 1.8.3: fim da obra de ampliação: junta os blocos reservados ao habitat (só os que continuam livres e ligados a ele)
+ganchos.ampliar = (s, h, cells) => {
+  const own = cellSet(h), ok = new Set(cells.filter(i => !own.has(i) && !s._occ.hab[i] && !s._occ.fac[i] && !isPathT(s.terrain[i])));
+  const add = [], q = [...own], seen = new Set(own);
+  for (let k = 0; k < q.length; k++) { const i = q[k], x = i % MAP, y = (i / MAP) | 0;
+    for (const [dx, dy] of Object.values(DIRS)) { const nx = x + dx, ny = y + dy, ni = idx(nx, ny); if (inMap(nx, ny) && ok.has(ni) && !seen.has(ni)) { seen.add(ni); q.push(ni); add.push(ni); } } }
+  if (!add.length) return;
+  paintBiome(s, add, h.biome); h.cells = [...ensureCells(h), ...add]; reshape(s, h); touch(h);
+};

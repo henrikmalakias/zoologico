@@ -248,10 +248,16 @@ export function buildFacility(kit, type, D) {
   const sign = (text, bg, y, z, sw = 2.2) => { const t = kit.tex('lbl' + text + bg, () => labelCanvas(text, bg)); const m = kit.mesh(kit.box(sw, sw / 4, 0.08), kit.mat('#ffffff', { map: t }), false); m.position.set(0, y, z); g.add(m); return m; };
   switch (type) {
     case 'entrada': {
-      for (const sx of [-1, 1]) add(kit.box(0.6, 4, 0.6), kit.mat('#7a5a3a'), sx * 1.7, 2, 0);
-      add(kit.box(4.2, 0.6, 0.7), kit.mat('#5b3f26'), 0, 4.2, 0);
-      sign('ZOOLÓGICO', '#2e6b54', 4.2, 0.4, 3.6);
-      add(kit.box(1.2, 2.2, 1.2), kit.mat('#d8c9a8'), 2.9, 1.1, 0.4);
+      // 1.8.3: um portão só (o do muro da rua). Aqui ficam as catracas logo atrás dele e a bilheteria ao lado
+      const metal = kit.mat('#9aa3ab', { metal: 0.6, rough: 0.35 }), inox = kit.mat('#c9d0d6', { metal: 0.7, rough: 0.25 }), cream = kit.mat('#f1e3c0'), wood = kit.mat('#8a5a32'), green = kit.mat('#2e6b54');
+      for (const x of [-1.75, 0, 1.75]) { add(kit.box(0.3, 1.0, 0.7), metal, x, 0.5, 0.55); add(kit.box(0.34, 0.06, 0.74), inox, x, 1.02, 0.55); }
+      for (const x of [-0.9, 0.9]) for (const k of [0, 1, 2]) { const a = add(kit.cyl(0.03, 0.03, 0.62), inox, x + (x < 0 ? 0.55 : -0.55) * 0.5, 0.85, 0.55); a.rotation.z = Math.PI / 2; a.rotation.x = k * 2.09; }
+      add(kit.box(4.2, 0.05, 1.2), kit.mat('#9a978f'), 0, 0.025, 0.55);
+      // bilheteria: guarita creme com telhado de madeira, guichê e placa
+      add(kit.box(1.7, 2.3, 1.5), cream, 3.15, 1.15, 0.35); add(kit.box(1.7, 0.5, 1.52), kit.mat('#a8552f'), 3.15, 0.25, 0.35);
+      add(kit.box(2.1, 0.16, 1.9), wood, 3.15, 2.4, 0.35); add(kit.box(1.9, 0.12, 1.7), green, 3.15, 2.53, 0.35);
+      add(kit.box(0.9, 0.6, 0.05), kit.mat('#2a3b48', { rough: 0.1, metal: 0.3 }), 3.15, 1.45, 1.11); add(kit.box(1.0, 0.07, 0.3), wood, 3.15, 1.12, 1.2);
+      { const t2 = kit.tex('lblBILHETERIA#2e6b54', () => labelCanvas('BILHETERIA', '#2e6b54')); const m = kit.mesh(kit.box(1.5, 0.36, 0.05), kit.mat('#ffffff', { map: t2 }), false); m.position.set(3.15, 2.0, 1.12); g.add(m); }
       break; }
     case 'lanchonete': {
       const body = kit.mat('#f4e6c8'), band = kit.mat('#d65a28'), dark = kit.mat('#2a2220'), wood = kit.mat('#8a5a32');

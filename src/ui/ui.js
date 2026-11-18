@@ -18,6 +18,7 @@ import { arrivalRate } from '../sim/visitors.js';
 import { TURNOS, NOITE_ROLES, salarioDia, situacao, trocarTurno, horarioTxt, pausasTxt, cobertura, turnoSugerido, emServico, ocupacaoCentro, CAP_CENTRO, turnoDe, EXTRA_MULT, VOLTA_EXTRA } from '../sim/turnos.js';
 import { vagasTotal } from '../sim/rua.js';
 import { planoRapido, construirRapido, lotacao, maisUm, custoMaisUm, planoAmpliar, ampliarRapido, blocosParaMais, especiesCompativeis, planoOutraEspecie, outraEspecie, necessidade, nomePlural } from '../sim/rapido.js';
+import * as OB from '../sim/obras.js';
 import { NIVEIS, nivelDe, progresso, emExperiencia, rescisao, demitir, entrevistar, ENTREVISTA, cursosPara, matricular, CURSOS, pedidos, aceitarPedido, negociarPedido, recusarPedido, ajustaSalario, EXP_DIAS, RESCISAO_DIAS, PEDIDO_ESPERA } from '../sim/carreira.js';
 
 const h = (tag, attrs = {}, ...kids) => {
@@ -30,6 +31,7 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 const pct = v => Math.round(v * 100) + '%';
+const minObra = ms => { const m = Math.round(ms / 60e3); return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}` : `${m} min`; };
 const meter = (v, invert) => { const x = invert ? 1 - v : v; return h('div', { class: 'meter' + (x < 0.3 ? ' bad' : x < 0.55 ? ' warn' : '') }, h('i', { style: `width:${clamp(v) * 100}%` })); };
 const starStr = n => '★'.repeat(n) + '☆'.repeat(5 - n);
 const ICON = { doenca: '🩺', fome: '🍖', cerca: '🚧', brecha: '🧱', portao: '🚪', fuga: '🏃', ferido: '🤕' };
@@ -280,15 +282,18 @@ export class UI {
     const S = C.species[q.sp], N = p.nec, cap = Math.min(N.max, Math.floor(((r.w * r.h - N.agua) + 0.5 * N.agua) / (S.espaco || 10)));
     const nomeN = n => n === 1 ? S.nome.toLowerCase() : nomePlural(s, q.sp).toLowerCase();
     const txt = h('span', {}, h('b', {}, `${EMOJI_SP[q.sp] || S.emoji || '🐾'} ${N.min} ${nomeN(N.min)}`), ` · cabe até ${Math.max(N.min, cap)} · `, h('b', {}, money(p.total)),
-      h('small', { style: 'display:block;opacity:.75' }, `Recinto ${money(p.custos.recinto)} + animais ${money(p.custos.animais)} + caminho e enfeites ${money(p.custos.caminho)}${p.semLigacao ? ' · ⚠ caminho sem ligação com a entrada' : ''}`));
+      h('small', { style: 'display:block;opacity:.75' }, `Recinto ${money(p.custos.recinto)} + animais ${money(p.custos.animais)} + caminho e enfeites ${money(p.custos.caminho)}${p.semLigacao ? ' · ⚠ caminho sem ligação com a entrada' : ''}`),
+      h('small', { style: 'display:block;opacity:.75' }, `🚧 Obra de ${minObra(OB.duracaoHab(r.w * r.h))}: os animais chegam de caminhão quando ficar pronta.`));
     const btn = (lab, cls, fn) => h('button', { class: 'btn sm ' + cls, onclick: fn }, lab);
     const fim = () => { this.quick = null; this.quickPlan = null; this.hideConfirm(); this.g.world.hidePreview(); };
     const construir = folga => () => {
       this.g.snapshot('recinto rápido');
-      const b = construirRapido(s, q.sp, q.tx, q.ty, { dims: folga ? q.dims : null, folga });
+      const b = construirRapido(s, q.sp, q.tx, q.ty, { dims: folga ? q.dims : null, folga, obra: true });
       fim();
       if (!b.ok) return this.toast(b.msg, 'ruim');
-      sound.cash(); this.toast(`${b.hab.name} pronto! ${b.animais.length} ${nomeN(b.animais.length)} ${b.animais.length === 1 ? 'chegou' : 'chegaram'}.`, 'bom');
+      const n = b.animais.length + (b.aCaminho?.length || 0);
+      sound.cash(); this.toast(b.obra ? `🚧 Obra começou! ${b.hab.name} fica pronto em ${minObra(b.obra.dur)}. ${n} ${nomeN(n)} a caminho.` : `${b.hab.name} pronto! ${n} ${nomeN(n)} ${n === 1 ? 'chegou' : 'chegaram'}.`, 'bom');
+      if (b.obra) this.select('hab', b.hab.id);
     };
     const bts = p.ok ? [q.dims[0] !== q.dims[1] ? btn('🔄 Girar', 'sec', () => { q.dims = [q.dims[1], q.dims[0]]; this.showQuick(); }) : null, btn('✅ Construir', '', construir(true))]
       : [p.menor ? btn(`Só ${N.min}: ${money(p.menor.total)}`, '', construir(false)) : h('span', { class: 'neg' }, 'Falta dinheiro')];
@@ -333,16 +338,16 @@ export class UI {
       if (mode !== 'novo') {
         this.askConfirm(c.msg, () => {
           this.g.snapshot(mode === 'ampliar' ? 'ampliação' : 'recorte');
-          const r = mode === 'ampliar' ? expandHabitat(this.s, A.tx, A.ty, B.tx, B.ty) : shrinkHabitat(this.s, A.tx, A.ty, B.tx, B.ty);
-          if (!r.ok) this.toast(r.msg, 'ruim'); else { if (mode === 'ampliar') sound.cash(); this.toast(mode === 'ampliar' ? 'Habitat ampliado! A cerca foi refeita no novo contorno.' : 'Habitat recortado.', 'bom'); }
+          const r = mode === 'ampliar' ? expandHabitat(this.s, A.tx, A.ty, B.tx, B.ty, { obra: true }) : shrinkHabitat(this.s, A.tx, A.ty, B.tx, B.ty);
+          if (!r.ok) this.toast(r.msg, 'ruim'); else { if (mode === 'ampliar') sound.cash(); this.toast(mode === 'ampliar' ? (r.obra ? `🚧 Ampliação em obra: fica pronta em ${minObra(r.obra.dur)}. Os animais continuam no recinto e ganham o espaço no fim.` : 'Habitat ampliado! A cerca foi refeita no novo contorno.') : 'Habitat recortado.', 'bom'); }
           this.g.world.hidePreview();
         }, () => this.g.world.hidePreview());
         return;
       }
-      this.askConfirm(`${C.biomes[this.opts.biome].nome} · ${c.cells.length} blocos · ${C.fences[this.opts.fence].nome} · ${c.msg}`, () => {
+      this.askConfirm(`${C.biomes[this.opts.biome].nome} · ${c.cells.length} blocos · ${C.fences[this.opts.fence].nome} · ${c.msg} · 🚧 obra de ${minObra(OB.duracaoHab(c.cells.length))}`, () => {
         this.g.snapshot('habitat');
-        const r = placeHabitat(this.s, A.tx, A.ty, B.tx, B.ty, this.opts.biome, this.opts.fence);
-        if (!r.ok) this.toast(r.msg, 'ruim'); else { sound.cash(); this.cat = 'planta'; this.tool = 'planta'; this.opts.plant = C.biomes[this.opts.biome].plantas[0]; this.renderDrawer(); this.toast('Habitat pronto! Agora coloque plantas do bioma e depois compre animais.', 'bom'); }
+        const r = placeHabitat(this.s, A.tx, A.ty, B.tx, B.ty, this.opts.biome, this.opts.fence, { obra: true });
+        if (!r.ok) this.toast(r.msg, 'ruim'); else { sound.cash(); this.cat = 'planta'; this.tool = 'planta'; this.opts.plant = C.biomes[this.opts.biome].plantas[0]; this.renderDrawer(); this.toast(r.obra ? `🚧 Obra começou: fica pronta em ${minObra(r.obra.dur)}. Já dá para pôr plantas e comprar animais (eles esperam a caminho).` : 'Habitat pronto! Agora coloque plantas do bioma e depois compre animais.', 'bom'); }
         this.g.world.hidePreview();
       }, () => this.g.world.hidePreview());
       return;
@@ -372,7 +377,7 @@ export class UI {
         this.g.world.showPreview(r.x, r.y, 2, 2, c.ok, 3.6);
         if (!c.ok) { this.toast(c.msg, 'ruim'); return; }
         const E = C.estruturas.toca, nome = E.modelos[modeloDoBioma(s, c.hab.biome)]?.nome || E.nome;
-        this.askConfirm(`${nome} no ${c.hab.name} · ${c.msg}`, () => { this.g.snapshot('toca'); const p = placeToca(s, t.tx, t.ty); this.toast(p.msg, p.ok ? 'bom' : 'ruim'); if (p.ok) sound.cash(); this.g.world.hidePreview(); }, () => this.g.world.hidePreview());
+        this.askConfirm(`${nome} no ${c.hab.name} · ${c.msg}`, () => { this.g.snapshot('toca'); const p = placeToca(s, t.tx, t.ty, null, { obra: true }); this.toast(p.msg, p.ok ? 'bom' : 'ruim'); if (p.ok) sound.cash(); this.g.world.hidePreview(); }, () => this.g.world.hidePreview());
         return;
       }
       if (this.tool === 'habitat') { this.toast('Arraste para desenhar o habitat.', 'ruim'); return; }
@@ -380,10 +385,11 @@ export class UI {
         const D = C.facilities[this.opts.fac], c = checkFacility(s, this.opts.fac, t.tx, t.ty);
         this.g.world.showPreview(t.tx, t.ty, D.w, D.h, c.ok, 1.5);
         if (!c.ok) { this.toast(c.msg, 'ruim'); return; }
-        this.askConfirm(`${D.nome} · R$ ${D.custo.toLocaleString('pt-BR')}`, () => { this.g.snapshot(D.nome.toLowerCase()); const r = placeFacility(s, this.opts.fac, t.tx, t.ty); if (!r.ok) this.toast(r.msg, 'ruim'); else sound.cash(); this.g.world.hidePreview(); }, () => this.g.world.hidePreview());
+        const dur = OB.duracaoFac(s, this.opts.fac);
+        this.askConfirm(`${D.nome} · R$ ${D.custo.toLocaleString('pt-BR')}${dur ? ` · 🚧 obra de ${minObra(dur)}` : ''}`, () => { this.g.snapshot(D.nome.toLowerCase()); const r = placeFacility(s, this.opts.fac, t.tx, t.ty, { obra: true }); if (!r.ok) this.toast(r.msg, 'ruim'); else { sound.cash(); if (r.obra) this.toast(`🚧 Obra começou: ${D.nome} fica pronta em ${minObra(r.obra.dur)}.`, 'bom'); } this.g.world.hidePreview(); }, () => this.g.world.hidePreview());
         return;
       }
-      if (this.tool === 'animal') { this.g.snapshot('compra de ' + C.species[this.opts.sp].nome.toLowerCase()); const r = buyAnimal(s, this.opts.sp, t.tx, t.ty); if (!r.ok) this.toast(r.msg, 'ruim'); else sound.cash(); return; }
+      if (this.tool === 'animal') { this.g.snapshot('compra de ' + C.species[this.opts.sp].nome.toLowerCase()); const r = buyAnimal(s, this.opts.sp, t.tx, t.ty); if (!r.ok) this.toast(r.msg, 'ruim'); else { sound.cash(); if (r.aCaminho) this.toast(`🚚 ${C.species[this.opts.sp].nome} a caminho: chega de caminhão quando a obra terminar.`, 'bom'); } return; }
       if (this.tool === 'demolir') {
         this.g.world.showPreview(t.tx, t.ty, 1, 1, false, 0.5);
         this.askConfirm('Demolir o que está aqui?', () => { this.g.snapshot('demolição'); const r = demolish(s, t.tx, t.ty); this.toast(r.msg || (r.ok ? 'Removido.' : 'Nada aqui.'), r.ok ? 'bom' : 'ruim'); this.g.world.hidePreview(); }, () => this.g.world.hidePreview());
@@ -397,6 +403,7 @@ export class UI {
     }
     const e = this.g.world.pickEntity(cx, cy);
     if (e?.kind === 'toca') { const tc = tocaById(s, e.id), in1 = tc && ocupantes(s, tc).find(a => a.st === 'in_toca'); if (in1) this.select('animal', in1.id); else if (tc) this.select('hab', tc.hab); return; } // toca: mostra quem está dentro (ou o habitat)
+    if (e?.kind === 'obra') { const o = OB.obraById(s, e.id); if (!o) return; if (o.hab && o.tipo !== 'fac') this.select('hab', o.hab); else this.select('obra', o.id); return; }
     if (e) { this.select(e.kind, e.id); return; }
     const t = this.tileAt(cx, cy);
     if (t && s._occ.hab[idx(t.tx, t.ty)]) { this.select('hab', s._occ.hab[idx(t.tx, t.ty)]); return; }
@@ -527,15 +534,17 @@ export class UI {
         presos || sed ? h('div', { class: 'muted' }, `🔒 ${presos ? presos + ' recolhido(s) nas tocas' : ''}${presos && sed ? ' · ' : ''}${sed ? sed + ' sedado(s)' : ''} enquanto a equipe trabalha.`) : null,
         nInt ? h('div', { class: 'muted' }, `🏥 ${nInt} internado(s) na clínica.`) : null,
         h('div', { style: 'margin-top:6px' }, h('button', { class: 'btn sm', onclick: () => { this.closeSheet(); this.g.visitar(hb); } }, '🚪 Visitar')));
+      const obH = OB.obrasDoHab(s, hb.id).sort((a, b) => (a.tipo === 'hab' ? -1 : 0) - (b.tipo === 'hab' ? -1 : 0)), vem = OB.aCaminhoDe(s, hb.id);
       body = [h('h3', {}, hb.name), h('div', { class: 'muted' }, `${C.biomes[hb.biome].nome} · ${hb.cells.length} blocos · ${F.nome} · ${F.fosso ? 'ponte' : 'portão'} ${hb.gateOpen ? 'ABERTO' : 'fechado'}`),
+        ...obH.map(o => this.obraCard(o)), vem.length ? this.aCaminhoCard(hb, vem) : null,
         hb.breaches?.length ? h('div', { class: 'card', style: 'border-left:4px solid #e53935' }, `🧱 Cerca rompida em ${hb.breaches.length} ponto(s). Envie um segurança!`) : null,
-        h('div', { class: 'kv' }, ...[['Comida', hb.food], ['Água', hb.waterLvl], ['Limpeza', hb.clean], ['Cerca', hb.fenceHp]].flatMap(([n, v]) => [n, meter(v), pct(v)])),
+        hb.obra ? null : h('div', { class: 'kv' }, ...[['Comida', hb.food], ['Água', hb.waterLvl], ['Limpeza', hb.clean], ['Cerca', hb.fenceHp]].flatMap(([n, v]) => [n, meter(v), pct(v)])),
         this.lotacaoCard(hb),
-        visita,
-        ...(() => { const sg = this.habSuggestions(hb); return sg.length ? [h('h3', { style: 'margin-top:6px' }, '💡 Sugestões'), ...sg.map(([t, lab, fn, bad]) => h('div', { class: 'row' }, h('span', { class: bad ? 'neg' : '' }, t), h('button', { class: 'btn sm', onclick: fn }, lab)))] : [h('div', { class: 'muted', style: 'margin:6px 0' }, '✅ Nenhuma melhoria pendente neste habitat.')]; })(),
+        hb.obra ? null : visita,
+        ...(hb.obra ? [] : (() => { const sg = this.habSuggestions(hb); return sg.length ? [h('h3', { style: 'margin-top:6px' }, '💡 Sugestões'), ...sg.map(([t, lab, fn, bad]) => h('div', { class: 'row' }, h('span', { class: bad ? 'neg' : '' }, t), h('button', { class: 'btn sm', onclick: fn }, lab)))] : [h('div', { class: 'muted', style: 'margin:6px 0' }, '✅ Nenhuma melhoria pendente neste habitat.')]; })()),
         ...(sps.length ? sps.map(sp => { const su = suitability(s, hb, sp); return h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, `${C.species[sp].nome} (${an.filter(a => a.sp === sp).length})`), h('span', {}, 'Adequação ' + pct(su.total))),
             h('div', {}, ...Object.entries(su.parts).map(([k, v]) => h('span', { class: 'tag ' + (v >= 0.95 ? 'bom' : v < 0.6 ? 'ruim' : '') }, `${v >= 0.95 ? '✓' : '✗'} ${LBL[k]} ${v < 0.95 ? pct(v) : ''}`)))); })
-          : [h('div', { class: 'card' }, 'Vazio. Coloque plantas do bioma e compre animais em Construir.')]),
+          : hb.obra ? [] : [h('div', { class: 'card' }, 'Vazio. Coloque plantas do bioma e compre animais em Construir.')]),
         h('div', {}, h('button', { class: 'btn sec sm', onclick: () => this.askText('Nome do habitat', hb.name, n => { renameHabitat(s, hb.id, n); this.renderSheet(); }) }, 'Renomear'))];
     } else if (kind === 'staff') {
       const st = s.staff.find(x => x.id === id); if (!st) return this.closeSheet(); this.g.world.showSelection(st.x, st.z, 0.7);
@@ -552,34 +561,59 @@ export class UI {
           ...(cli.length ? cli.map(a => { const r = Math.max(0, a.intAte - s.clock.min); return h('div', { class: 'row', onclick: () => this.select('animal', a.id) }, `${a.name} (${C.species[a.sp]?.nome || '?'})`, h('span', { class: 'muted' }, `saúde ${pct(a.health)} · alta em ${Math.floor(r / 1440) ? Math.floor(r / 1440) + ' d ' : ''}${Math.floor((r % 1440) / 60)} h`)); }) : [h('div', { class: 'muted' }, 'Nenhum animal internado.')])) : null,
         f.type === 'entrada' ? h('div', {}, `Ingresso: ${money(s.ticket)} (ajuste em Gerência > Finanças)`) : h('div', { class: 'muted' }, `Manutenção: R$ ${D.manut}/dia`)];
     }
+    else if (kind === 'obra') {
+      const o = OB.obraById(s, id); if (!o) return this.closeSheet();
+      if (o.rect) { const c = tileToWorld(o.rect.x + o.rect.w / 2 - 0.5, o.rect.y + o.rect.h / 2 - 0.5); this.g.world.showSelection(c.x, c.z, Math.max(o.rect.w, o.rect.h) * 0.8); }
+      const D = o.fac ? C.facilities[o.fac.type] : null;
+      body = [h('h3', {}, `🚧 ${D?.nome || o.nome}`), D?.desc ? h('div', { class: 'muted' }, D.desc) : null, this.obraCard(o),
+        h('div', { class: 'muted' }, 'Enquanto a obra não termina, a área fica fechada para os visitantes e para a equipe. Ela continua mesmo com o jogo fechado.')];
+    }
     this.el.sheet.replaceChildren(close, ...body.filter(Boolean));
+  }
+  // 1.8.3: cartão da obra: barra de progresso, tempo que falta (minutos reais) e Terminar agora
+  obraCard(o) {
+    const s = this.s, now = Date.now(), pr = OB.progresso(o, now), falta = OB.faltaMs(o, now), preco = OB.precoTerminar(s, o, now);
+    const TIT = { hab: 'Recinto em obra', ampliar: `Ampliação em obra (+${o.cells?.length || 0} blocos)`, toca: 'Toca nova em obra', fac: 'Prédio em obra' };
+    const ETAPA = ['Fundação', 'Estrutura', 'Paredes e cerca', 'Acabamento'];
+    return h('div', { class: 'card obra' }, h('div', { class: 'top' }, h('b', {}, `🚧 ${TIT[o.tipo] || 'Obra'}`), h('span', { class: 'muted' }, `⏱ faltam ${OB.textoFalta(falta)}`)),
+      h('div', { class: 'kv' }, ETAPA[OB.etapa(o, now) - 1], meter(pr), pct(pr)),
+      h('div', { style: 'margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center' },
+        h('button', { class: 'btn sm', disabled: s.money < preco ? true : null, onclick: () => { const r = OB.terminarAgora(s, o.id, Date.now()); if (r.msg) this.toast(r.msg, r.ok ? 'conquista' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet(); } }, preco ? `⏩ Terminar agora · ${money(preco)}` : '⏩ Terminar agora · grátis!'),
+        s.obraGratis ? h('span', { class: 'muted' }, 'A primeira obra é por nossa conta.') : null));
+  }
+  aCaminhoCard(hb, vem) {
+    const s = this.s, C = content(s), por = {}; for (const e of vem) por[e.sp] = (por[e.sp] || 0) + 1;
+    const espera = vem.some(e => e.espera.length) ? 'Chegam de caminhão quando a obra terminar.' : 'Chegando…';
+    return h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, '🚚 A caminho'), h('span', { class: 'muted' }, `${vem.length} animal(is)`)),
+      h('div', {}, ...Object.entries(por).map(([sp, n]) => h('span', { class: 'tag' }, `${EMOJI_SP[sp] || C.species[sp]?.emoji || '🐾'} ${n} ${n === 1 ? (C.species[sp]?.nome || sp).toLowerCase() : nomePlural(s, sp).toLowerCase()}`))),
+      h('div', { class: 'muted' }, espera));
   }
   // 1.8.3: lotação de cada espécie com +1, Ampliar e + outra espécie (poucos toques, textos simples)
   lotacaoCard(hb) {
-    const s = this.s, C = content(s), I = habInfo(s, hb), sps = Object.keys(I.count).filter(k => C.species[k]);
+    const s = this.s, C = content(s), I = habInfo(s, hb), sps = [...new Set([...Object.keys(I.count), ...OB.aCaminhoDe(s, hb.id).map(e => e.sp)])].filter(k => C.species[k]);
     if (C.fences[hb.fence]?.fosso && !sps.length) return null;
     const btn = (lab, cls, fn, dis) => h('button', { class: 'btn sm ' + cls, onclick: fn, disabled: dis || null }, lab);
     const linhas = sps.map(sp => {
       const S = C.species[sp], L = lotacao(s, hb, sp), c1 = custoMaisUm(s, hb, sp);
       const acao = L.cheio === 'grupo' ? h('span', { class: 'tag bom' }, 'Grupo completo')
         : L.cheio === 'espaco' ? btn('↔ Ampliar', '', () => this.ampliarHab(hb, sp))
-        : btn(`+1 · ${money(c1)}`, '', () => { this.g.snapshot('+1 ' + S.nome.toLowerCase()); const r = maisUm(s, hb, sp); this.toast(r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet(); }, s.money < c1);
-      return h('div', { class: 'row' }, h('span', {}, `${EMOJI_SP[sp] || S.emoji || '🐾'} ${S.nome}: `, h('b', {}, `${L.n} de ${L.cap}`)), acao);
+        : btn(`+1 · ${money(c1)}`, '', () => { this.g.snapshot('+1 ' + S.nome.toLowerCase()); const r = maisUm(s, hb, sp, { obra: true }); this.toast(r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet(); }, s.money < c1);
+      return h('div', { class: 'row' }, h('span', {}, `${EMOJI_SP[sp] || S.emoji || '🐾'} ${S.nome}: `, h('b', {}, `${L.n} de ${L.cap}`), L.vem ? h('small', { class: 'muted' }, ` (${L.vem} a caminho)`) : null), acao);
     });
     const comp = especiesCompativeis(s, hb).filter(o => !o.motivo);
     return h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, '🐾 Lotação'), h('span', { class: 'muted' }, `${hb.cells.length} blocos`)),
       ...(linhas.length ? linhas : [h('div', { class: 'muted' }, 'Ninguém aqui ainda.')]),
       h('div', { style: 'margin-top:6px;display:flex;gap:6px;flex-wrap:wrap' },
-        sps.length && !C.fences[hb.fence]?.fosso && !sps.some(sp => lotacao(s, hb, sp).cheio === 'espaco') ? btn('↔ Ampliar', 'sec', () => this.ampliarHab(hb, sps[0])) : null,
-        comp.length ? btn(sps.length ? '➕ Outra espécie' : '➕ Trazer animais', sps.length ? 'sec' : '', () => this.outraEspecieModal(hb)) : null));
+        sps.length && !hb.obra && !OB.ampliacaoDe(s, hb.id) && !C.fences[hb.fence]?.fosso && !sps.some(sp => lotacao(s, hb, sp).cheio === 'espaco') ? btn('↔ Ampliar', 'sec', () => this.ampliarHab(hb, sps[0])) : null,
+        comp.length && !hb.obra && !OB.ampliacaoDe(s, hb.id) ? btn(sps.length ? '➕ Outra espécie' : '➕ Trazer animais', sps.length ? 'sec' : '', () => this.outraEspecieModal(hb)) : null));
   }
   ampliarHab(hb, sp) {
     const s = this.s, p = planoAmpliar(s, hb, blocosParaMais(s, hb, sp, 3));
     if (!p.ok) { this.toast(p.msg, 'ruim'); return; }
     if (p.rect) this.g.world.showPreview(p.rect.x, p.rect.y, p.rect.w, p.rect.h, true, 0.6);
-    this.askConfirm(`Ampliar o ${hb.name}: ${p.msg}`, () => {
-      this.g.snapshot('ampliação'); const r = ampliarRapido(s, hb, p.blocos); this.g.world.hidePreview();
-      this.toast(r.ok ? `${r.msg} Agora cabem ${lotacao(s, hb, sp).cap}.` : r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet();
+    this.askConfirm(`Ampliar o ${hb.name}: ${p.msg} · 🚧 obra de ${minObra(OB.duracaoAmpliar(p.blocos))}`, () => {
+      this.g.snapshot('ampliação'); const r = ampliarRapido(s, hb, p.blocos, { obra: true }); this.g.world.hidePreview();
+      this.toast(r.ok ? (r.obra ? `🚧 ${r.msg} Fica pronta em ${minObra(r.obra.dur)}; os animais continuam no recinto.` : `${r.msg} Agora cabem ${lotacao(s, hb, sp).cap}.`) : r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet();
     }, () => this.g.world.hidePreview());
   }
   outraEspecieModal(hb) {
@@ -589,7 +623,7 @@ export class UI {
       ...lista.map(o => { const pl = o.motivo ? null : planoOutraEspecie(s, hb, o.sp);
         return h('div', { class: 'card' }, h('div', { class: 'top' }, h('b', {}, `${EMOJI_SP[o.sp] || o.S.emoji || '🐾'} ${o.S.nome}`), h('span', { class: 'muted' }, `grupo de ${o.min}`)),
           h('div', { class: 'muted' }, o.motivo ? `Não dá: ${o.motivo}.` : pl.msg),
-          o.motivo ? null : h('button', { class: 'btn sm', disabled: pl.ok ? null : true, onclick: () => { this.closeModal(); this.g.snapshot('nova espécie'); const r = outraEspecie(s, hb, o.sp); this.toast(r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet(); } }, 'Trazer')); })));
+          o.motivo ? null : h('button', { class: 'btn sm', disabled: pl.ok ? null : true, onclick: () => { this.closeModal(); this.g.snapshot('nova espécie'); const r = outraEspecie(s, hb, o.sp, { obra: true }); this.toast(r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet(); } }, 'Trazer')); })));
   }
   personCard(p, full) {
     const s = this.s, C = content(s), isMgr = p.role === 'subgerente', T = isMgr ? TRACOS_GERENTE : TRACOS_EQUIPE;

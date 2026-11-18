@@ -13,6 +13,7 @@ import { spend } from './staff.js';
 import { addFurn, removeFurnAt, SIDES } from './furn.js';
 import { tocasDe, tocaVagas, TOCA_MAX, tocaCells, ladoTiles } from './tocas.js';
 import { edges, walkSet, cellSet, DIRS, cellXY, touch, ensureCells } from './habshape.js';
+import { encomendar, aCaminhoDe, tocasEmObra, ampliacaoDe } from './obras.js';
 
 const R = (ok, msg = '', extra = {}) => ({ ok, msg, ...extra });
 const BRL = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
@@ -67,7 +68,7 @@ function bloqueios(s) {
   const N = MAP + 1, dentro = new Int32Array(N * N), anel = new Int32Array(N * N), O = s._occ;
   for (let y = 0; y < MAP; y++) for (let x = 0; x < MAP; x++) {
     const i = idx(x, y), t = s.terrain[i];
-    const ruimAnel = !inArea(s, x, y) || O.hab[i] || O.fac[i] || O.toca?.[i] || t === 'w' || muroAt(x, y) ? 1 : 0;
+    const ruimAnel = !inArea(s, x, y) || O.hab[i] || O.fac[i] || O.toca?.[i] || O.obra?.[i] || t === 'w' || muroAt(x, y) ? 1 : 0;
     const ruim = ruimAnel || isPathT(t) ? 1 : 0;
     dentro[(y + 1) * N + x + 1] = ruim + dentro[y * N + x + 1] + dentro[(y + 1) * N + x] - dentro[y * N + x];
     anel[(y + 1) * N + x + 1] = ruimAnel + anel[y * N + x + 1] + anel[(y + 1) * N + x] - anel[y * N + x];
@@ -102,7 +103,7 @@ export function ligacao(s, anel, proibido) {
   if (melhor) return { tiles: [], liga: melhor };
   const prev = new Int32Array(MAP * MAP).fill(-2), q = [];
   for (const i of ring) { prev[i] = -1; q.push(i); }
-  const passa = (x, y) => { if (!inMap(x, y) || !inArea(s, x, y) || muroAt(x, y)) return false; const i = idx(x, y); return !s._occ.hab[i] && !s._occ.fac[i] && !s._occ.toca?.[i] && s.terrain[i] !== 'w' && !proibido.has(i); };
+  const passa = (x, y) => { if (!inMap(x, y) || !inArea(s, x, y) || muroAt(x, y)) return false; const i = idx(x, y); return !s._occ.hab[i] && !s._occ.fac[i] && !s._occ.toca?.[i] && !s._occ.obra?.[i] && s.terrain[i] !== 'w' && !proibido.has(i); };
   for (let k = 0; k < q.length; k++) {
     const i = q[k], [x, y] = cellXY(i);
     if (rede[i] && !ring.has(i)) {
@@ -192,7 +193,7 @@ function portaoParaCaminho(s, h, liga) {
 export function fazerLago(s, h, n, S) {
   if (n <= 0) return 0;
   const W = walkSet(h), set = cellSet(h), [gx, gy] = h.gateIn;
-  const livre = i => W.has(i) && s.terrain[i] !== 'w' && !s._occ.toca?.[i] && i !== idx(gx, gy) && i !== idx(...h.feed) && i !== idx(...h.water);
+  const livre = i => W.has(i) && s.terrain[i] !== 'w' && !s._occ.toca?.[i] && !s._occ.obra?.[i] && i !== idx(gx, gy) && i !== idx(...h.feed) && i !== idx(...h.water);
   const interior = i => { const [x, y] = cellXY(i); for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!set.has(idx(x + dx, y + dy))) return false; return true; };
   let centro = -1, bd = -1;
   for (const i of W) { if (!livre(i) || !interior(i)) continue; const [x, y] = cellXY(i), d = Math.hypot(x - gx, y - gy); if (d > bd) { bd = d; centro = i; } }
@@ -224,11 +225,11 @@ export function fazerLago(s, h, n, S) {
   return lago.length;
 }
 // toca perto da cerca (o vidro fica para os visitantes), longe do portão e fora do lago
-export function fazerToca(s, h) {
+export function fazerToca(s, h, opts = {}) {
   const W = walkSet(h), [gx, gy] = h.gateIn, set = cellSet(h);
   const borda = i => { const [x, y] = cellXY(i); let d = 9; for (const [dx, dy] of Object.values(DIRS)) for (let k = 1; k <= 4; k++) if (!set.has(idx(x + dx * k, y + dy * k))) { d = Math.min(d, k); break; } return d; };
   const cand = [...W].filter(i => s.terrain[i] !== 'w').map(i => { const [x, y] = cellXY(i), dg = Math.hypot(x - gx, y - gy); return [i, Math.abs(borda(i) - 2) * 2 - Math.min(dg, 8) * 0.4 + (dg < 3 ? 20 : 0)]; }).sort((a, b) => a[1] - b[1]);
-  for (const [i] of cand.slice(0, 160)) { const [x, y] = cellXY(i), c = checkToca(s, x, y); if (c.ok) return placeToca(s, x, y); }
+  for (const [i] of cand.slice(0, 160)) { const [x, y] = cellXY(i), c = checkToca(s, x, y); if (c.ok) return placeToca(s, x, y, null, opts); }
   return R(false, 'Sem lugar para a toca.');
 }
 // plantas dentro do recinto: árvores no miolo (longe da cerca), baixas espalhadas; nada no portão, comedouro, bebedouro e frente das tocas
@@ -237,7 +238,7 @@ export function fazerPlantas(s, h, tipos) {
   const [gx, gy] = h.gateIn; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (inMap(gx + dx, gy + dy)) proib.add(idx(gx + dx, gy + dy));
   for (const t of tocasDe(s, h.id)) for (const [x, y] of [...tocaCells(t), ...ladoTiles(t, t.dir), ...ladoTiles(t, t.porta ?? (t.dir + 2) % 4)]) if (inMap(x, y)) proib.add(idx(x, y));
   const longe = (i, k) => { const [x, y] = cellXY(i); for (let dy = -k; dy <= k; dy++) for (let dx = -k; dx <= k; dx++) if (!set.has(idx(x + dx, y + dy))) return false; return true; };
-  const livres = [...W].filter(i => !proib.has(i) && s.terrain[i] !== 'w' && !s._occ.obj[i] && !s._occ.fac[i]);
+  const livres = [...W].filter(i => !proib.has(i) && s.terrain[i] !== 'w' && !s._occ.obj[i] && !s._occ.fac[i] && !s._occ.obra?.[i]);
   for (let k = livres.length - 1; k > 0; k--) { const j = Math.floor(rnd(s) * (k + 1)); [livres[k], livres[j]] = [livres[j], livres[k]]; }
   const postas = []; let n = 0;
   for (const tipo of tipos) {
@@ -248,6 +249,12 @@ export function fazerPlantas(s, h, tipos) {
     if (placePlant(s, x, y, tipo).ok) { postas.push(pos); n++; }
   }
   touch(h); return n;
+}
+// 1.8.3: com obra em andamento os animais esperam na lista "a caminho" (já pagos) e chegam de caminhão no fim
+function encomendaGrupo(s, h, sp, n, espera) {
+  const S = content(s).species[sp], out = [];
+  for (let k = 0; k < n; k++) { if (s.money < S.custo) break; out.push(encomendar(s, sp, h, espera)); spend(s, 'animais', S.custo); }
+  return out;
 }
 function chegaGrupo(s, h, sp, n) {
   const S = content(s).species[sp], novos = [];
@@ -291,7 +298,7 @@ export function construirRapido(s, sp, tx, ty, opts = {}) {
   const C = content(s), { rect: r, nec, anel } = p, S = nec.S;
   aplainar(s, r);
   for (const [x, y] of [...anel, ...(p.ligacao?.tiles || [])]) if (!isPathT(s.terrain[idx(x, y)])) paintTerrain(s, x, y, CAMINHO_RAPIDO);
-  const hb = placeHabitat(s, r.x, r.y, r.x + r.w - 1, r.y + r.h - 1, nec.biome, nec.fence);
+  const hb = placeHabitat(s, r.x, r.y, r.x + r.w - 1, r.y + r.h - 1, nec.biome, nec.fence, { obra: !!opts.obra, now: opts.now });
   if (!hb.ok) return hb;
   calaUltimoLog(s);
   const h = hb.hab, plural = nomePlural(s, sp), art = artigoPlural(s, sp);
@@ -302,12 +309,14 @@ export function construirRapido(s, sp, tx, ty, opts = {}) {
   fazerLago(s, h, nec.agua, S);
   for (let k = 0; k < nec.tocas; k++) if (!fazerToca(s, h).ok) break;
   fazerPlantas(s, h, p.plantas);
-  const novos = chegaGrupo(s, h, sp, nec.min);
+  const ob = hb.obra; if (ob) { ob.custo = p.custos.recinto; ob.nome = h.name; }
+  const novos = ob ? [] : chegaGrupo(s, h, sp, nec.min), espera = ob ? encomendaGrupo(s, h, sp, nec.min, [ob.id]) : [];
   mobiliarioNaVolta(s, anel, r, h.gateOut);
   canteiros(s, r, h, nec.biome);
   rebuildOcc(s); touch(h);
-  logQuieto(s, `${h.name} pronto: ${novos.length} ${novos.length === 1 ? S.nome.toLowerCase() : plural.toLowerCase()} chegaram${p.semLigacao ? ' (o caminho em volta não ficou ligado à entrada: ligue com a ferramenta Caminho)' : ''}.`, 'bom');
-  return R(true, '', { hab: h, animais: novos, plano: p });
+  const n = novos.length + espera.length, nomes = n === 1 ? S.nome.toLowerCase() : plural.toLowerCase(), aviso = p.semLigacao ? ' (o caminho em volta não ficou ligado à entrada: ligue com a ferramenta Caminho)' : '';
+  logQuieto(s, ob ? `${h.name} em obra: ${n} ${nomes} a caminho${aviso}.` : `${h.name} pronto: ${n} ${nomes} chegaram${aviso}.`, 'bom');
+  return R(true, '', { hab: h, animais: novos, aCaminho: espera, obra: ob || null, plano: p });
 }
 
 // a ficha/aviso da interface já conta a novidade: estes registros vão só para o histórico (sem aviso repetido)
@@ -315,32 +324,38 @@ function calaUltimoLog(s) { const L = s.log[s.log.length - 1]; if (s._events?.le
 function logQuieto(s, msg, kind = 'bom') { log(s, msg, kind); calaUltimoLog(s); }
 // ---------- ficha do recinto: lotação, +1, Ampliar e + outra espécie ----------
 export function lotacao(s, h, sp) {
-  const C = content(s), S = C.species[sp], I = habInfo(s, h);
-  let outros = 0; for (const [k, c] of Object.entries(I.count)) if (k !== sp) outros += c * (C.species[k]?.espaco || 10);
+  const C = content(s), S = C.species[sp], I = habInfo(s, h), cont = { ...I.count };
+  for (const e of aCaminhoDe(s, h.id)) cont[e.sp] = (cont[e.sp] || 0) + 1; // 1.8.3: quem está a caminho já conta
+  let outros = 0; for (const [k, c] of Object.entries(cont)) if (k !== sp) outros += c * (C.species[k]?.espaco || 10);
   const porEspaco = Math.max(0, Math.floor((I.land + 0.5 * I.water - outros) / (S.espaco || 10)));
-  const n = I.count[sp] || 0, max = S.social?.max || 99, cap = Math.min(max, porEspaco);
-  return { n, cap: Math.max(n, cap), max, porEspaco, cheio: n >= max ? 'grupo' : n >= porEspaco ? 'espaco' : null };
+  const n = cont[sp] || 0, vem = aCaminhoDe(s, h.id, sp).length, max = S.social?.max || 99, cap = Math.min(max, porEspaco);
+  return { n, vem, cap: Math.max(n, cap), max, porEspaco, cheio: n >= max ? 'grupo' : n >= porEspaco ? 'espaco' : null };
 }
 const usaToca = S => !S.rotina || S.rotina.dormeEm === 'toca' || S.tracos?.perigoso;
 // tocas que o recinto precisa: cada espécie ocupa as suas (2 por toca, ou 1 para os grandes e altos)
 export function tocasNecessarias(s, h, extra = {}) {
   const C = content(s), cont = { ...extra }; if (!C.estruturas?.toca) return 0;
   for (const a of s.animals) if (a.hab === h.id || (a.habOrig === h.id && a.internado)) cont[a.sp] = (cont[a.sp] || 0) + 1;
+  for (const e of aCaminhoDe(s, h.id)) cont[e.sp] = (cont[e.sp] || 0) + 1;
   let n = 0; for (const [sp, k] of Object.entries(cont)) if (C.species[sp] && usaToca(C.species[sp])) n += Math.ceil(k / tocaVagas(s, sp));
   return Math.min(TOCA_MAX, n);
 }
 function precisaToca(s, h, sp, mais = 1) {
   const C = content(s), S = C.species[sp]; if (!C.estruturas?.toca || !usaToca(S)) return false;
-  const nT = tocasDe(s, h.id).length; return nT < TOCA_MAX && tocasNecessarias(s, h, { [sp]: mais }) > nT;
+  const nT = tocasDe(s, h.id).length + tocasEmObra(s, h.id).length; return nT < TOCA_MAX && tocasNecessarias(s, h, { [sp]: mais }) > nT;
 }
 export function custoMaisUm(s, h, sp) { const C = content(s); return (C.species[sp]?.custo || 0) + (precisaToca(s, h, sp) ? C.estruturas.toca.custo : 0); }
-export function maisUm(s, h, sp) {
+export function maisUm(s, h, sp, opts = {}) {
   const C = content(s), S = C.species[sp]; if (!S) return R(false, 'Animal indisponível.');
   const L = lotacao(s, h, sp);
   if (L.cheio === 'grupo') return R(false, `Grupo completo: ${S.nome.toLowerCase()} vive em grupos de até ${L.max}.`);
   if (L.cheio === 'espaco') return R(false, 'Sem espaço para mais um. Toque em Ampliar.');
   const custo = custoMaisUm(s, h, sp); if (s.money < custo) return R(false, `Custa ${BRL(custo)}. Dinheiro insuficiente.`);
-  let toca = false; if (precisaToca(s, h, sp)) toca = fazerToca(s, h).ok;
+  // 1.8.3: recinto em obra: espera a caminho; toca nova vira obra curta e o animal chega de caminhão quando ela ficar pronta
+  if (h.obra) { if (precisaToca(s, h, sp)) fazerToca(s, h, opts); const [e] = encomendaGrupo(s, h, sp, 1, [h.obra]); if (!e) return R(false, 'Dinheiro insuficiente.'); logQuieto(s, `${S.nome} (${e.sex === 'M' ? 'macho' : 'fêmea'}) a caminho do ${h.name}.`); return R(true, `${S.nome} a caminho: chega de caminhão quando a obra terminar!`, { aCaminho: e }); }
+  let toca = false, obraToca = null;
+  if (precisaToca(s, h, sp)) { const t = fazerToca(s, h, { obra: !!opts.obra, now: opts.now }); toca = t.ok; obraToca = t.obra || null; }
+  if (obraToca) { const [e] = encomendaGrupo(s, h, sp, 1, [obraToca.id]); if (!e) return R(false, 'Dinheiro insuficiente.'); logQuieto(s, `${S.nome} (${e.sex === 'M' ? 'macho' : 'fêmea'}) a caminho do ${h.name} (toca nova em obra).`); return R(true, `Toca nova em obra (3 min). ${S.nome} chega de caminhão quando ela ficar pronta!`, { aCaminho: e, obra: obraToca }); }
   const [a] = chegaGrupo(s, h, sp, 1); if (!a) return R(false, 'Dinheiro insuficiente.');
   logQuieto(s, `${a.name} (${S.nome}, ${a.sex === 'M' ? 'macho' : 'fêmea'}) chegou ao ${h.name}.`);
   return R(true, `${a.name} chegou${toca ? ' (com uma toca nova)' : ''}!`, { animal: a });
@@ -358,9 +373,11 @@ function faixas(h, dep) {
 }
 export function planoAmpliar(s, h, blocos) {
   const C = content(s); if (C.fences[h.fence]?.fosso) return R(false, 'Ilhas não podem ser ampliadas.');
+  if (h.obra) return R(false, `O ${h.name} ainda está em obra. Espere ficar pronto para ampliar.`);
+  if (ampliacaoDe(s, h.id)) return R(false, `O ${h.name} já tem uma ampliação em obra.`);
   const anelado = !!h.rapido?.anel, opostos = { N: 'S', S: 'N', L: 'O', O: 'L' };
   const ordem = [opostos[h.side], ...(h.side === 'N' || h.side === 'S' ? ['L', 'O'] : ['N', 'S']), h.side];
-  const okAnel = (x, y) => { if (!inMap(x, y) || !inArea(s, x, y) || muroAt(x, y)) return false; const i = idx(x, y); return !s._occ.hab[i] && !s._occ.fac[i] && !s._occ.toca?.[i] && s.terrain[i] !== 'w'; };
+  const okAnel = (x, y) => { if (!inMap(x, y) || !inArea(s, x, y) || muroAt(x, y)) return false; const i = idx(x, y); return !s._occ.hab[i] && !s._occ.fac[i] && !s._occ.toca?.[i] && !s._occ.obra?.[i] && s.terrain[i] !== 'w'; };
   let ultimo = R(false, 'Não há espaço livre em volta para ampliar. Use Construir > Habitat > Ampliar para escolher o lugar.');
   for (const d of ordem) {
     const lado = d === 'N' || d === 'S' ? h.w : h.h, dep = Math.max(1, Math.min(8, Math.ceil(blocos / lado))), F = faixas(h, dep)[d], r = F.r;
@@ -385,27 +402,28 @@ export function planoAmpliar(s, h, blocos) {
   return ultimo;
 }
 export function blocosParaMais(s, h, sp, mais = 3) { const S = content(s).species[sp], L = lotacao(s, h, sp); return Math.max(4, (Math.max(L.n, L.porEspaco) + mais - L.porEspaco) * (S?.espaco || 10)); } // espaço para mais 3 além do que já cabe
-export function ampliarRapido(s, h, blocos) {
+export function ampliarRapido(s, h, blocos, opts = {}) {
   const p = planoAmpliar(s, h, blocos); if (!p.ok) return p;
   for (const [x, y] of p.apagar) { const i = idx(x, y); s.terrain[i] = 'g'; delete s.litter[i]; removeFurnAt(s, x, y); }
   rebuildOcc(s);
-  const r = p.rect, e = expandHabitat(s, r.x, r.y, r.x + r.w - 1, r.y + r.h - 1);
+  const r = p.rect, e = expandHabitat(s, r.x, r.y, r.x + r.w - 1, r.y + r.h - 1, { obra: !!opts.obra, now: opts.now });
   if (!e.ok) { for (const [x, y] of p.apagar) paintTerrain(s, x, y, CAMINHO_RAPIDO); return e; }
   calaUltimoLog(s);
   if (h.rapido?.anel) {
     for (const [x, y] of p.novos) paintTerrain(s, x, y, CAMINHO_RAPIDO);
-    const rr = { x: h.x, y: h.y, w: h.w, h: h.h }, anel = anelDe(rr);
+    // com obra o recinto só cresce no fim: o caminho novo já contorna a faixa reservada
+    const x0 = Math.min(h.x, r.x), y0 = Math.min(h.y, r.y), rr = { x: x0, y: y0, w: Math.max(h.x + h.w, r.x + r.w) - x0, h: Math.max(h.y + h.h, r.y + r.h) - y0 }, anel = anelDe(rr);
     mobiliarioNaVolta(s, p.linha, rr, null);
     // caminho continua ligado à entrada? se a faixa cortou a ligação, refaz
-    const dentro = new Set(ensureCells(h)), lg = ligacao(s, anel, dentro);
+    const dentro = new Set([...ensureCells(h), ...p.tiles.filter(([x, y]) => inMap(x, y)).map(([x, y]) => idx(x, y))]), lg = ligacao(s, anel, dentro);
     if (lg) for (const [x, y] of lg.tiles) paintTerrain(s, x, y, CAMINHO_RAPIDO);
   }
   rebuildOcc(s); touch(h);
-  return R(true, `${h.name} ampliado em ${p.blocos} blocos.`, { hab: h, plano: p });
+  return R(true, e.obra ? `Ampliação do ${h.name} em obra (+${p.blocos} blocos).` : `${h.name} ampliado em ${p.blocos} blocos.`, { hab: h, plano: p, obra: e.obra || null });
 }
 // + outra espécie: só as que combinam com o recinto (mesmo bioma, cerca que segura, água que basta, sem predador com presa)
 export function especiesCompativeis(s, h) {
-  const C = content(s), I = habInfo(s, h), F = C.fences[h.fence] || {}, aqui = Object.keys(I.count);
+  const C = content(s), I = habInfo(s, h), F = C.fences[h.fence] || {}, aqui = [...new Set([...Object.keys(I.count), ...aCaminhoDe(s, h.id).map(e => e.sp)])];
   const carn = aqui.some(k => C.species[k]?.dieta === 'Carnívoro'), presa = aqui.some(k => C.species[k] && C.species[k].dieta !== 'Carnívoro');
   const out = [];
   for (const [sp, S] of Object.entries(C.species)) {
@@ -423,24 +441,33 @@ export function especiesCompativeis(s, h) {
 export function planoOutraEspecie(s, h, sp) {
   const C = content(s), S = C.species[sp], c = especiesCompativeis(s, h).find(o => o.sp === sp);
   if (!c) return R(false, 'Essa espécie não combina com este recinto.'); if (c.motivo) return R(false, `Não dá: ${c.motivo}.`);
+  if (h.obra) return R(false, `Espere a obra do ${h.name} terminar.`); if (ampliacaoDe(s, h.id)) return R(false, `Espere a ampliação do ${h.name} terminar.`);
   const L = lotacao(s, h, sp), falta = Math.max(0, (c.min - L.porEspaco) * (S.espaco || 10));
   const amp = falta ? planoAmpliar(s, h, falta) : null;
   if (amp && !amp.ok) return R(false, `Falta espaço para ${c.min} ${c.min === 1 ? S.nome.toLowerCase() : nomePlural(s, sp).toLowerCase()} e ${amp.msg.charAt(0).toLowerCase() + amp.msg.slice(1)}`);
   const I = habInfo(s, h), have = S.plantasAltas ? (I.tall[S.bioma] || 0) : (I.plants[S.bioma] || 0), altas = plantasDoBioma(s, S.bioma, !!S.plantasAltas);
   const plantas = []; for (let k = have; k < (S.plantas || 0) && altas.length; k++) plantas.push(altas[k % altas.length]);
-  const nT = Math.max(0, tocasNecessarias(s, h, { [sp]: c.min }) - tocasDe(s, h.id).length);
+  const nT = Math.max(0, tocasNecessarias(s, h, { [sp]: c.min }) - tocasDe(s, h.id).length - tocasEmObra(s, h.id).length);
   const custo = c.custo + (amp?.custo || 0) + plantas.reduce((t, p) => t + (C.plants[p]?.custo || 0), 0) + nT * (C.estruturas?.toca?.custo || 0);
   const extra = { sp, min: c.min, ampliar: amp, plantas, tocas: nT, custo };
   if (s.money < custo) return R(false, `Custa ${BRL(custo)}. Dinheiro insuficiente.`, extra);
   return R(true, `${c.min} ${c.min === 1 ? S.nome.toLowerCase() : nomePlural(s, sp).toLowerCase()}${amp ? ` + ampliar ${amp.blocos} blocos` : ''} · ${BRL(custo)}`, extra);
 }
-export function outraEspecie(s, h, sp) {
+export function outraEspecie(s, h, sp, opts = {}) {
   const p = planoOutraEspecie(s, h, sp); if (!p.ok) return p;
-  if (p.ampliar) { const a = ampliarRapido(s, h, p.ampliar.blocos); if (!a.ok) return a; }
-  for (let k = 0; k < p.tocas; k++) if (!fazerToca(s, h).ok) break;
+  // 1.8.3: só vira obra quando precisa ampliar ou de toca nova; aí os animais esperam a caminho
+  const o2 = { obra: !!opts.obra, now: opts.now }, espera = [];
+  if (p.ampliar) { const a = ampliarRapido(s, h, p.ampliar.blocos, o2); if (!a.ok) return a; if (a.obra) espera.push(a.obra.id); }
+  for (let k = 0; k < p.tocas; k++) { const t = fazerToca(s, h, o2); if (!t.ok) break; if (t.obra) espera.push(t.obra.id); }
   if (p.plantas.length) fazerPlantas(s, h, p.plantas);
-  const novos = chegaGrupo(s, h, sp, p.min), S = content(s).species[sp];
-  logQuieto(s, `${novos.length} ${novos.length === 1 ? S.nome.toLowerCase() : nomePlural(s, sp).toLowerCase()} chegaram ao ${h.name}.`);
+  const S = content(s).species[sp], nm = n => n === 1 ? S.nome.toLowerCase() : nomePlural(s, sp).toLowerCase();
+  if (espera.length) {
+    const vem = encomendaGrupo(s, h, sp, p.min, espera);
+    logQuieto(s, `${vem.length} ${nm(vem.length)} a caminho do ${h.name} (obra em andamento).`);
+    return R(true, `Obra em andamento: ${vem.length} ${nm(vem.length)} ${vem.length === 1 ? 'chega' : 'chegam'} de caminhão quando ficar pronta!`, { animais: [], aCaminho: vem });
+  }
+  const novos = chegaGrupo(s, h, sp, p.min);
+  logQuieto(s, `${novos.length} ${nm(novos.length)} chegaram ao ${h.name}.`);
   return R(true, `${nomePlural(s, sp)} no ${h.name}!`, { animais: novos });
 }
 export { BRL as dinheiroRapido };

@@ -20,7 +20,7 @@ const efetiva = (s, p) => { p.exp = 0; p.oculto = false; };
 // ---- entrevista, traço oculto e experiência ----
 {
   const s = base();
-  ok(SCHEMA === 11, 'save 11');
+  ok(SCHEMA >= 11, 'save 11 ou mais novo');
   for (let i = 0; i < 60; i++) { const c = genCandidate(s, now); if (c.hidden.some(t => TRACOS_EQUIPE[t]?.curso)) { ok(false, 'traço de curso não aparece em currículo'); break; } }
   const c = cand(s, 'tratador'); c.hidden = ['distraido']; const m0 = s.money;
   const r = entrevistar(s, c.id);
@@ -153,7 +153,7 @@ const efetiva = (s, p) => { p.exp = 0; p.oculto = false; };
   for (const x of o.candidates) delete x.entrev;
   const sal = o.staff.map(p => [p.salary, p.expected]).join();
   const m = deserialize(o);
-  ok(m.schemaVersion === 11 && typeof MIGRATIONS[10] === 'function', 'migração 10 → 11');
+  ok(m.schemaVersion === SCHEMA && typeof MIGRATIONS[10] === 'function', 'migração 10 → 11 (e seguintes)');
   ok(m.staff.length === 2 && m.managers.length === 1 && m.staff.map(p => [p.salary, p.expected]).join() === sal, 'ninguém some e os salários não mudam');
   ok([...m.staff, ...m.managers].every(p => p.nivel === 1 && p.xp === 35 && !p.exp && p.oculto === false && !p.pedido && !p.curso && Array.isArray(p.cursos)), '23 dias de jogo: todos efetivos no nível Pleno, traços visíveis');
   ok(m.candidates.every(x => x.entrev === false), 'currículos antigos: sem entrevista');

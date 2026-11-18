@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.8.2
+# Projeto Zoológico — v1.8.3
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -115,3 +115,13 @@ Obs.: em modo "Teste" o Google pede para reautorizar a cada 7 dias; publicar o a
 - `src/render/ultra.js`: `addFur` cria a casca extra da juba (9 camadas, só onde `pelo` > 1,6). `addSkinDetail` troca o ruído que parecia caroço por vincos finos (mesmo custo). Economia de calor e bateria: pelo até ~30 m e juba até ~22 m (sem economia: ~39 m e ~33 m).
 - Testes: `tests/v182.test.js` e `tests/v182_closes.py [baixo|alto|ultra] [prefixo]` (closes de lado, frente e pernas de cada espécie no meio de um recinto; `SO=leao,zebra` limita as espécies). O visualizador `tests/viewer` aceita `?u=1` para ver o modelo do Ultra.
 
+## Construção rápida e tempo de obra (1.8.3)
+- `src/sim/rapido.js` (parte 1): construção rápida de recinto (`planoRapido`, `construirRapido`), caminho automático em volta, ficha com `lotacao`, `maisUm`, `planoAmpliar`/`ampliarRapido`, `especiesCompativeis`/`outraEspecie`. Campo opcional `h.rapido = { sp, anel }`.
+- `src/sim/obras.js` (parte 2): obras em MINUTOS REAIS (`Date.now()`), não em tempo de jogo. `s.obras = [{ id, tipo: 'hab'|'ampliar'|'toca'|'fac', ini, dur, custo, nome, hab?, cells?, toca?, fac?, rect }]`, `s.aCaminho = [{ id, sp, sex, hab, espera: [ids], custo, pack }]`, `s.obraGratis` (só zoo novo). Recinto em obra: `h.obra = id` (o habitat existe, vazio). Ampliação, toca nova e prédio NÃO entram em `habitats`/`tocas`/`facilities` até terminar: os blocos ficam reservados em `s._occ.obra` (grid.js) e bloqueiam construção, caminho e a equipe.
+- Durações (`OBRA` em obras.js): recinto 6 min até 36 blocos e 60 min com 400 (linear), ampliação 0,15 min por bloco (mín. 3), toca 3 min, prédio 3 a 12 min pelo custo (log entre R$ 2.000 e R$ 15.000; abaixo de R$ 1.000 é instantâneo). Prédio de DLC pode trazer `obraMin` (opcional).
+- `obraTick(s, now)`: chamado 1 vez por segundo em `main.js` e dentro de `simulateAbstract` com a hora real de cada passo (`realIni`, app fechado 1:1). `terminarAgora` cobra `ceil(custo x 0,6 x fração que falta)`. `entregar` cria os animais no portão quando nenhuma obra que eles esperam existe mais; `s._entregas` (transitório) mostra o caminhão parado.
+- As funções de construção só criam obra com `{ obra: true }` (a interface sempre passa; os testes antigos continuam instantâneos): `placeHabitat`, `expandHabitat`, `placeToca`, `placeFacility` (build.js) e `construirRapido`, `maisUm`, `ampliarRapido`, `outraEspecie` (rapido.js). `buyAnimal` em recinto em obra vai para "a caminho". Demolir uma obra devolve tudo.
+- `src/render/obras.js`: `ObraView` (tapume pelos lados dos blocos, andaime de 4 níveis, estrutura de concreto, guindaste em obras de 3 x 3 ou mais, operários a até 70 m da câmera — 45 m na Economia, que não anima —, barra em sprite e caminhão `buildVehicle('caminhao')` pela rede de caminhos da Entrada até o portão nos últimos 16 s).
+- Save 12 (`MIGRATIONS[11]`): só acrescenta as listas vazias; tudo o que já existia continua pronto.
+- Entrada com um portão só: o modelo `entrada` (models.js) virou catracas + bilheteria; o portão do muro (`rua.js`) ganhou arco, placa nos dois lados, lampiões e vasos.
+- Testes: `tests/v183.test.js` (construção rápida), `tests/v183b.test.js` (tempo de obra) e `tests/v183b_browser.py`.

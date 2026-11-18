@@ -8,9 +8,10 @@ import { updateStaff, refreshAlerts, managerTick, spend, earn, recalcClean } fro
 import { updateVisitors, arrivalRate, arrive, isOpen, litterCount, seedCrowd } from './visitors.js';
 import { TURNOS, NOITE_ROLES, salarioDia, turnoSugerido } from './turnos.js';
 import { updateRua } from './rua.js';
+import { obraTick } from './obras.js';
 import { prepara, carreiraHora, carreiraDia, querSair, magoa, EXP_DIAS, DIA } from './carreira.js';
 
-export const SCHEMA = 11;
+export const SCHEMA = 12;
 export const SPEEDS = [0, 1, 2, 3]; // multiplicador da velocidade normal
 export const MES = 30;
 // segundos de jogo por segundo real na velocidade normal (depende da hora: dia devagar, noite rápida)
@@ -25,7 +26,7 @@ export function newGame(now = Date.now(), opts = {}) {
     clock: { min: 7 * 60, day: 0, speed: 1, lastRealTs: now },
     money: opts.tranquilo ? 120000 : 60000, ticket: 30, areaLevel: 0,
     terrain: new Array(MAP * MAP).fill('g'), height: new Array((MAP + 1) * (MAP + 1)).fill(0), litter: {},
-    habitats: [], facilities: [], objects: [], tocas: [], furn: [], vstock: [], animals: [], staff: [], managers: [], visitors: [],
+    habitats: [], facilities: [], objects: [], tocas: [], obras: [], aCaminho: [], obraGratis: true, furn: [], vstock: [], animals: [], staff: [], managers: [], visitors: [],
     policies: { doencaPrimeiro: true, segurancaPrimeiro: false, fugaImediata: true },
     candidates: [], hiring: { nextAt: now + H2 },
     alerts: [], metas: {}, settings: { ...DEFAULT_SETTINGS(), tranquilo: !!opts.tranquilo, fugas: !opts.tranquilo },
@@ -70,6 +71,7 @@ export function step(s, gameMin, ctx) {
 function hourTick(s) {
   const C = content(s);
   for (const h of s.habitats) {
+    if (h.obra) continue; // 1.8.3: recinto em obra (vazio, com tapume): a cerca ainda não gasta
     const n = s.animals.filter(a => a.hab === h.id && !a.escaped).length;
     const F = C.fences[h.fence];
     let push = 0; for (const a of s.animals) if (a.hab === h.id && !a.escaped && C.species[a.sp]) push += (C.species[a.sp].tracos.forca / 10) * a.stress * 0.8;
@@ -215,12 +217,13 @@ export function checkMetas(s) {
 }
 
 // ---------- simulação abstrata: app fechado e avanço de relógio ----------
-export function simulateAbstract(s, gameMinutes, { stopOnCritical = false, now = Date.now(), noManager = false, stopOnAlert = false } = {}) {
+// realIni: hora real do começo do período (app fechado: 1 minuto de jogo = 1 minuto real), para as obras terminarem na hora certa
+export function simulateAbstract(s, gameMinutes, { stopOnCritical = false, now = Date.now(), noManager = false, stopOnAlert = false, realIni = null } = {}) {
   const before = { money: s.money, animals: s.animals.length, logLen: s.log.length, min: s.clock.min, cand: s.candidates.length };
   const ctx = { abstract: true, realDt: 0, moveMul: 0, now, critical: null, noManager, stopOnAlert };
   let left = gameMinutes;
-  while (left > 0.0001) { const dt = Math.min(10, left); step(s, dt, ctx); left -= dt; if (stopOnCritical && ctx.critical) break; }
-  s._ctx = null;
+  while (left > 0.0001) { const dt = Math.min(10, left); step(s, dt, ctx); left -= dt; if (realIni != null) { s._ctx = ctx; obraTick(s, Math.min(now, realIni + (gameMinutes - left) * 60e3)); } if (stopOnCritical && ctx.critical) break; }
+  s._ctx = null; obraTick(s, now);
   hiringTick(s, now);
   return { minutos: s.clock.min - before.min, dinheiro: s.money - before.money, animais: s.animals.length - before.animals,
     eventos: s.log.slice(before.logLen), parou: stopOnCritical ? ctx.critical : null, alertas: s.alerts.length, curriculos: s.candidates.length - before.cand };
@@ -229,8 +232,8 @@ export function catchUp(s, now = Date.now()) {
   const raw = now - (s.clock.lastRealTs || now);
   const elapsed = Math.max(0, Math.min(raw, H72));
   s.clock.lastRealTs = now;
-  if (elapsed < 60e3) { hiringTick(s, now); seedCrowd(s); return null; }
-  const rep = simulateAbstract(s, elapsed / 60e3, { now });
+  if (elapsed < 60e3) { hiringTick(s, now); obraTick(s, now); seedCrowd(s); return null; }
+  const rep = simulateAbstract(s, elapsed / 60e3, { now, realIni: now - elapsed });
   seedCrowd(s);
   rep.limitado = raw > H72; rep.realMin = elapsed / 60e3;
   return rep;

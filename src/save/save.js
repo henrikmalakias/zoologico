@@ -7,6 +7,9 @@ import { content } from '../content/registry.js';
 
 // Migrações: cada função leva o save da versão N para N+1.
 export const MIGRATIONS = {
+  // v11 -> v12 (versão 1.8.3): tempo de obra. Nada muda no que já existe: tudo o que estava construído continua pronto;
+  // só entram a lista de obras em andamento e a lista de animais "a caminho" (vazias)
+  11: s => { s.obras = s.obras || []; s.aCaminho = s.aCaminho || []; s.obraGratis = false; s.schemaVersion = 12; return s; },
   // v10 -> v11 (versão 1.8): carreira da equipe (níveis, cursos, pedidos de aumento, entrevista e período de experiência).
   // Quem já estava no zoo vira efetivo, com experiência pelo tempo de jogo; salários e salário esperado não mudam
   10: s => { migrarCarreira(s); s.schemaVersion = 11; return s; },
@@ -71,6 +74,8 @@ export function deserialize(o) {
   s.visitors = [];
   for (const st of s.staff) if (st.task) st.task.route = null;
   s.tocas = s.tocas || [];
+  s.obras = s.obras || []; s.aCaminho = s.aCaminho || [];
+  for (const h of s.habitats) if (h.obra && !s.obras.some(o => o.id === h.obra)) delete h.obra; // obra que sumiu: recinto pronto
   // ninguém fica preso numa visita ao reabrir; quem estava a caminho de uma toca volta a decidir; toca que sumiu solta o animal
   for (const h of s.habitats) { h.visitOpen = false; h.seg = h.seg || []; }
   for (const st of s.staff) st.ferido = st.ferido || 0;
