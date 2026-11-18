@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.8.2';
+export const APP_VERSION = '1.8.3';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -22,6 +22,14 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.8.3', data: '17/11/2026', titulo: 'Versão 1.8.3: construção rápida de recinto', itens: [
+    'Construir > Habitat > ⚡ Construção rápida: escolha o animal, toque no mapa e veja a prévia já no tamanho certo, com o preço. Girar vira o recinto e Construir monta tudo',
+    'O recinto sai completo: bioma da espécie, cerca certa (muro para os perigosos, viveiro com tela para os macacos), lago quando a espécie precisa (raso para os flamingos, fundo para hipopótamos e elefantes), plantas, toca e portão virado para o caminho',
+    'Já chega o grupo mínimo da espécie, com espaço para mais 3. Se o dinheiro não der, dá para fazer a versão só com o grupo mínimo',
+    'Caminho de pedra em volta, ligado ao caminho mais próximo, com banco a cada ~6 blocos, poste a cada ~4, lixeira no portão e canteiros nos cantos e na frente do portão',
+    'Ficha do recinto com Lotação (ex.: 3 de 6): +1 até o máximo do grupo (com toca nova quando falta lugar), Ampliar (o caminho vai para fora junto) e ➕ Outra espécie, que mostra só os animais que combinam',
+    'O desenho livre continua igual (✏️ Desenho livre) e o tutorial agora usa a construção rápida',
+  ] },
   { versao: '1.8.2', data: '14/11/2026', titulo: 'Versão 1.8.2: animais mais realistas no gráfico Ultra', itens: [
     'Gráfico Ultra com modelo próprio para cada animal: ombro, cernelha, costelas, cintura, garupa e coxa no lugar das "bolhas"',
     'Pernas com joelho, jarrete, boleto e casco largo (zebra e girafa), patas com dedos (leão), pés com unhas (elefante, rinoceronte, hipopótamo) e mãos apoiadas nos nós dos dedos (gorila)',

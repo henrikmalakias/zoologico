@@ -73,6 +73,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer;touch-action:manipulat
 .tabs button.on{background:var(--leaf);color:#fff;border-color:var(--ol);box-shadow:0 3px 0 var(--ol);text-shadow:0 1px 0 rgba(0,0,0,.25)}
 .tabs button:active{transform:translateY(2px)}
 .items{display:flex;gap:6px;flex-wrap:wrap}
+.items.row1{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;margin-top:6px;scrollbar-width:thin}.items.row1 .item{flex:0 0 auto;min-width:0}
 .item{background:var(--cream3);border:2px solid var(--line);border-radius:13px;padding:6px 9px;font:600 13px var(--fh);text-align:left;min-width:96px;color:var(--ink)}
 .item.on{background:var(--leaf-l);border-color:var(--leaf-d);box-shadow:0 3px 0 var(--leaf-d)}
 .item small{display:block;color:var(--ink2);font:700 11px var(--fb)}

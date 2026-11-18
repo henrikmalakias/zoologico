@@ -50,8 +50,9 @@ ok(/this\.eco \? 0\.6 : 1/.test(world) && /userData\.juba/.test(world) && /juba 
 ok(!/abs\(n3\(p \* 9\.0\) - 0\.5\) \* 1\.4/.test(ultra) && /pow\(a, 0\.4\)/.test(ultra), 'pele: vincos finos no lugar dos caroços');
 ok(/bloco opcional `ultra`/.test(contrato), 'contrato de DLC explica o bloco ultra');
 // 6) save e versão
-ok(SCHEMA === 11, 'save continua no formato 11 (só visual)');
-ok(APP_VERSION === '1.8.2' && CHANGELOG[0].versao === '1.8.2' && CHANGELOG[0].itens.length >= 6, 'versão 1.8.2 com novidades no topo do CHANGELOG');
+ok(SCHEMA >= 11, 'save no formato 11 ou mais novo');
+const maiorIgual = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return true; };
+ok(maiorIgual(APP_VERSION, '1.8.2') && CHANGELOG.some(c => c.versao === '1.8.2' && c.itens.length >= 6), 'versão 1.8.2 com novidades no CHANGELOG');
 const v = JSON.parse(rd('../public/version.json')), sw = rd('../public/sw.js'), pk = JSON.parse(rd('../package.json'));
-ok(v.versao === '1.8.2' && /zoo-1\.8\.2/.test(sw) && pk.version === '1.8.2' && pk.scripts.test.includes('v182.test.js'), 'version.json, cache, package.json e npm test na 1.8.2');
+ok(v.versao === APP_VERSION && sw.includes(`zoo-${APP_VERSION}`) && pk.version === APP_VERSION && pk.scripts.test.includes('v182.test.js'), 'version.json, cache, package.json e npm test na versão atual');
 console.log(fails ? `\n${fails} FALHAS em ${n}` : `\nTODOS OS TESTES DA 1.8.2 PASSARAM (${n})`); process.exit(fails ? 1 : 0);

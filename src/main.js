@@ -7,6 +7,7 @@ import { World } from './render/world.js';
 import { Controls } from './ui/controls.js';
 import { UI } from './ui/ui.js';
 import * as B from './sim/build.js';
+import * as RAP from './sim/rapido.js';
 import { hire } from './sim/core.js';
 import { dispatch, refreshAlerts, startTask, orderTransfer, ALERT_INFO, alertTargetName, atacarFuncionario } from './sim/staff.js';
 import { library } from './render/world.js';
@@ -204,5 +205,5 @@ class Game {
 const vnum = v => String(v).split('.').map(p => { const m = /^(\d+)([a-z]?)$/.exec(p); return m ? +m[1] + (m[2] ? (m[2].charCodeAt(0) - 96) / 100 : 0) : 0; }); // 1.7.2b > 1.7.2a > 1.7.2
 const cmp = (a, b) => { const x = vnum(a), y = vnum(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
 
-const game = new Game(); window.__game = game; window.__sound = sound; window.__api = { ...B, V, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, atacar: (s, st, a) => atacarFuncionario(s, st, a, false), fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
+const game = new Game(); window.__game = game; window.__sound = sound; window.__api = { ...B, RAP, V, distributeFurniture, hire, dispatch, refreshAlerts, startTask, library, orderTransfer, atacar: (s, st, a) => atacarFuncionario(s, st, a, false), fuga: (s, a) => { const h = s.habitats.find(x => x.id === a.hab), C = content(s); startEscape(s, a, h, C.species[a.sp], C.fences[h.fence]); } };
 game.start().catch(e => { console.error(e); const b = document.getElementById('boot'); if (b) b.textContent = 'Erro ao iniciar: ' + e.message; });

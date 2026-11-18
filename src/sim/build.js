@@ -29,7 +29,7 @@ export function freeCells(s, r, ownId = 0) {
 }
 const gateOutOk = (s, x, y) => inMap(x, y) && !s._occ.hab[idx(x, y)] && !s._occ.fac[idx(x, y)] && s.terrain[idx(x, y)] !== 'w';
 // portão no trecho de cerca virado para um caminho (o do meio, de preferência reto)
-function chooseGate(s, h) {
+export function chooseGate(s, h) {
   const set = cellSet(h), cx = h.x + h.w / 2, cy = h.y + h.h / 2; let best = null, bs = -1e9;
   for (const e of edges(h)) {
     const [ox, oy] = e.out; if (!gateOutOk(s, ox, oy)) continue;
@@ -45,7 +45,7 @@ function chooseGate(s, h) {
   h.side = best.d; h.gateIn = cellXY(best.c); h.gateOut = [...best.out];
   return true;
 }
-function chooseFeedWater(s, h) {
+export function chooseFeedWater(s, h) {
   const W = walkSet(h), [gx, gy] = h.gateIn, [dx, dy] = DIRS[h.side], bad = new Set([idx(gx, gy)]);
   for (const t of tocasDe(s, h.id)) for (const [x, y] of tocaCells(t)) bad.add(idx(x, y));
   const dry = i => s.terrain[i] !== 'w';
@@ -58,7 +58,7 @@ function chooseFeedWater(s, h) {
   h.feed = cellXY(f); h.water = cellXY(w);
 }
 // terreno do bioma em manchas naturais (ruído suave + proporções do bioma)
-function paintBiome(s, cells, biome) {
+export function paintBiome(s, cells, biome) {
   const B = content(s).biomes[biome];
   const seed = rnd(s) * 1000, hsh = (a, b) => { const n = Math.sin(a * 127.1 + b * 311.7 + seed) * 43758.5453; return n - Math.floor(n); };
   const sm = t => t * t * (3 - 2 * t), L = (a, b, t) => a + (b - a) * t;

@@ -96,6 +96,8 @@ export class World {
     this.grid = new THREE.GridHelper(MAP * TILE, MAP, '#ffffff', '#ffffff'); this.grid.material.opacity = 0.12; this.grid.material.transparent = true; this.grid.position.y = 0.03; this.grid.visible = false; sc.add(this.grid);
     this.prev = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: '#4caf50', transparent: true, opacity: 0.35, depthWrite: false })); this.prev.visible = false; sc.add(this.prev);
     this.cellsPrev = new THREE.InstancedMesh(new THREE.BoxGeometry(TILE * 0.94, 1, TILE * 0.94), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.4, depthWrite: false }), 1200); this.cellsPrev.count = 0; this.cellsPrev.frustumCulled = false; sc.add(this.cellsPrev);
+    // 1.8.3: segunda camada da prévia (caminho em volta do recinto rápido)
+    this.cellsPrev2 = new THREE.InstancedMesh(new THREE.BoxGeometry(TILE * 0.94, 1, TILE * 0.94), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.55, depthWrite: false }), 600); this.cellsPrev2.count = 0; this.cellsPrev2.frustumCulled = false; sc.add(this.cellsPrev2);
     this.sel = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 6, 32).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffe14d' })); this.sel.visible = false; sc.add(this.sel);
     this.raycaster = new THREE.Raycaster(); this.plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     this.cache = { terrain: null, area: -1, ver: -1, litterSig: '', hver: -1 };
@@ -596,10 +598,15 @@ export class World {
     const cx = a.x - TILE / 2 + (w * TILE) / 2, cz = a.z - TILE / 2 + (h * TILE) / 2, by = this._s ? heightAt(this._s, cx, cz) : 0; this.prev.scale.set(w * TILE, height, h * TILE); this.prev.position.set(cx, by + height / 2, cz);
     this.prev.material.color.set(ok ? '#4caf50' : '#e53935'); this.dirty = true;
   }
-  hidePreview() { this.prev.visible = false; this.cellsPrev.count = 0; this.dirty = true; }
+  hidePreview() { this.prev.visible = false; this.cellsPrev.count = 0; if (this.cellsPrev2) this.cellsPrev2.count = 0; this.dirty = true; }
   // prévia bloco a bloco (habitat com formato livre): verde = entra, vermelho = fica de fora/inválido
   showCells(list, color, height = 0.5) {
     const m = new THREE.Matrix4(), cp = this.cellsPrev, n = Math.min(list.length, 1200); cp.material.color.set(color);
+    for (let k = 0; k < n; k++) { const i = list[k], p = tileToWorld(i % MAP, (i / MAP) | 0), y = this._s ? heightAt(this._s, p.x, p.z) : 0; m.makeScale(1, height, 1); m.setPosition(p.x, y + height / 2, p.z); cp.setMatrixAt(k, m); }
+    cp.count = n; cp.instanceMatrix.needsUpdate = true; this.dirty = true;
+  }
+  showCells2(list, color, height = 0.25) {
+    const m = new THREE.Matrix4(), cp = this.cellsPrev2, n = Math.min(list.length, 600); cp.material.color.set(color);
     for (let k = 0; k < n; k++) { const i = list[k], p = tileToWorld(i % MAP, (i / MAP) | 0), y = this._s ? heightAt(this._s, p.x, p.z) : 0; m.makeScale(1, height, 1); m.setPosition(p.x, y + height / 2, p.z); cp.setMatrixAt(k, m); }
     cp.count = n; cp.instanceMatrix.needsUpdate = true; this.dirty = true;
   }
