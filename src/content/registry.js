@@ -1,7 +1,7 @@
 import { BASE_PACK, ZOOPEDIA as Z_BASE } from './base.js';
 import { DLC_PACKS, DLC_ZOOPEDIA } from './dlc/index.js';
 
-export const APP_VERSION = '1.8.3';
+export const APP_VERSION = '1.8.3b';
 export const AVAILABLE_PACKS = { base: BASE_PACK, ...DLC_PACKS };
 export const ZOOPEDIA = { ...Z_BASE, ...DLC_ZOOPEDIA };
 
@@ -22,6 +22,14 @@ export const DLC_CATALOG = [ // estado: 'em_breve' até o pacote entrar em dlc/i
 ].map(d => ({ ...d, estado: AVAILABLE_PACKS[d.id] ? 'disponivel' : d.estado }));
 
 export const CHANGELOG = [
+  { versao: '1.8.3b', data: '21/11/2026', titulo: 'Versão 1.8.3b: Demolir por recinto, prédio e área, e lagos', itens: [
+    'Construir > 🧨 Demolir agora tem 4 modos: 🧱 Bloco (como antes), 🦁 Recinto (1 toque tira o recinto inteiro), 🏪 Prédio (1 toque tira o prédio inteiro) e ⬛ Área (arraste um retângulo)',
+    'Área: saem as plantas, o caminho, os bancos, postes e lixeiras e os prédios dentro do retângulo; um recinto só sai se estiver inteiro dentro. A prévia fica vermelha e mostra quanto dinheiro volta',
+    'Recinto com animais: antes de demolir o jogo mostra para onde cada um vai. Eles mudam na hora, de caminhão, para outro recinto que combine e tenha vaga; quem não couber é vendido (40% do valor)',
+    'Recinto com lago (ou bloco de água): escolha 💧 Manter o lago (grátis) ou 🚜 Aterrar e nivelar (R$ 60 por bloco, obra de 3 a 6 min com tapume). Depois vira chão plano e liso',
+    'Lago de enfeite para leão, zebra, girafa, macaco, gorila e tartaruga: botão 💧 Com lago na construção rápida (lago raso, um pouco mais caro e +2 min de obra) e 💧 + Lago na ficha do recinto pronto (obra de 3 min; se faltar espaço, oferece Ampliar)',
+    'Ao tirar um recinto, as tocas também devolvem 50% e as plantas de dentro saem junto; o caminho em volta fica',
+  ] },
   { versao: '1.8.3', data: '18/11/2026', titulo: 'Versão 1.8.3: construção rápida de recinto e tempo de obra', itens: [
     'Obras levam tempo de verdade (minutos reais, em qualquer velocidade e até com o jogo fechado): recinto pequeno 6 min, grande até 1 h, prédios de 3 a 12 min, ampliação pelo tamanho que cresce e toca nova 3 min. Caminho, banco, poste, lixeira e plantas continuam na hora',
     'Na obra: tapume em volta, andaime que sobe em 4 etapas, prédio subindo, operários e guindaste trabalhando (de perto) e barra com a porcentagem e o tempo que falta. A Economia de calor e bateria deixa a obra parada',

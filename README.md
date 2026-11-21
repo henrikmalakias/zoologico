@@ -1,4 +1,4 @@
-# Projeto Zoológico — v1.8.3
+# Projeto Zoológico — v1.8.3b
 
 Jogo particular de gestão de zoológico 3D para celular (PWA offline). Three.js + JavaScript em módulos, empacotado com Vite.
 
@@ -125,3 +125,14 @@ Obs.: em modo "Teste" o Google pede para reautorizar a cada 7 dias; publicar o a
 - Save 12 (`MIGRATIONS[11]`): só acrescenta as listas vazias; tudo o que já existia continua pronto.
 - Entrada com um portão só: o modelo `entrada` (models.js) virou catracas + bilheteria; o portão do muro (`rua.js`) ganhou arco, placa nos dois lados, lampiões e vasos.
 - Testes: `tests/v183.test.js` (construção rápida), `tests/v183b.test.js` (tempo de obra) e `tests/v183b_browser.py`.
+
+## Demolir por recinto/prédio/área e lagos (1.8.3b)
+- `src/sim/demolir.js` (novo): `planoDemolir(s, alvo)` com `alvo = { modo: 'bloco'|'recinto'|'predio', tx, ty }` ou `{ modo: 'area', x0, y0, x1, y1 }` devolve o que sai (`recintos`, `facs`, `obras`, `furn`, `plantas`, `caminho`), a água que sobra (`agua`, `custoAterro`, `durAterro`), os animais (`mudar` com destino, `vender` com valor), `cells` (prévia vermelha) e `volta`. `executarDemolir(s, alvo, { aterrar, lagoTodo })` refaz o plano e executa; `resumoPlano` monta os textos da prévia.
+- Modos: Bloco segue a ordem antiga (obra, prédio, mobiliário, toca, planta, recinto, caminho) e usa `demolish` de build.js; tocar num recinto usa a regra nova; água solta pergunta (este bloco ou o lago todo, `lagoLivre` em lagos.js). Recinto: 1 toque, sai com tocas (50%) e plantas de dentro; o caminho em volta fica. Prédio: 1 toque (obra de prédio é cancelada com 100%). Área: plantas, caminho, mobiliário e prédios que encostam no retângulo; recinto só se estiver inteiro dentro (com as ampliações em obra); a entrada e a clínica com internado ficam (aviso).
+- Animais: `planoAnimais` procura, por espécie, recintos com vaga (`vagasPara`: mesmo bioma, cerca que segura, viveiro para quem sobe em árvore, água que basta, sem predador com presa, espaço e máximo do grupo, contando quem está a caminho, internados e reservas), primeiro os que já têm a espécie. Mudam na hora (de caminhão: `s._entregas` estaciona o caminhão no portão do destino, estresse +0,15); internados só trocam o `habOrig`; quem não couber é vendido (40%). Fugido ou animal sendo levado pela equipe bloqueia com aviso.
+- Lagos: `src/sim/lagos.js` (novo) com `cavar` (fundo raso/fundo, antes dentro de `fazerLago`), `aterrar` (chão do bioma em volta ou grama, cantos alisados na altura do chão em volta) e `lagoLivre`. Obras novas em obras.js: `aterro` (R$ 60/bloco, 3 min até 13 blocos +0,09 min por bloco, máx. 6) e `lago` (+ Lago na ficha: 6 blocos rasos, R$ 75/bloco, 3 min). As duas reservam `cells` em `s._occ.obra`; o lago em obra vira caixa sólida em `habObstacles` (os animais contornam o tapume) e já conta na `lotacao`.
+- Construção rápida: `planoRapido(..., { lago: true })` / `construirRapido(..., { lago: true })` para espécies sem `agua`: 6 blocos rasos, custo de cavar e +2 min de obra (`p.dur`); `h.rapido.lago = true`. Ficha: `podeTerLago`, `planoLago` (sem espaço devolve `semEspaco` e um plano de Ampliar) e `lagoNoRecinto`.
+- Interface (ui.js): Construir > Demolir com 4 modos (`opts.demMode`), arrasto na Área com prévia (`mostraDemolir`), `confirmaDemolir` (barra simples ou janela com "Vai sair", "Mudam de recinto", "Vendidos", "Volta para o caixa" e Manter/Aterrar o lago), botão 💧 Com lago na prévia rápida e 💧 + Lago na Lotação. render/obras.js: terraplanagem com tapume baixo e terra subindo por etapa; lago com montes de terra; sem guindaste nem andaime.
+- Save: continua no SCHEMA 12 (tipos novos de obra dentro de `s.obras` e o campo opcional `h.rapido.lago`); save da 1.8.3 carrega igual. Contrato de DLC sem campo novo (espécie de DLC sem `agua` também ganha o Com lago).
+- Testes: `tests/v183b_demolir.test.js` (124 verificações) e `tests/v183b_demolir_browser.py` (usa a build da 1.8.3 em :8766 para gerar o save antigo).
+

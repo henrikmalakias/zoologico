@@ -32,6 +32,8 @@ export function habObstacles(s, h) {
   out.push({ x: f.x, z: f.z, r: 0.85, feed: true }, { x: w.x, z: w.z, r: 0.7, water: true });
   // tocas (1.7.2b): caixa sólida de 4 m x 4 m (r = raio aproximado, usado só para desviar a rota)
   for (const t of tocasDe(s, h.id)) { const c = tocaCenter(t); out.push({ x: c.x, z: c.z, r: 2.35, hx: 2, hz: 2, box: true, solido: true, toca: t.id }); }
+  // 1.8.3b: lago em obra dentro do recinto: o tapume é sólido (os animais contornam)
+  for (const o of s.obras || []) if (o.tipo === 'lago' && o.hab === h.id && o.rect) { const r = o.rect, hx = r.w, hz = r.h, c0 = tileToWorld(r.x, r.y); out.push({ x: c0.x - 1 + hx, z: c0.z - 1 + hz, r: Math.hypot(hx, hz), hx, hz, box: true, solido: true, obra: o.id }); }
   h._obs = out; h._obsV = s._ver; return out;
 }
 // o ponto (com folga R) está dentro de um obstáculo sólido?

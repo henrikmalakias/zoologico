@@ -49,7 +49,8 @@ export class ObraView {
     const yAt = (x, z) => heightAt(s, x, z);
     const st = new THREE.Group(), add = (geo, m, x, y, z, ry = 0, par = st) => { const me = k.mesh(geo, m); me.position.set(x, y, z); me.rotation.y = ry; par.add(me); return me; };
     // tapume: um painel por lado de bloco na borda, um pouco para fora (fica por fora da cerca do recinto)
-    const off = o.tipo === 'hab' ? 0.45 : 0.12, TH = o.tipo === 'toca' ? 1.6 : 2.1; let n = 0;
+    const baixa = o.tipo === 'aterro' || o.tipo === 'lago'; // 1.8.3b: terraplanagem e lago: tapume mais baixo, sem guindaste
+    const off = o.tipo === 'hab' ? 0.45 : 0.12, TH = o.tipo === 'toca' ? 1.6 : baixa ? 1.5 : 2.1; let n = 0;
     for (const i of cells) {
       const x = i % MAP, y = (i / MAP) | 0;
       for (const [dx, dy, d] of DIRS) {
@@ -74,11 +75,20 @@ export class ObraView {
       const pil = []; for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const p = k.mesh(k.box(0.35, 1, 0.35), M.conc2); p.position.set(sx * (W / 2 - 0.2), 0, sz * (D / 2 - 0.2)); estr.add(p); pil.push(p); }
       estr.userData = { core, pil, H }; root.add(estr);
     }
+    // 1.8.3b: terraplanagem: a terra sobe da água até o nível do chão, por etapa; lago: montes de terra escavada
+    let terra = null;
+    if (o.tipo === 'aterro') {
+      terra = new THREE.Group(); const tg = new THREE.Group();
+      for (const i of cells) { const x = i % MAP, y = (i / MAP) | 0, c = xz(x, y); const me = k.mesh(k.box(TILE, 1, TILE), M.areia); me.position.set(c.x + TILE / 2, -0.5, c.z + TILE / 2); tg.add(me); }
+      mergeStatic(tg); terra.add(tg); terra.userData = { y0: -1.05, y1: Math.max(-0.05, yAt(cx, cz) + 0.02) }; root.add(terra);
+    } else if (o.tipo === 'lago') {
+      for (const [fx, fz, sc] of [[0.3, 0.3, 1], [0.7, 0.6, 0.8]]) { const px = c0.x + r.w * TILE * fx, pz = c0.z + r.h * TILE * fz, mo = k.mesh(new THREE.ConeGeometry(0.9 * sc, 0.7 * sc, 7), M.areia); mo.position.set(px, yAt(px, pz) + 0.35 * sc, pz); root.add(mo); }
+    }
     // andaimes: torres junto do tapume (pelo lado de dentro), uma a cada 4 painéis; cada nível de todas as torres é uma
     // peça só (4 peças por obra, poucas chamadas de desenho), e aparece um nível a mais por etapa
     const tw = o.tipo === 'toca' ? 1 : 1.4, pos = [];
     if (o.tipo === 'fac' || o.tipo === 'toca') pos.push([c0.x + 0.6, c0.z + 0.6], ...(o.tipo === 'fac' ? [[c0.x + r.w * TILE - 0.6, c0.z + r.h * TILE - 0.6]] : []));
-    else { let k2 = 0; for (const i of cells) { const x = i % MAP, y = (i / MAP) | 0; for (const [dx, dy] of DIRS) { const nx = x + dx, ny = y + dy; if (inMap(nx, ny) && cells.has(idx(nx, ny))) continue; if (k2++ % 4) continue; const c = xz(x, y); pos.push([c.x + TILE / 2 + dx * (TILE / 2 - tw / 2 - 0.1), c.z + TILE / 2 + dy * (TILE / 2 - tw / 2 - 0.1)]); } } }
+    else if (!baixa) { let k2 = 0; for (const i of cells) { const x = i % MAP, y = (i / MAP) | 0; for (const [dx, dy] of DIRS) { const nx = x + dx, ny = y + dy; if (inMap(nx, ny) && cells.has(idx(nx, ny))) continue; if (k2++ % 4) continue; const c = xz(x, y); pos.push([c.x + TILE / 2 + dx * (TILE / 2 - tw / 2 - 0.1), c.z + TILE / 2 + dy * (TILE / 2 - tw / 2 - 0.1)]); } } }
     const torres = [[]];
     for (let L = 0; L < 4; L++) {
       const lg = new THREE.Group(), y = L * NIV;
@@ -93,7 +103,7 @@ export class ObraView {
     }
     // guindaste (obras de 3 x 3 blocos ou mais)
     let crane = null;
-    if (o.tipo !== 'toca' && r.w * r.h >= 9) {
+    if (o.tipo !== 'toca' && !baixa && r.w * r.h >= 9) {
       const px = c0.x + 1.0, pz = c0.z + r.h * TILE - 1.0, Ht = o.tipo === 'fac' ? 9 : 10.5, L = Math.min(12, Math.max(6, Math.max(r.w, r.h) * TILE * 0.55));
       crane = new THREE.Group(); crane.position.set(px, yAt(px, pz), pz);
       const torre = new THREE.Group(); add(k.box(0.5, Ht, 0.5), M.amar, 0, Ht / 2, 0, 0, torre); for (let y = 1; y < Ht; y += 1.5) add(k.box(0.56, 0.08, 0.56), M.preto, 0, y, 0, 0, torre); add(k.box(1.4, 0.3, 1.4), M.conc2, 0, 0.15, 0, 0, torre);
@@ -117,9 +127,9 @@ export class ObraView {
     // barra de progresso
     const cv = barCanvas(), tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
     const bar = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); bar.renderOrder = 10;
-    const bh = o.tipo === 'toca' ? 4.2 : o.tipo === 'fac' ? 6.4 : 7.5; bar.position.set(cx, yAt(cx, cz) + bh, cz); bar.scale.set(5.2, 1.46, 1); root.add(bar);
+    const bh = o.tipo === 'toca' || baixa ? 4.2 : o.tipo === 'fac' ? 6.4 : 7.5; bar.position.set(cx, yAt(cx, cz) + bh, cz); bar.scale.set(5.2, 1.46, 1); root.add(bar);
     this.g.add(root);
-    return { root, st, estr, torres, crane, workers, bar, cv, tex, c: { x: cx, z: cz }, r, last: '', key: this.keyOf(s, o) };
+    return { root, st, estr, torres, crane, workers, bar, cv, tex, terra, c: { x: cx, z: cz }, r, last: '', key: this.keyOf(s, o) };
   }
   keyOf(s, o) { const h = o.hab && s.habitats.find(x => x.id === o.hab); return o.tipo + ':' + (h ? h.cells.length + ':' + (s._hver || 0) : '') + ':' + (o.rect ? o.rect.x + ',' + o.rect.y + ',' + o.rect.w + ',' + o.rect.h : ''); }
   free(e) { this.g.remove(e.root); e.tex.dispose(); e.bar.material.dispose(); e.root.traverse(m => { if (m.userData?.merged) m.geometry.dispose(); }); }
@@ -135,6 +145,7 @@ export class ObraView {
       const pr = OB.progresso(o, now), et = OB.etapa(o, now);
       // andaime e estrutura por etapa
       for (const lv of e.torres) lv.forEach((g, i) => { g.visible = i < et; });
+      if (e.terra) { const U = e.terra.userData; e.terra.position.y = U.y0 + (U.y1 - U.y0) * (et / 4); }
       if (e.estr) { const H = e.estr.userData.H * (et / 4), core = e.estr.userData.core; core.scale.y = Math.max(0.15, H); core.position.y = Math.max(0.15, H) / 2; for (const p of e.estr.userData.pil) { p.scale.y = Math.min(e.estr.userData.H, H + 0.8); p.position.y = p.scale.y / 2; } }
       // barra
       if (barTick || !e.last) { const txt = `🚧 ${Math.floor(pr * 100)}% · ${OB.textoFalta(OB.faltaMs(o, now))}`; if (txt !== e.last) { e.last = txt; drawBar(e.cv, pr, txt); e.tex.needsUpdate = true; this.world.dirty = true; } }

@@ -17,7 +17,8 @@ import { ALERT_INFO, alertPos, alertTargetName, eligibleStaff, dispatch, taskNam
 import { arrivalRate } from '../sim/visitors.js';
 import { TURNOS, NOITE_ROLES, salarioDia, situacao, trocarTurno, horarioTxt, pausasTxt, cobertura, turnoSugerido, emServico, ocupacaoCentro, CAP_CENTRO, turnoDe, EXTRA_MULT, VOLTA_EXTRA } from '../sim/turnos.js';
 import { vagasTotal } from '../sim/rua.js';
-import { planoRapido, construirRapido, lotacao, maisUm, custoMaisUm, planoAmpliar, ampliarRapido, blocosParaMais, especiesCompativeis, planoOutraEspecie, outraEspecie, necessidade, nomePlural } from '../sim/rapido.js';
+import { planoRapido, construirRapido, lotacao, maisUm, custoMaisUm, planoAmpliar, ampliarRapido, blocosParaMais, especiesCompativeis, planoOutraEspecie, outraEspecie, necessidade, nomePlural, podeTerLago, planoLago, lagoNoRecinto } from '../sim/rapido.js';
+import { planoDemolir, executarDemolir, resumoPlano } from '../sim/demolir.js';
 import * as OB from '../sim/obras.js';
 import { NIVEIS, nivelDe, progresso, emExperiencia, rescisao, demitir, entrevistar, ENTREVISTA, cursosPara, matricular, CURSOS, pedidos, aceitarPedido, negociarPedido, recusarPedido, ajustaSalario, EXP_DIAS, RESCISAO_DIAS, PEDIDO_ESPERA } from '../sim/carreira.js';
 
@@ -260,7 +261,14 @@ export class UI {
     else if (this.cat === 'animal') { body = [h('div', { class: 'items' }, ...Object.entries(C.species).map(([k, a]) => item(o.sp === k, a.nome, `R$ ${a.custo.toLocaleString('pt-BR')} · ${C.biomes[a.bioma].nome}`, set('sp', k))))];
       body.push(h('button', { class: 'btn sec sm', style: 'margin-top:6px', onclick: () => this.openZoopedia(o.sp) }, `📖 Ver ${C.species[o.sp].nome} na Zoopédia`));
       const S = C.species[o.sp]; hint = `Toque dentro de um habitat para comprar. ${S.nome}: ${S.dieta}, grupo de ${S.social.min} a ${S.social.max}, ${S.espaco} blocos por animal, barreira mín. ${S.barreira.altura} m / res. ${S.barreira.resistencia}${S.agua ? `, ${S.agua} blocos de água` : ''}.`; }
-    else if (this.cat === 'demolir') hint = 'Toque no que quer remover. Instalações devolvem 50%, habitats 30%.';
+    else if (this.cat === 'demolir') {
+      const dm = o.demMode || 'bloco';
+      body = [h('div', { class: 'items' }, ...[['bloco', '🧱 Bloco', '1 coisa por toque'], ['recinto', '🦁 Recinto', 'o recinto inteiro'], ['predio', '🏪 Prédio', 'o prédio inteiro'], ['area', '⬛ Área', 'arraste um retângulo']].map(([k, n, sub]) => item(dm === k, n, sub, () => { o.demMode = k; this.hideConfirm(); this.g.world.hidePreview(); this.renderDrawer(); })))];
+      hint = dm === 'bloco' ? 'Toque no que quer remover (um bloco por vez). Prédios e enfeites devolvem 50%, recintos 30%, obras 100%.'
+        : dm === 'recinto' ? 'Toque em um recinto: sai inteiro (cerca, tocas e plantas de dentro). Os animais mudam de caminhão para outro recinto que combine; quem não couber é vendido. O caminho em volta fica.'
+        : dm === 'predio' ? 'Toque em um prédio (lanchonete, banheiro, loja, clínica…): sai inteiro e devolve 50%. Prédio em obra é cancelado e devolve tudo.'
+        : 'Arraste um retângulo: saem plantas, caminho, enfeites e prédios dentro dele (em vermelho). Recinto só sai se estiver inteiro dentro.';
+    }
     this.el.drawer.replaceChildren(
       h('div', { class: 'tabs' }, ...cats.map(([k, n]) => h('button', { class: this.cat === k ? 'on' : '', onclick: () => { this.cat = k; this.tool = k; this.hideConfirm(); this.g.world.hidePreview(); this.renderDrawer(); } }, n)),
         h('button', { onclick: () => this.toggleBuild(false) }, '✔ Concluir')),
@@ -269,7 +277,7 @@ export class UI {
   // 1.8.3: construção rápida: prévia fixa no lugar do toque, com Girar e Construir
   showQuick() {
     const s = this.s, C = content(s), q = this.quick; if (!q) return;
-    const p = planoRapido(s, q.sp, q.tx, q.ty, { dims: q.dims, folga: q.folga });
+    const p = planoRapido(s, q.sp, q.tx, q.ty, { dims: q.dims, folga: q.folga, lago: q.lago });
     this.g.world.hidePreview();
     const r = p.rect;
     if (r) {
@@ -283,24 +291,26 @@ export class UI {
     const nomeN = n => n === 1 ? S.nome.toLowerCase() : nomePlural(s, q.sp).toLowerCase();
     const txt = h('span', {}, h('b', {}, `${EMOJI_SP[q.sp] || S.emoji || '🐾'} ${N.min} ${nomeN(N.min)}`), ` · cabe até ${Math.max(N.min, cap)} · `, h('b', {}, money(p.total)),
       h('small', { style: 'display:block;opacity:.75' }, `Recinto ${money(p.custos.recinto)} + animais ${money(p.custos.animais)} + caminho e enfeites ${money(p.custos.caminho)}${p.semLigacao ? ' · ⚠ caminho sem ligação com a entrada' : ''}`),
-      h('small', { style: 'display:block;opacity:.75' }, `🚧 Obra de ${minObra(OB.duracaoHab(r.w * r.h))}: os animais chegam de caminhão quando ficar pronta.`));
+      h('small', { style: 'display:block;opacity:.75' }, `🚧 Obra de ${minObra(p.dur || OB.duracaoHab(r.w * r.h))}${p.lago ? ' (com lago)' : ''}: os animais chegam de caminhão quando ficar pronta.`));
     const btn = (lab, cls, fn) => h('button', { class: 'btn sm ' + cls, onclick: fn }, lab);
     const fim = () => { this.quick = null; this.quickPlan = null; this.hideConfirm(); this.g.world.hidePreview(); };
     const construir = folga => () => {
       this.g.snapshot('recinto rápido');
-      const b = construirRapido(s, q.sp, q.tx, q.ty, { dims: folga ? q.dims : null, folga, obra: true });
+      const b = construirRapido(s, q.sp, q.tx, q.ty, { dims: folga ? q.dims : null, folga, obra: true, lago: q.lago });
       fim();
       if (!b.ok) return this.toast(b.msg, 'ruim');
       const n = b.animais.length + (b.aCaminho?.length || 0);
       sound.cash(); this.toast(b.obra ? `🚧 Obra começou! ${b.hab.name} fica pronto em ${minObra(b.obra.dur)}. ${n} ${nomeN(n)} a caminho.` : `${b.hab.name} pronto! ${n} ${nomeN(n)} ${n === 1 ? 'chegou' : 'chegaram'}.`, 'bom');
       if (b.obra) this.select('hab', b.hab.id);
     };
-    const bts = p.ok ? [q.dims[0] !== q.dims[1] ? btn('🔄 Girar', 'sec', () => { q.dims = [q.dims[1], q.dims[0]]; this.showQuick(); }) : null, btn('✅ Construir', '', construir(true))]
-      : [p.menor ? btn(`Só ${N.min}: ${money(p.menor.total)}`, '', construir(false)) : h('span', { class: 'neg' }, 'Falta dinheiro')];
+    // 1.8.3b: lago de enfeite para quem não precisa de água (raso, um pouco mais caro e com mais tempo de obra)
+    const lagoBt = p.podeLago ? btn(q.lago ? '💧 Com lago ✓' : '💧 Com lago', q.lago ? '' : 'sec', () => { q.lago = !q.lago; q.dims = null; this.showQuick(); }) : null;
+    const bts = p.ok ? [lagoBt, q.dims[0] !== q.dims[1] ? btn('🔄 Girar', 'sec', () => { q.dims = [q.dims[1], q.dims[0]]; this.showQuick(); }) : null, btn('✅ Construir', '', construir(true))]
+      : [lagoBt, p.menor ? btn(`Só ${N.min}: ${money(p.menor.total)}`, '', construir(false)) : h('span', { class: 'neg' }, 'Falta dinheiro')];
     this.el.confirm.replaceChildren(txt, ...bts.filter(Boolean), btn('✖', 'sec', fim));
     this.el.confirm.classList.remove('hidden');
   }
-  toolWantsDrag() { return ['caminho', 'terreno', 'planta', 'relevo'].includes(this.tool) || (this.tool === 'habitat' && !['mover', 'toca', 'rapido'].includes(this.opts.habMode || 'novo')); }
+  toolWantsDrag() { return ['caminho', 'terreno', 'planta', 'relevo'].includes(this.tool) || (this.tool === 'habitat' && !['mover', 'toca', 'rapido'].includes(this.opts.habMode || 'novo')) || (this.tool === 'demolir' && this.opts.demMode === 'area'); }
   tileAt(cx, cy) { const p = this.g.world.groundAt(cx, cy); if (!p) return null; const t = worldToTile(p.x, p.z); return inMap(t.tx, t.ty) ? t : null; }
   finishPath() {
     const tiles = this.strokeTiles || []; this.strokeTiles = [];
@@ -309,9 +319,14 @@ export class UI {
     if (tot) { sound.cash(); this.toast(`Mobiliário colocado: ${n.poste} poste(s), ${n.lixeira} lixeira(s), ${n.banco} banco(s) · R$ ${r.cost.toLocaleString('pt-BR')}.`, 'bom'); }
     if (r.semDinheiro) this.toast('O dinheiro acabou antes de colocar todo o mobiliário.', 'ruim');
   }
-  toolDragStart(cx, cy) { this.strokeTiles = []; this.hideConfirm(); if (this.tool !== 'habitat') this.g.snapshot(TOOL_NOME[this.tool]); this.dragA = this.tileAt(cx, cy); this.painted = new Set(); this.toolDrag(cx, cy); }
+  toolDragStart(cx, cy) { this.strokeTiles = []; this.hideConfirm(); this.demArea = null; if (this.tool !== 'habitat' && this.tool !== 'demolir') this.g.snapshot(TOOL_NOME[this.tool]); this.dragA = this.tileAt(cx, cy); this.painted = new Set(); this.toolDrag(cx, cy); }
   toolDrag(cx, cy) {
     const t = this.tileAt(cx, cy); if (!t || !this.dragA) return; const s = this.s;
+    if (this.tool === 'demolir') { // 1.8.3b: área: prévia vermelha do que sai
+      const A = this.dragA; if (this.demArea && this.demArea.x1 === t.tx && this.demArea.y1 === t.ty) return;
+      this.demArea = { modo: 'area', x0: A.tx, y0: A.ty, x1: t.tx, y1: t.ty };
+      const P = planoDemolir(s, this.demArea); this.mostraDemolir(P, true); return;
+    }
     if (this.tool === 'habitat') {
       const mode = this.opts.habMode || 'novo', A = this.dragA; this.dragB = t;
       const c = mode === 'ampliar' ? checkExpand(s, A.tx, A.ty, t.tx, t.ty) : mode === 'recortar' ? checkShrink(s, A.tx, A.ty, t.tx, t.ty) : checkHabitat(s, A.tx, A.ty, t.tx, t.ty, this.opts.fence);
@@ -331,6 +346,7 @@ export class UI {
   }
   toolDragEnd() {
     this.lastMsg = null;
+    if (this.tool === 'demolir') { const a = this.demArea; this.demArea = null; if (a) this.confirmaDemolir(a); return; }
     if (this.tool === 'habitat' && this.dragMsg) {
       const c = this.dragMsg, A = this.dragA, B = this.dragB; this.dragMsg = null;
       if (!c.ok) { this.toast(c.msg, 'ruim'); this.g.world.hidePreview(); return; }
@@ -361,7 +377,7 @@ export class UI {
     if (this.tool) {
       const t = this.tileAt(cx, cy); if (!t) return;
       if (['caminho', 'terreno', 'planta', 'relevo'].includes(this.tool)) { this.g.snapshot(TOOL_NOME[this.tool]); this.dragA = t; this.painted = new Set(); this.strokeTiles = []; this.toolDrag(cx, cy); this.finishPath(); setTimeout(() => this.g.world.hidePreview(), 300); return; }
-      if (this.tool === 'habitat' && this.opts.habMode === 'rapido') { this.quick = { sp: this.opts.qsp, tx: t.tx, ty: t.ty, dims: null, folga: true }; this.showQuick(); return; }
+      if (this.tool === 'habitat' && this.opts.habMode === 'rapido') { this.quick = { sp: this.opts.qsp, tx: t.tx, ty: t.ty, dims: null, folga: true, lago: !!(this.quick?.lago && this.quick.sp === this.opts.qsp) }; this.showQuick(); return; }
       if (this.tool === 'habitat' && this.opts.habMode === 'mover') {
         if (!this.moveSel) {
           const m = movableAt(s, t.tx, t.ty);
@@ -391,8 +407,9 @@ export class UI {
       }
       if (this.tool === 'animal') { this.g.snapshot('compra de ' + C.species[this.opts.sp].nome.toLowerCase()); const r = buyAnimal(s, this.opts.sp, t.tx, t.ty); if (!r.ok) this.toast(r.msg, 'ruim'); else { sound.cash(); if (r.aCaminho) this.toast(`🚚 ${C.species[this.opts.sp].nome} a caminho: chega de caminhão quando a obra terminar.`, 'bom'); } return; }
       if (this.tool === 'demolir') {
-        this.g.world.showPreview(t.tx, t.ty, 1, 1, false, 0.5);
-        this.askConfirm('Demolir o que está aqui?', () => { this.g.snapshot('demolição'); const r = demolish(s, t.tx, t.ty); this.toast(r.msg || (r.ok ? 'Removido.' : 'Nada aqui.'), r.ok ? 'bom' : 'ruim'); this.g.world.hidePreview(); }, () => this.g.world.hidePreview());
+        const dm = this.opts.demMode || 'bloco';
+        if (dm === 'area') { this.toast('Arraste o dedo para marcar a área.', 'ruim'); return; }
+        this.confirmaDemolir({ modo: dm, tx: t.tx, ty: t.ty });
         return;
       }
     }
@@ -408,6 +425,51 @@ export class UI {
     const t = this.tileAt(cx, cy);
     if (t && s._occ.hab[idx(t.tx, t.ty)]) { this.select('hab', s._occ.hab[idx(t.tx, t.ty)]); return; }
     this.closeSheet();
+  }
+  // 1.8.3b: prévia vermelha do que vai sair (água em azul) e confirmação com o que acontece com os animais e o lago
+  mostraDemolir(P, area) {
+    const w = this.g.world; w.hidePreview();
+    if (P.rect && area) w.showPreview(P.rect.x, P.rect.y, P.rect.w, P.rect.h, false, 0.12);
+    if (P.cells?.length) w.showCells(P.cells, '#e53935', 0.7);
+    if (P.agua?.length) w.showCells2(P.agua, '#5ab4e8', 0.35);
+  }
+  confirmaDemolir(alvo) {
+    const s = this.s, C = content(s), P = planoDemolir(s, alvo);
+    this.mostraDemolir(P, alvo.modo === 'area');
+    const fim = () => { this.hideConfirm(); this.g.world.hidePreview(); };
+    if (!P.ok) { this.toast(P.msg, 'ruim'); setTimeout(fim, alvo.modo === 'area' ? 900 : 400); return; }
+    const vai = (op, rot) => { this.closeModal(); this.hideConfirm(); this.g.snapshot(rot || 'demolição'); const r = executarDemolir(s, alvo, op); this.g.world.hidePreview();
+      this.toast(r.msg || (r.ok ? 'Removido.' : 'Nada aqui.'), r.ok ? 'bom' : 'ruim'); if (r.ok && (r.volta || r.obra)) sound.cash(); this.renderSheet(); };
+    const n = P.agua.length, aterro = `🚜 Aterrar e nivelar · ${money(P.custoAterro)} · ${minObra(P.durAterro)}`;
+    // bloco de água solto
+    if (P.soAgua) {
+      const um = `🚜 Aterrar este bloco · ${money(OB.custoAterro(1))} · ${minObra(OB.duracaoAterro(1))}`;
+      this.showModal(() => h('div', {}, h('h3', {}, '💧 Lago'), h('p', {}, n > 1 ? `Este lago tem ${n} blocos de água. O que fazer?` : 'Um bloco de água. O que fazer?'),
+        h('div', { class: 'muted' }, 'Aterrar vira chão plano e liso (terraplanagem, com tapume por alguns minutos).'),
+        h('button', { class: 'btn sec', style: 'display:block;width:100%;margin:8px 0', onclick: () => { this.closeModal(); fim(); } }, '💧 Manter o lago (grátis)'),
+        h('button', { class: 'btn', style: 'display:block;width:100%;margin:8px 0', disabled: s.money < OB.custoAterro(1) || null, onclick: () => vai({ aterrar: true }, 'aterro') }, um),
+        n > 1 ? h('button', { class: 'btn', style: 'display:block;width:100%;margin:8px 0', disabled: s.money < P.custoAterro || null, onclick: () => vai({ aterrar: true, lagoTodo: true }, 'aterro') }, `🚜 Aterrar o lago todo (${n} blocos) · ${money(P.custoAterro)} · ${minObra(P.durAterro)}`) : null));
+      this._demPrev = true;
+      return;
+    }
+    const R = resumoPlano(s, P);
+    if (P.simples) { this.askConfirm(`Demolir: ${P.simples.nome || 'o que está aqui'}${P.simples.volta ? ` · volta ${money(P.simples.volta)}` : ''}`, () => vai({}), fim); return; }
+    const precisaModal = P.mudar.length || P.vender.length || n || P.recintos.some(r => r.aCaminho);
+    if (!precisaModal) { this.askConfirm(`🧨 Sai: ${R.sai.join(', ')} · volta ${money(P.volta)}${P.avisos.length ? ' · ' + P.avisos.join(' ') : ''}`, () => vai({}), fim); return; }
+    const linha = (ic, txt, cls) => h('div', { class: 'row' }, h('span', { class: cls || '' }, ic + ' ' + txt));
+    this.showModal(() => h('div', {}, h('h3', {}, '🧨 Demolir'),
+      h('div', { class: 'card' }, h('b', {}, 'Vai sair'), ...R.sai.map(x => linha('•', x))),
+      R.mudar.length ? h('div', { class: 'card' }, h('b', {}, '🚚 Mudam de recinto (na hora, de caminhão)'), ...R.mudar.map(x => linha('•', x))) : null,
+      R.vender.length ? h('div', { class: 'card', style: 'border-left:4px solid #f2c230' }, h('b', {}, '💰 Sem vaga em outro recinto: vendidos (40%)'), ...R.vender.map(x => linha('•', x))) : null,
+      P.recintos.some(r => r.aCaminho) ? h('div', { class: 'muted' }, '🚚 Os animais que estavam a caminho voltam e o dinheiro é devolvido.') : null,
+      P.avisos.length ? h('div', { class: 'muted' }, P.avisos.join(' ')) : null,
+      h('div', { class: 'row' }, h('b', {}, 'Volta para o caixa'), h('b', { class: 'pos' }, money(P.volta))),
+      n ? h('div', { class: 'card' }, h('b', {}, `💧 E o lago (${n} ${n === 1 ? 'bloco' : 'blocos'} de água)?`), h('div', { class: 'muted' }, 'Manter deixa a água como está. Aterrar faz a terraplanagem: vira chão plano e liso, com tapume por alguns minutos.')) : null,
+      ...(n ? [h('button', { class: 'btn sec', style: 'display:block;width:100%;margin:8px 0', onclick: () => vai({ aterrar: false }) }, '💧 Manter o lago (grátis)'),
+        h('button', { class: 'btn', style: 'display:block;width:100%;margin:8px 0', disabled: s.money + P.volta < P.custoAterro || null, onclick: () => vai({ aterrar: true }) }, aterro)]
+        : [h('button', { class: 'btn red', style: 'display:block;width:100%;margin:8px 0', onclick: () => vai({}) }, '🧨 Demolir')]),
+      h('button', { class: 'btn sec', style: 'display:block;width:100%;margin:4px 0', onclick: () => { this.closeModal(); fim(); } }, 'Cancelar')));
+    this._demPrev = true;
   }
   habSuggestions(hb) {
     const s = this.s, C = content(s), out = [], an = s.animals.filter(a => a.hab === hb.id && !a.escaped && C.species[a.sp]);
@@ -573,8 +635,8 @@ export class UI {
   // 1.8.3: cartão da obra: barra de progresso, tempo que falta (minutos reais) e Terminar agora
   obraCard(o) {
     const s = this.s, now = Date.now(), pr = OB.progresso(o, now), falta = OB.faltaMs(o, now), preco = OB.precoTerminar(s, o, now);
-    const TIT = { hab: 'Recinto em obra', ampliar: `Ampliação em obra (+${o.cells?.length || 0} blocos)`, toca: 'Toca nova em obra', fac: 'Prédio em obra' };
-    const ETAPA = ['Fundação', 'Estrutura', 'Paredes e cerca', 'Acabamento'];
+    const TIT = { hab: 'Recinto em obra', ampliar: `Ampliação em obra (+${o.cells?.length || 0} blocos)`, toca: 'Toca nova em obra', fac: 'Prédio em obra', lago: 'Lago em obra', aterro: `Terraplanagem (${o.cells?.length || 0} blocos)` };
+    const ETAPA = o.tipo === 'aterro' ? ['Escoando a água', 'Aterrando', 'Nivelando', 'Acabamento'] : o.tipo === 'lago' ? ['Marcação', 'Escavação', 'Fundo do lago', 'Enchendo'] : ['Fundação', 'Estrutura', 'Paredes e cerca', 'Acabamento'];
     return h('div', { class: 'card obra' }, h('div', { class: 'top' }, h('b', {}, `🚧 ${TIT[o.tipo] || 'Obra'}`), h('span', { class: 'muted' }, `⏱ faltam ${OB.textoFalta(falta)}`)),
       h('div', { class: 'kv' }, ETAPA[OB.etapa(o, now) - 1], meter(pr), pct(pr)),
       h('div', { style: 'margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center' },
@@ -605,15 +667,29 @@ export class UI {
       ...(linhas.length ? linhas : [h('div', { class: 'muted' }, 'Ninguém aqui ainda.')]),
       h('div', { style: 'margin-top:6px;display:flex;gap:6px;flex-wrap:wrap' },
         sps.length && !hb.obra && !OB.ampliacaoDe(s, hb.id) && !C.fences[hb.fence]?.fosso && !sps.some(sp => lotacao(s, hb, sp).cheio === 'espaco') ? btn('↔ Ampliar', 'sec', () => this.ampliarHab(hb, sps[0])) : null,
-        comp.length && !hb.obra && !OB.ampliacaoDe(s, hb.id) ? btn(sps.length ? '➕ Outra espécie' : '➕ Trazer animais', sps.length ? 'sec' : '', () => this.outraEspecieModal(hb)) : null));
+        comp.length && !hb.obra && !OB.ampliacaoDe(s, hb.id) ? btn(sps.length ? '➕ Outra espécie' : '➕ Trazer animais', sps.length ? 'sec' : '', () => this.outraEspecieModal(hb)) : null,
+        !hb.obra && podeTerLago(s, hb) ? btn('💧 + Lago', 'sec', () => this.lagoHab(hb)) : null));
   }
-  ampliarHab(hb, sp) {
-    const s = this.s, p = planoAmpliar(s, hb, blocosParaMais(s, hb, sp, 3));
+  // 1.8.3b: + Lago (enfeite raso, obra de 3 min); sem espaço oferece Ampliar
+  lagoHab(hb) {
+    const s = this.s, p = planoLago(s, hb);
+    if (!p.ok) {
+      if (p.semEspaco && p.ampliar) { this.askConfirm(`💧 ${p.msg} Ampliar +${p.ampliar.blocos} blocos · ${money(p.ampliar.custo)}?`, () => this.ampliarHab(hb, null, p.blocos), () => {}); return; }
+      this.toast(p.msg, 'ruim'); return;
+    }
+    const r0 = OB.retangulo(p.cells); if (r0) this.g.world.showCells(p.cells, '#5ab4e8', 0.5);
+    this.askConfirm(`${p.msg} · 🚧 obra de ${minObra(p.dur)}`, () => {
+      this.g.snapshot('lago'); const r = lagoNoRecinto(s, hb, { now: Date.now() }); this.g.world.hidePreview();
+      this.toast(r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet();
+    }, () => this.g.world.hidePreview());
+  }
+  ampliarHab(hb, sp, blocos) {
+    const s = this.s, p = planoAmpliar(s, hb, blocos || blocosParaMais(s, hb, sp, 3));
     if (!p.ok) { this.toast(p.msg, 'ruim'); return; }
     if (p.rect) this.g.world.showPreview(p.rect.x, p.rect.y, p.rect.w, p.rect.h, true, 0.6);
     this.askConfirm(`Ampliar o ${hb.name}: ${p.msg} · 🚧 obra de ${minObra(OB.duracaoAmpliar(p.blocos))}`, () => {
       this.g.snapshot('ampliação'); const r = ampliarRapido(s, hb, p.blocos, { obra: true }); this.g.world.hidePreview();
-      this.toast(r.ok ? (r.obra ? `🚧 ${r.msg} Fica pronta em ${minObra(r.obra.dur)}; os animais continuam no recinto.` : `${r.msg} Agora cabem ${lotacao(s, hb, sp).cap}.`) : r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet();
+      this.toast(r.ok ? (r.obra ? `🚧 ${r.msg} Fica pronta em ${minObra(r.obra.dur)}; os animais continuam no recinto.` : (sp ? `${r.msg} Agora cabem ${lotacao(s, hb, sp).cap}.` : r.msg)) : r.msg, r.ok ? 'bom' : 'ruim'); if (r.ok) sound.cash(); this.renderSheet();
     }, () => this.g.world.hidePreview());
   }
   outraEspecieModal(hb) {
@@ -689,7 +765,7 @@ export class UI {
     const box = h('div', { class: 'modal' }, h('button', { class: 'close', onclick: () => this.closeModal() }, '×'), this.modalFn());
     const old = this.modal.firstChild, sc = old ? old.scrollTop : 0; this.modal.replaceChildren(box); box.scrollTop = sc;
   }
-  closeModal() { this.modal?.remove(); this.modal = null; this.modalFn = null; this.modalName = null; }
+  closeModal() { this.modal?.remove(); this.modal = null; this.modalFn = null; this.modalName = null; if (this._demPrev) { this._demPrev = false; this.g.world.hidePreview(); } }
   openModal(name, tab) {
     this.tabs = this.tabs || {}; if (tab) this.tabs[name] = tab;
     const fn = { gerencia: () => this.mGerencia(), equipe: () => this.mEquipe(), metas: () => this.mMetas(), menu: () => this.mMenu() }[name];

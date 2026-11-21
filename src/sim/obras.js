@@ -13,10 +13,13 @@ import { MAP, idx, inMap, rebuildOcc, tileToWorld, orientFacility } from './grid
 import { newAnimal, habById } from './animals.js';
 import { earn } from './staff.js';
 import { addFurnNear } from './furn.js';
-import { touch, ensureCells, cellXY } from './habshape.js';
+import { touch, ensureCells, cellXY, cellSet } from './habshape.js';
+import { cavar, aterrar } from './lagos.js';
 
 const MIN = 60e3;
-export const OBRA = { habMin: 6, habMax: 60, blocosMin: 36, blocosMax: 400, tocaMin: 3, facMin: 3, facMax: 12, custoFacMin: 2000, custoFacMax: 15000, instantaneoAbaixo: 1000, precoMax: 0.6 };
+export const OBRA = { habMin: 6, habMax: 60, blocosMin: 36, blocosMax: 400, tocaMin: 3, facMin: 3, facMax: 12, custoFacMin: 2000, custoFacMax: 15000, instantaneoAbaixo: 1000, precoMax: 0.6,
+  // 1.8.3b: terraplanagem (aterrar e nivelar) e lago de enfeite
+  aterroBloco: 60, aterroMin: 3, aterroMax: 6, aterroRef: 13, aterroPorBloco: 0.09, lagoBlocos: 6, lagoMin: 3, lagoExtra: 2 };
 
 // ---------- duração (ms) ----------
 // recinto: pequeno (até 36 blocos) 6 min, grande (20 x 20 = 400 blocos) 60 min, linear no meio
@@ -24,6 +27,13 @@ export const duracaoHab = blocos => Math.round(clamp(OBRA.habMin + (blocos - OBR
 // ampliação: proporcional ao que cresce (mínimo 3 min)
 export const duracaoAmpliar = blocos => Math.round(clamp(blocos * 0.15, 3, OBRA.habMax) * MIN);
 export const duracaoToca = () => OBRA.tocaMin * MIN;
+// 1.8.3b: aterro: 3 min até o tamanho do lago do hipopótamo (13 blocos), +0,09 min por bloco a mais, no máximo 6 min
+export const duracaoAterro = blocos => Math.round(clamp(OBRA.aterroMin + Math.max(0, blocos - OBRA.aterroRef) * OBRA.aterroPorBloco, OBRA.aterroMin, OBRA.aterroMax) * MIN);
+export const custoAterro = blocos => blocos * OBRA.aterroBloco;
+// lago de enfeite num recinto pronto: 3 min; na construção rápida o lago soma 2 min à obra do recinto
+export const duracaoLago = () => OBRA.lagoMin * MIN;
+export const extraLago = () => OBRA.lagoExtra * MIN;
+export const custoCavar = (s, blocos) => blocos * (OBRA.aterroBloco + (content(s).terrains.w?.custo || 15));
 // prédio: 3 a 12 min pelo preço (escala logarítmica); bancos e placas (menos de R$ 1.000) ficam instantâneos
 export function duracaoFac(s, type) {
   const D = content(s).facilities[type]; if (!D || D.fixo) return 0;
@@ -59,7 +69,7 @@ export function textoFalta(ms) {
 // blocos ocupados pela obra (para o mapa de ocupação e o tapume)
 export function blocosDaObra(s, o) {
   if (o.tipo === 'hab') { const h = habById(s, o.hab); return h ? ensureCells(h) : []; }
-  if (o.tipo === 'ampliar') return o.cells || [];
+  if (o.tipo === 'ampliar' || o.tipo === 'aterro' || o.tipo === 'lago') return o.cells || [];
   if (o.tipo === 'toca') { const t = o.toca; return [[t.tx, t.ty], [t.tx + 1, t.ty], [t.tx, t.ty + 1], [t.tx + 1, t.ty + 1]].filter(([x, y]) => inMap(x, y)).map(([x, y]) => idx(x, y)); }
   if (o.tipo === 'fac') { const D = content(s).facilities[o.fac.type] || { w: 1, h: 1 }, out = []; for (let y = o.fac.ty; y < o.fac.ty + D.h; y++) for (let x = o.fac.tx; x < o.fac.tx + D.w; x++) if (inMap(x, y)) out.push(idx(x, y)); return out; }
   return [];
@@ -131,6 +141,18 @@ function concluir(s, o, now) {
     const h = habById(s, o.hab);
     if (h) aplicarAmpliacao(s, h, o.cells);
     log(s, `🏗 Ampliação pronta: ${h?.name || o.nome} ganhou ${o.cells?.length || 0} blocos.`, 'bom');
+  } else if (o.tipo === 'aterro') {
+    const n = aterrar(s, o.cells || []);
+    log(s, `🏗 Terraplanagem pronta: ${n} ${n === 1 ? 'bloco de água virou' : 'blocos de água viraram'} chão plano.`, 'bom');
+  } else if (o.tipo === 'lago') {
+    const h = habById(s, o.hab);
+    if (h) {
+      const set = cellSet(h), gate = [h.gateIn, h.feed, h.water].map(([x, y]) => idx(x, y));
+      const cells = (o.cells || []).filter(i => set.has(i) && s.terrain[i] !== 'w' && !s._occ?.toca?.[i] && !gate.includes(i));
+      for (const i of cells) { s.terrain[i] = 'w'; delete s.litter[i]; const [x, y] = cellXY(i); s.objects = s.objects.filter(b => !(b.tx === x && b.ty === y)); }
+      cavar(s, cells, {}, { raso: true }); touch(h);
+    }
+    log(s, `🏗 Lago pronto no ${h?.name || 'recinto'}!`, 'bom');
   }
   rebuildOcc(s);
 }

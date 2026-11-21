@@ -13,7 +13,8 @@ import { spend } from './staff.js';
 import { addFurn, removeFurnAt, SIDES } from './furn.js';
 import { tocasDe, tocaVagas, TOCA_MAX, tocaCells, ladoTiles } from './tocas.js';
 import { edges, walkSet, cellSet, DIRS, cellXY, touch, ensureCells } from './habshape.js';
-import { encomendar, aCaminhoDe, tocasEmObra, ampliacaoDe } from './obras.js';
+import { encomendar, aCaminhoDe, tocasEmObra, ampliacaoDe, OBRA, custoCavar, extraLago, duracaoHab, duracaoLago, iniciarObra, obras as listaObras } from './obras.js';
+import { cavar } from './lagos.js';
 
 const R = (ok, msg = '', extra = {}) => ({ ok, msg, ...extra });
 const BRL = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
@@ -44,16 +45,18 @@ export function cercaRapida(s, sp) {
   return todas.sort((a, b) => b[1].resistencia - a[1].resistencia)[0]?.[0] || 'ferro';
 }
 // quanto o recinto precisa: grupo mínimo + folga de 3 (sem passar do máximo do grupo)
-export function necessidade(s, sp, folga = true) {
+export function necessidade(s, sp, folga = true, lago = false) {
   const C = content(s), S = C.species[sp];
   const min = Math.max(1, S.social?.min || 1), max = Math.max(min, S.social?.max || min);
   const cap = folga ? Math.min(max, min + 3) : min;
   const temToca = !!C.estruturas?.toca, vagas = temToca ? tocaVagas(s, sp) : 1;
   const tocas = temToca ? Math.min(TOCA_MAX, Math.ceil(min / vagas)) : 0, tocasCap = temToca ? Math.min(TOCA_MAX, Math.ceil(cap / vagas)) : 0;
-  const agua = S.agua ? Math.max(S.agua + Math.ceil(S.agua * 0.25), (S.aguaFunda || 0) + 4) : 0;
+  // 1.8.3b: lago de enfeite (raso) para quem não precisa de água, se o jogador pedir
+  const lagoOpc = !S.agua && !!lago;
+  const agua = S.agua ? Math.max(S.agua + Math.ceil(S.agua * 0.25), (S.aguaFunda || 0) + 4) : lagoOpc ? OBRA.lagoBlocos : 0;
   const chao = cap * (S.espaco || 10);
   const blocos = Math.min(MAX_LADO * MAX_LADO, Math.ceil((chao + agua + tocasCap * 4 + 4) * 1.05));
-  return { S, min, max, cap, tocas, vagas, agua, blocos, fence: cercaRapida(s, sp), biome: C.biomes[S.bioma] ? S.bioma : Object.keys(C.biomes)[0] };
+  return { S, min, max, cap, tocas, vagas, agua, lagoOpc, blocos, fence: cercaRapida(s, sp), biome: C.biomes[S.bioma] ? S.bioma : Object.keys(C.biomes)[0] };
 }
 function formatos(blocos) {
   const out = [], seen = new Set();
@@ -130,7 +133,7 @@ const CANTEIROS = 6;
 export function planoRapido(s, sp, tx, ty, opts = {}) {
   const C = content(s), S = C.species[sp]; if (!S) return R(false, 'Animal indisponível.');
   if (!s._occ) rebuildOcc(s);
-  const nec = necessidade(s, sp, opts.folga !== false);
+  const nec = necessidade(s, sp, opts.folga !== false, !!opts.lago);
   const forms = opts.dims ? [opts.dims] : formatos(nec.blocos), livre = bloqueios(s);
   const cand = [];
   for (let fi = 0; fi < forms.length; fi++) {
@@ -155,14 +158,15 @@ export function planoRapido(s, sp, tx, ty, opts = {}) {
     const plantas = listaPlantas(s, nec), baixas = plantasDoBioma(s, nec.biome, false);
     const F = C.furniture || {}, nPoste = F.poste ? Math.floor(anel.length / PASSO_POSTE) : 0, nBanco = F.banco ? Math.floor(anel.length / PASSO_BANCO) : 0;
     const custos = {
-      recinto: habitatCost(s, r, nec.fence) + nec.agua * (C.terrains.w?.custo || 15) + nec.tocas * (C.estruturas?.toca?.custo || 0) + plantas.reduce((t, p) => t + (C.plants[p]?.custo || 0), 0),
+      recinto: habitatCost(s, r, nec.fence) + (nec.lagoOpc ? custoCavar(s, nec.agua) : nec.agua * (C.terrains.w?.custo || 15)) + nec.tocas * (C.estruturas?.toca?.custo || 0) + plantas.reduce((t, p) => t + (C.plants[p]?.custo || 0), 0),
       animais: nec.min * (S.custo || 0),
       caminho: nCam * T + nPoste * (F.poste?.custo || 0) + nBanco * (F.banco?.custo || 0) + (F.lixeira?.custo || 0) + [...Array(baixas.length ? CANTEIROS : 0).keys()].reduce((t2, k) => t2 + (C.plants[baixas[k % baixas.length]]?.custo || 0), 0),
     };
     const total = custos.recinto + custos.animais + custos.caminho;
-    const extra = { sp, rect: r, nec, anel, ligacao: lg, semLigacao: !lg, nCaminho: nCam, plantas, custos, total, dims: [r.w, r.h] };
+    const dur = duracaoHab(r.w * r.h) + (nec.lagoOpc ? extraLago() : 0);
+    const extra = { sp, rect: r, nec, anel, ligacao: lg, semLigacao: !lg, nCaminho: nCam, plantas, custos, total, dims: [r.w, r.h], dur, lago: nec.lagoOpc, podeLago: !S.agua };
     if (s.money < total) {
-      const menor = opts.folga !== false && nec.cap > nec.min ? planoRapido(s, sp, tx, ty, { folga: false }) : null;
+      const menor = opts.folga !== false && nec.cap > nec.min ? planoRapido(s, sp, tx, ty, { folga: false, lago: opts.lago }) : null;
       return R(false, `Custa ${BRL(total)}. Dinheiro insuficiente.`, { ...extra, semDinheiro: true, menor: menor?.ok ? menor : null });
     }
     return R(true, `${BRL(total)}`, extra);
@@ -190,37 +194,26 @@ function portaoParaCaminho(s, h, liga) {
   if (best) { h.side = best.d; h.gateIn = cellXY(best.c); h.gateOut = [...best.out]; chooseFeedWater(s, h); }
 }
 // lago: mancha redonda longe do portão; raso para quem só vadeia pouco, com parte funda para quem precisa de banho
-export function fazerLago(s, h, n, S) {
-  if (n <= 0) return 0;
+export function celulasLago(s, h, n, opts = {}) {
+  if (n <= 0) return [];
   const W = walkSet(h), set = cellSet(h), [gx, gy] = h.gateIn;
-  const livre = i => W.has(i) && s.terrain[i] !== 'w' && !s._occ.toca?.[i] && !s._occ.obra?.[i] && i !== idx(gx, gy) && i !== idx(...h.feed) && i !== idx(...h.water);
+  const livre = i => W.has(i) && s.terrain[i] !== 'w' && !s._occ.toca?.[i] && !s._occ.obra?.[i] && !(opts.semPlanta && s._occ.obj?.[i]) && i !== idx(gx, gy) && i !== idx(...h.feed) && i !== idx(...h.water);
   const interior = i => { const [x, y] = cellXY(i); for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!set.has(idx(x + dx, y + dy))) return false; return true; };
   let centro = -1, bd = -1;
   for (const i of W) { if (!livre(i) || !interior(i)) continue; const [x, y] = cellXY(i), d = Math.hypot(x - gx, y - gy); if (d > bd) { bd = d; centro = i; } }
-  if (centro < 0) return 0;
+  if (centro < 0) return [];
   const [cx, cy] = cellXY(centro), lago = [];
   const cand = [...W].filter(i => livre(i) && interior(i) && Math.hypot(cellXY(i)[0] - gx, cellXY(i)[1] - gy) > 2.5).sort((a, b) => { const [ax, ay] = cellXY(a), [bx, by] = cellXY(b); return (Math.max(Math.abs(ax - cx), Math.abs(ay - cy)) + Math.hypot(ax - cx, ay - cy) * 0.01) - (Math.max(Math.abs(bx - cx), Math.abs(by - cy)) + Math.hypot(bx - cx, by - cy) * 0.01); });
   for (const i of cand) { if (lago.length >= n) break; lago.push(i); }
+  return lago;
+}
+export function fazerLago(s, h, n, S, opts = {}) {
+  const lago = opts.cells || celulasLago(s, h, n);
   if (!lago.length) return 0;
-  const L = new Set(lago), C = content(s);
+  const C = content(s);
   for (const i of lago) { s.terrain[i] = 'w'; delete s.litter[i]; const [x, y] = cellXY(i); s.objects = s.objects.filter(o => !(o.tx === x && o.ty === y)); }
-  const raso = (S.aguaMax ?? 1) < 0.65 && !S.tracos?.nada, fundo = !!S.aguaFunda;
-  if (s.height) {
-    const cantos = new Set(); for (const i of lago) { const [x, y] = cellXY(i); for (const [a, b] of [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]]) cantos.add(ci(a, b)); }
-    for (const k of cantos) {
-      const cx2 = k % (MAP + 1), cy2 = (k / (MAP + 1)) | 0;
-      const todos = [[cx2 - 1, cy2 - 1], [cx2, cy2 - 1], [cx2 - 1, cy2], [cx2, cy2]].every(([a, b]) => inMap(a, b) && L.has(idx(a, b)));
-      s.height[k] = raso ? -0.55 : fundo && todos ? (S.aguaModo === 'anfibio' ? -2.6 : -2.0) : todos ? -1.0 : -0.8;
-    }
-    // água funda que a espécie pede: aprofunda os cantos mais cercados de água até bastar
-    if (fundo) for (const [viz, v] of [[3, -1.9], [2, -1.7], [2, -2.2]]) {
-      const fundos = lago.filter(i => { const [x, y] = cellXY(i); return WATER_Y - (s.height[ci(x, y)] + s.height[ci(x + 1, y)] + s.height[ci(x, y + 1)] + s.height[ci(x + 1, y + 1)]) / 4 > 1.0; }).length;
-      if (fundos >= S.aguaFunda) break;
-      for (const k of cantos) { const cx2 = k % (MAP + 1), cy2 = (k / (MAP + 1)) | 0, n = [[cx2 - 1, cy2 - 1], [cx2, cy2 - 1], [cx2 - 1, cy2], [cx2, cy2]].filter(([a, b]) => inMap(a, b) && L.has(idx(a, b))).length; if (n >= viz) s.height[k] = Math.min(s.height[k], v); }
-    }
-    s._hver = (s._hver || 0) + 1;
-  }
-  spend(s, 'construcao', lago.length * (C.terrains.w?.custo || 15));
+  cavar(s, lago, S, { raso: !!opts.raso });
+  if (!opts.pago) spend(s, 'construcao', lago.length * (C.terrains.w?.custo || 15));
   rebuildOcc(s); fixShore(s); touch(h);
   return lago.length;
 }
@@ -303,13 +296,14 @@ export function construirRapido(s, sp, tx, ty, opts = {}) {
   calaUltimoLog(s);
   const h = hb.hab, plural = nomePlural(s, sp), art = artigoPlural(s, sp);
   let nome = `Recinto ${art} ${plural}`; for (let k = 2; s.habitats.some(o => o !== h && o.name === nome); k++) nome = `Recinto ${art} ${plural} ${k}`;
-  h.name = nome.slice(0, 24); h.rapido = { sp, anel: true };
+  h.name = nome.slice(0, 28); h.rapido = { sp, anel: true }; if (nec.lagoOpc) h.rapido.lago = true;
   portaoParaCaminho(s, h, p.ligacao?.liga);
   rebuildOcc(s);
-  fazerLago(s, h, nec.agua, S);
+  fazerLago(s, h, nec.agua, S, { raso: nec.lagoOpc });
+  if (nec.lagoOpc) spend(s, 'construcao', custoCavar(s, nec.agua) - nec.agua * (C.terrains.w?.custo || 15));
   for (let k = 0; k < nec.tocas; k++) if (!fazerToca(s, h).ok) break;
   fazerPlantas(s, h, p.plantas);
-  const ob = hb.obra; if (ob) { ob.custo = p.custos.recinto; ob.nome = h.name; }
+  const ob = hb.obra; if (ob) { ob.custo = p.custos.recinto; ob.nome = h.name; if (nec.lagoOpc) ob.dur += extraLago(); }
   const novos = ob ? [] : chegaGrupo(s, h, sp, nec.min), espera = ob ? encomendaGrupo(s, h, sp, nec.min, [ob.id]) : [];
   mobiliarioNaVolta(s, anel, r, h.gateOut);
   canteiros(s, r, h, nec.biome);
@@ -327,7 +321,8 @@ export function lotacao(s, h, sp) {
   const C = content(s), S = C.species[sp], I = habInfo(s, h), cont = { ...I.count };
   for (const e of aCaminhoDe(s, h.id)) cont[e.sp] = (cont[e.sp] || 0) + 1; // 1.8.3: quem está a caminho já conta
   let outros = 0; for (const [k, c] of Object.entries(cont)) if (k !== sp) outros += c * (C.species[k]?.espaco || 10);
-  const porEspaco = Math.max(0, Math.floor((I.land + 0.5 * I.water - outros) / (S.espaco || 10)));
+  const lg = lagoEmObra(s, h)?.cells?.length || 0; // 1.8.3b: o lago em obra já ocupa o chão
+  const porEspaco = Math.max(0, Math.floor((I.land - lg + 0.5 * (I.water + lg) - outros) / (S.espaco || 10)));
   const n = cont[sp] || 0, vem = aCaminhoDe(s, h.id, sp).length, max = S.social?.max || 99, cap = Math.min(max, porEspaco);
   return { n, vem, cap: Math.max(n, cap), max, porEspaco, cheio: n >= max ? 'grupo' : n >= porEspaco ? 'espaco' : null };
 }
@@ -469,5 +464,38 @@ export function outraEspecie(s, h, sp, opts = {}) {
   const novos = chegaGrupo(s, h, sp, p.min);
   logQuieto(s, `${novos.length} ${nm(novos.length)} chegaram ao ${h.name}.`);
   return R(true, `${nomePlural(s, sp)} no ${h.name}!`, { animais: novos });
+}
+// ---------- 1.8.3b: + Lago num recinto pronto (lago raso de enfeite, vira obra de 3 min) ----------
+export const lagoEmObra = (s, h) => listaObras(s).find(o => o.tipo === 'lago' && o.hab === h.id) || null;
+export function podeTerLago(s, h) {
+  const C = content(s); if (!h || C.fences[h.fence]?.fosso) return false;
+  const I = habInfo(s, h); if (I.water > 0 || lagoEmObra(s, h)) return false;
+  const sps = new Set([...Object.keys(I.count), ...aCaminhoDe(s, h.id).map(e => e.sp)]);
+  return [...sps].every(sp => !C.species[sp]?.agua);
+}
+export function planoLago(s, h) {
+  const C = content(s); if (!podeTerLago(s, h)) return R(false, 'Este recinto já tem lago.');
+  if (h.obra) return R(false, `Espere a obra do ${h.name} terminar.`);
+  const n = OBRA.lagoBlocos, custo = custoCavar(s, n), dur = duracaoLago();
+  // espaço: o lago ocupa o chão (água conta a metade); todo mundo que mora aqui precisa continuar cabendo
+  const I = habInfo(s, h), cont = { ...I.count }; for (const e of aCaminhoDe(s, h.id)) cont[e.sp] = (cont[e.sp] || 0) + 1;
+  let need = 0; for (const [k, c] of Object.entries(cont)) need += c * (C.species[k]?.espaco || 10);
+  const depois = I.land - n + 0.5 * (I.water + n), falta = Math.max(0, Math.ceil(need - depois));
+  const cells = celulasLago(s, h, n, { semPlanta: true });
+  if (falta > 0 || cells.length < n) {
+    const blocos = Math.max(6, falta + (cells.length < n ? n : 0)), amp = planoAmpliar(s, h, blocos);
+    return R(false, `Falta espaço para o lago sem apertar os animais.${amp.ok ? ' Amplie o recinto primeiro.' : ' ' + amp.msg}`, { semEspaco: true, ampliar: amp.ok ? amp : null, blocos, custo, dur });
+  }
+  const extra = { cells, custo, dur, blocos: n };
+  if (s.money < custo) return R(false, `O lago custa ${BRL(custo)}. Dinheiro insuficiente.`, extra);
+  return R(true, `💧 Lago raso de ${n} blocos · ${BRL(custo)}`, extra);
+}
+export function lagoNoRecinto(s, h, opts = {}) {
+  const p = planoLago(s, h); if (!p.ok) return p;
+  spend(s, 'construcao', p.custo);
+  const ob = iniciarObra(s, { tipo: 'lago', hab: h.id, cells: p.cells, dur: p.dur, custo: p.custo, nome: `Lago do ${h.name}` }, opts.now ?? Date.now());
+  h.rapido && (h.rapido.lago = true); touch(h);
+  logQuieto(s, `🚧 Lago em obra no ${h.name}.`);
+  return R(true, `🚧 Lago em obra: fica pronto em ${Math.round(p.dur / 60e3)} min. Os animais desviam do tapume.`, { obra: ob, plano: p });
 }
 export { BRL as dinheiroRapido };

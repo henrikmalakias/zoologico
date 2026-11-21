@@ -44,7 +44,7 @@ function markTocas(s, obj, toca) { for (const t of s.tocas || []) for (let y = t
 function markObras(s, occ) {
   const C = content(s);
   for (const o of s.obras || []) {
-    if (o.tipo === 'ampliar') { for (const i of o.cells || []) occ[i] = o.id; continue; }
+    if (o.tipo === 'ampliar' || o.tipo === 'aterro' || o.tipo === 'lago') { for (const i of o.cells || []) occ[i] = o.id; continue; }
     const r = o.tipo === 'toca' ? { x: o.toca.tx, y: o.toca.ty, w: 2, h: 2 } : o.tipo === 'fac' ? { x: o.fac.tx, y: o.fac.ty, w: C.facilities[o.fac.type]?.w || 1, h: C.facilities[o.fac.type]?.h || 1 } : null;
     if (r) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (inMap(x, y)) occ[idx(x, y)] = o.id;
   }

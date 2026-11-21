@@ -436,7 +436,7 @@ export function demolish(s, tx, ty) {
   if (isPathT(s.terrain[i])) { s.terrain[i] = 'g'; delete s.litter[i]; removeFurnAt(s, tx, ty); rebuildOcc(s); reorientAround(s, tx, ty); return R(true, 'Caminho removido.'); }
   return R(false, 'Nada para demolir aqui.');
 }
-const habitatCostRef = (s, h) => (h.fence === 'fosso' ? habitatCost(s, h, h.fence) : shapeCost(s, h.cells, h.fence));
+export const habitatCostRef = (s, h) => (h.fence === 'fosso' ? habitatCost(s, h, h.fence) : shapeCost(s, h.cells, h.fence));
 export function setTicket(s, v) { s.ticket = clamp(Math.round(v), 0, 100); }
 export function setSalary(s, id, factor) {
   const p = [...s.staff, ...s.managers].find(x => x.id === id); if (!p) return;
